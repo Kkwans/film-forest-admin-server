@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "skills": {
+    "skill-vetter": {
+      "version": "1.0.0",
+      "installedAt": 1776824102091
+    },
+    "skill-finder": {
+      "version": "1.1.5",
+      "installedAt": 1776824110810
+    },
+    "android-native-dev": {
+      "version": "1.0.0",
+      "installedAt": 1776824178313
+    },
+    "productivity": {
+      "version": "1.0.4",
+      "installedAt": 1776824239191
+    },
+    "web-search-plus": {
+      "version": "2.9.3",
+      "installedAt": 1776824282788
+    },
+    "java-code-reviewer": {
+      "version": "1.0.0",
+      "installedAt": 1776824342565
+    },
+    "java-development-manual": {
+      "version": "0.1.0",
+      "installedAt": 1776824403991
+    },
+    "effective-java": {
+      "version": "1.0.0",
+      "installedAt": 1776824461591
+    },
+    "frontend-design-3": {
+      "version": "0.1.0",
+      "installedAt": 1776824642248
+    },
+    "android-studio": {
+      "version": "1.0.1",
+      "installedAt": 1776824702548
+    },
+    "playwright": {
+      "version": "1.0.3",
+      "installedAt": 1776824882730
+    },
+    "java-maven-common": {
+      "version": "1.0.0",
+      "installedAt": 1776825012181
+    },
+    "java-perf-analyzer": {
+      "version": "1.0.1",
+      "installedAt": 1776825062426
+    },
+    "minimax-android-dev": {
+      "version": "1.0.0",
+      "installedAt": 1776830522239
+    },
+    "server": {
+      "version": "1.0.0",
+      "installedAt": 1776831182744
+    },
+    "docker-essentials": {
+      "version": "1.0.0",
+      "installedAt": 1776831361986
+    },
+    "spring-boot-engineer": {
+      "version": "0.1.0",
+      "installedAt": 1776831603079
+    },
+    "springboot-unit-testing": {
+      "version": "1.0.0",
+      "installedAt": 1776831791277
+    },
+    "github-code-review-cicd": {
+      "version": "1.0.0",
+      "installedAt": 1776831901753
+    },
+    "ci-cd": {
+      "version": "1.0.0",
+      "installedAt": 1776833582424
+    },
+    "web-deploy": {
+      "version": "1.0.0",
+      "installedAt": 1776833589208
+    },
+    "sql-toolkit": {
+      "version": "1.0.0",
+      "installedAt": 1776833703526
+    },
+    "database-designer": {
+      "version": "2.1.1",
+      "installedAt": 1776833824809
+    },
+    "scrape": {
+      "version": "1.0.0",
+      "installedAt": 1777037041947
+    },
+    "smart-crawler": {
+      "version": "1.0.0",
+      "installedAt": 1777037102897
+    },
+    "http": {
+      "version": "1.0.0",
+      "installedAt": 1777037161663
+    },
+    "download-file": {
+      "version": "1.0.1",
+      "installedAt": 1777037182014
+    },
+    "rupert-web-scraper": {
+      "version": "1.0.0",
+      "installedAt": 1777037226666
+    }
+  }
+}

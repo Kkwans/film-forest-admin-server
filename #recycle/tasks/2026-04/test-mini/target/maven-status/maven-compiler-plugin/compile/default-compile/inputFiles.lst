@@ -1,0 +1,12 @@
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/config/SecurityConfig.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/controller/HealthController.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/service/UserService.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/dto/ApiResponse.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/controller/AuthController.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/repository/UserRepository.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/dto/LoginRequest.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/TestMiniApplication.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/dto/RegisterRequest.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/dto/UserVO.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/entity/User.java
+/root/.openclaw/workspace/tasks/2026-04/test-mini/src/main/java/com/test/mini/controller/UserController.java

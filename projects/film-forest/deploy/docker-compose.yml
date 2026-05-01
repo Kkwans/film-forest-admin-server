@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  film-forest-backend:
+    build:
+      context: ../backend
+      dockerfile: ../backend/Dockerfile
+    container_name: film-forest-backend
+    ports:
+      - "8888:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Root2026
+    restart: unless-stopped
+    networks:
+      - film-forest-net
+
+  film-forest-frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../frontend/Dockerfile
+    container_name: film-forest-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8888
+    restart: unless-stopped
+    networks:
+      - film-forest-net
+
+networks:
+  film-forest-net:
+    driver: bridge

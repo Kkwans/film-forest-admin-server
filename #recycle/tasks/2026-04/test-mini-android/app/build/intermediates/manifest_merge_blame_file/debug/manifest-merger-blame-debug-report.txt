@@ -1,0 +1,54 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.test.mini"
+4    android:versionCode="1"
+5    android:versionName="1.0" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+8-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml
+9        android:targetSdkVersion="34" />
+9-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml
+10
+11    <uses-permission android:name="android.permission.INTERNET" />
+11-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:5:5-67
+11-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:5:22-64
+12
+13    <application
+13-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:7:5-22:19
+14        android:allowBackup="true"
+14-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:8:9-35
+15        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+15-->[androidx.core:core:1.6.0] /root/.gradle/caches/transforms-3/e12a104b3bc9f33452e87fabbc93acc7/transformed/core-1.6.0/AndroidManifest.xml:24:18-86
+16        android:debuggable="true"
+17        android:extractNativeLibs="false"
+18        android:icon="@mipmap/ic_launcher"
+18-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:9:9-43
+19        android:label="测试小程序"
+19-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:10:9-30
+20        android:theme="@style/Theme.TestMini"
+20-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:11:9-46
+21        android:usesCleartextTraffic="true" >
+21-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:12:9-44
+22        <activity
+22-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:13:9-21:20
+23            android:name="com.test.mini.MainActivity"
+23-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:14:13-41
+24            android:exported="true"
+24-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:15:13-36
+25            android:theme="@style/Theme.TestMini" >
+25-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:16:13-50
+26            <intent-filter>
+26-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:17:13-20:29
+27                <action android:name="android.intent.action.MAIN" />
+27-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:18:17-69
+27-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:18:25-66
+28
+29                <category android:name="android.intent.category.LAUNCHER" />
+29-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:19:17-77
+29-->/root/.openclaw/workspace/tasks/2026-04/test-mini-android/app/src/main/AndroidManifest.xml:19:27-74
+30            </intent-filter>
+31        </activity>
+32    </application>
+33
+34</manifest>

@@ -1,0 +1,12 @@
+com/test/mini/controller/HealthController.class
+com/test/mini/entity/User.class
+com/test/mini/dto/UserVO.class
+com/test/mini/controller/UserController.class
+com/test/mini/config/SecurityConfig.class
+com/test/mini/dto/RegisterRequest.class
+com/test/mini/controller/AuthController.class
+com/test/mini/service/UserService.class
+com/test/mini/TestMiniApplication.class
+com/test/mini/repository/UserRepository.class
+com/test/mini/dto/ApiResponse.class
+com/test/mini/dto/LoginRequest.class
