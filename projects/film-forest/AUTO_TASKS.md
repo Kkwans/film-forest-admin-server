@@ -883,3 +883,64 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - 爬虫正常运行，字段提取逻辑工作正常
 - 所有 4 服务运行正常 ✅
 
+
+---
+
+## 十四、2026-05-03 06:40 - admin-server JAR 损坏修复 + 重启成功
+
+### 问题
+- admin-server Docker 容器 Exit (1)，报错 `Error: Invalid or corrupt jarfile /app.jar`
+- 原因：之前 `rm -rf` 误删 JAR 后重建了目录，导致 docker-compose.yml 中 bind mount 指向目录而非文件
+- 服务状态：admin-server 宕机，client-server/client-ui/admin-ui 正常运行
+
+### 修复过程
+1. 重新编译 admin-server JAR (mvn clean package -DskipTests)
+2. 通过 pipe + ssh 上传到 NAS `/home/Kkwans/film-forest-admin-0.0.1-SNAPSHOT.jar`
+3. 复制到 `/volume1/docker/film-forest/backend/film-forest-admin-0.0.1-SNAPSHOT.jar`
+4. 删除旧 Docker 容器：`sudo docker rm -f film-forest-admin-server`
+5. 重新创建：`cd /volume1/docker/film-forest && sudo docker compose up -d admin-server`
+
+### 验证结果
+- admin-server 重新运行在 8081 端口 ✅
+- `/api/content/stats` 返回 movies:49, dramas:10, varieties:0, animes:0, shortDramas:0
+- 4 个服务全部正常运行 ✅
+
+### 关键教训
+- `rm -rf` 删除文件后重建目录会导致 bind mount 类型从文件变为目录
+- Docker 容器启动失败时应检查 mount 路径类型是否正确
+
+---
+
+## 十五、2026-05-03 06:48 - 自动调度器实现 + 五类内容全部爬取成功
+
+### 本轮完成
+
+**1. 自动调度器 CrawlerScheduler 实现** ✅
+- 新文件: `src/main/java/com/filmforest/crawler/scheduler/CrawlerScheduler.java`
+- `@Scheduled(fixedRate = 60000)` 每分钟检查所有启用且 idle 的调度
+- `shouldRunNow()` 根据 cron 表达式计算是否应触发
+- `triggerCrawl()` 异步执行，不阻塞主线程
+- `AdminApplication` 添加 `@EnableScheduling` 注解
+
+**2. 五类内容全部爬取成功** ✅
+- 启动后 5 个调度全部触发并完成（22:55-22:56）
+- 采集结果: movies:49, dramas:30, varieties:20, animes:20, shortDramas:0
+- 剧集/综艺/动漫首次有真实数据（之前全为 0）
+- 所有爬虫状态: idle，等待下一周期
+
+**3. JAR 部署完成**
+- 新 JAR: `film-forest-admin-0.0.1-SNAPSHOT.jar` (06:54 编译)
+- 已上传到 NAS 并通过 `docker restart film-forest-admin-server` 重启
+
+### 当前状态
+
+| 内容类型 | 数量 | 爬虫状态 |
+|---------|------|---------|
+| movies | 49 | idle (last 22:55:59) |
+| dramas | 30 | idle (last 22:56:04) |
+| varieties | 20 | idle (last 22:55:56) |
+| animes | 20 | idle (last 22:55:56) |
+| shortDramas | 0 | idle (last 22:55:35) |
+
+### GitHub 待推送
+- admin-server: 新增 `CrawlerScheduler.java` + `@EnableScheduling` 修改

@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  clash:
+    image: dreamacro/clash:latest
+    container_name: clash
+    restart: unless-stopped
+    volumes:
+      - ./config:/root/.config/clash
+    ports:
+      - "7890:7890"      # HTTP/S 代理端口
+      - "7891:7891"      # SOCKS5 代理端口
+      - "9090:9090"      # RESTful API 端口（用于 UI 控制）
+    network_mode: bridge
+
+  # 可选：yacd UI 管理界面
+  yacd:
+    image: haishanh/yacd:latest
+    container_name: yacd
+    restart: unless-stopped
+    ports:
+      - "9080:80"
+    depends_on:
+      - clash
+    network_mode: bridge
