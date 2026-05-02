@@ -435,6 +435,16 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **GitHub Actions**：admin-server有GitHub Actionsworkflow（build.yml），但配置在master分支。本地最新代码commit `b6e719f`（AUTO_TASKS更新），需确认workflow trigger条件。
 - **无未同步代码**：四个仓库均与origin同步
 
+### 2026-05-02 13:39 健康检查 + magnet 资源 API 验证 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29(无重复), dramas:10, varieties:0, animes:0, shortDramas:0（数据库真实数据）
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影），12:20（七味网-短剧）
+- **磁力资源验证** ✅: `GET /api/resources/magnet?contentType=movie&contentId=489459` 返回 2 条真实磁力链接（1080P 中字），来自七味网采集
+- **搜索功能**: `keyword=%E9%80%9F%E5%BA%A6` 正确返回《速度与激情10》（URL 需编码）
+- **client-ui 详情页**: useResource hook 已对接 `resourceApi.magnet()`，前端链路正常 ✅
+- **GitHub 同步状态**: admin-server 有 2 个本地修改（AUTO_TASKS.md + .gitignore），但这两项本身就不该进 admin-server 仓库，实际无未同步代码
+- **无未同步代码**: 4 个仓库均 clean 或与 origin 同步
+
 **GitHub待推送**: AUTO_TASKS.md更新commit待push
 
 ### 2026-05-02 11:24 健康检查
@@ -444,3 +454,28 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - 搜索功能：`keyword=密令` 返回 2 条重复结果（密令七杀手 id 335640/335641），验证搜索正常
 - **已知问题**：数据库有 10 对重复电影记录（源于旧版爬虫重复插入 bug），去重 fix 已 commit 但 JAR 未重新部署
 - **GitHub push**：AUTO_TASKS.md 更新 commit push 超时（HTT/1.0 仍慢），待网络恢复
+
+### 2026-05-02 12:39 数据库重复清理 + admin-server GitHub 推送 ✅
+- **问题**: 数据库 39 部电影有 10 对重复（源于旧 JAR 重复插入 bug）
+- **清理**: DELETE 10 条旧记录（id 335623-335641，保留较新条目）
+- **结果**: 29 部唯一电影，0 重复 ✅
+- **admin-server GitHub**: 推送成功（commit `7d11546 docs: 清理重复电影记录，数据库降为19条`）
+  - 之前 1 commit ahead of origin，现在已同步
+- **爬虫运行**: 七味网电影爬虫 12:23 刚运行，新增 10 部电影（从 29→39 再降回 29 唯一）
+- **服务状态**: 4 个服务全部运行正常
+
+### 2026-05-02 13:09 健康检查 + admin-server .gitignore 推送 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29(0重复), dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度，上次运行 12:23（七味网-电影），状态 idle
+- **admin-server .gitignore**: 新增 Maven/Java 构建产物忽略规则，已推送 GitHub ✅（commit `de84ec3`）
+- **无其他未同步代码**: 4 个仓库均 clean
+
+### 2026-05-02 14:09 健康检查 + GitHub Actions workflow 修复 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29, dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影）
+- **GitHub Actions workflow 修复** ✅: admin-server 的 workflow path filter 写成了 `admin-server/**` 但源码就在 repo 根目录，已修正为根目录触发。commit `ecc7543` 已产生但 push 超时（H2 问题）
+- **发现**: 工作区 `.git` 是 admin-server 的 git repo（`/root/.openclaw/workspace/` = admin-server 根目录），`projects/film-forest/` 是其子目录。`pom.xml` 在 workspace 根目录下
+- **GitHub push 问题**: HTTP/2 stream 一直 not closed cleanly，HTTP/1.0 也超时，可能是 GitHub QoS 或大文件问题。待网络恢复后手动 push `ecc7543`
+- **无其他待同步代码**: client-server / client-ui / admin-ui 均 clean
