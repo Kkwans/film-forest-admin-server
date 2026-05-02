@@ -1,65 +1,61 @@
-version: '3.8'
-
-# ============================================
-# 影视森林 - Docker Compose 部署（完整版）
-# 上传至 NAS: /volume1/docker/film-forest/docker-compose.yml
-# 执行: cd /volume1/docker/film-forest && sudo docker compose up -d
-# 说明: MySQL 和 OpenClaw 由系统管理，只需启动这4个服务
-# ============================================
-
 services:
   # ==================== 用户端后端 ====================
   client-server:
-    image: openjdk:17-slim
+    image: docker.io/library/eclipse-temurin:17-jre
     container_name: film-forest-client-server
     network_mode: host
     environment:
-      - SERVER_PORT=8080
       - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
     volumes:
       - ./backend/film-forest-backend-new.jar:/app.jar:ro
+      - ./frontend/.next:/app/.next:rw
     command: ["java", "-jar", "/app.jar", "--server.port=8080"]
     restart: unless-stopped
     stop_grace_period: 10s
 
   # ==================== 管理端后端 ====================
   admin-server:
-    image: openjdk:17-slim
+    image: docker.io/library/eclipse-temurin:17-jre
     container_name: film-forest-admin-server
     network_mode: host
     environment:
-      - SERVER_PORT=8081
       - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
     volumes:
       - ./backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar:/app.jar:ro
+      - ./admin/.next:/app/.next:rw
     command: ["java", "-jar", "/app.jar", "--server.port=8081"]
     restart: unless-stopped
     stop_grace_period: 10s
 
-  # ==================== 用户端前端 ====================
   client-ui:
-    image: node:18-alpine
+    image: docker.io/library/node:18-alpine
     container_name: film-forest-client-ui
     network_mode: host
     working_dir: /app
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     volumes:
       - ./frontend:/app:ro
-    command: ["sh", "-c", "cd /app && PORT=3000 node server.js"]
+    command: ["sh", "-c", "cd /app && node server.js"]
     restart: unless-stopped
     stop_grace_period: 5s
 
   # ==================== 管理端前端 ====================
   admin-ui:
-    image: node:18-alpine
+    image: docker.io/library/node:18-alpine
     container_name: film-forest-admin-ui
     network_mode: host
     working_dir: /app
+    environment:
+      - PORT=3001
+      - HOSTNAME=0.0.0.0
     volumes:
       - ./admin:/app:ro
-    command: ["sh", "-c", "cd /app && PORT=3001 node server.js"]
+    command: ["sh", "-c", "cd /app && node server.js"]
     restart: unless-stopped
     stop_grace_period: 5s
