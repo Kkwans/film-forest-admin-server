@@ -150,7 +150,8 @@ public class CrawlerCore {
             Document listDoc = fetchWithRetry(listUrl);
             if (listDoc == null) break;
 
-            // 抓详情页链接 /mv/数字.html
+            // 抓详情页链接 /mv/数字.html（去重，避免同一页面中重复链接导致重复入库）
+            Set<String> seenUrls = new HashSet<>();
             Elements links = listDoc.select("a[href^='/mv/']");
             if (links.isEmpty()) break;
 
@@ -158,6 +159,8 @@ public class CrawlerCore {
                 if (total >= maxItems) break;
                 String href = link.attr("href");
                 if (!href.matches("/mv/\\d+\\.html")) continue;
+                if (seenUrls.contains(href)) continue;
+                seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlMovieDetail(detailUrl, stopFlag);
@@ -242,6 +245,7 @@ public class CrawlerCore {
             Document listDoc = fetchWithRetry(listUrl);
             if (listDoc == null) break;
 
+            Set<String> seenUrls = new HashSet<>();
             Elements links = listDoc.select("a[href^='/mv/']");
             if (links.isEmpty()) break;
 
@@ -249,6 +253,8 @@ public class CrawlerCore {
                 if (total >= maxItems) break;
                 String href = link.attr("href");
                 if (!href.matches("/mv/\\d+\\.html")) continue;
+                if (seenUrls.contains(href)) continue;
+                seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlDramaDetail(detailUrl, stopFlag);
@@ -325,6 +331,7 @@ public class CrawlerCore {
             Document listDoc = fetchWithRetry(listUrl);
             if (listDoc == null) break;
 
+            Set<String> seenUrls = new HashSet<>();
             Elements links = listDoc.select("a[href^='/mv/']");
             if (links.isEmpty()) break;
 
@@ -332,6 +339,8 @@ public class CrawlerCore {
                 if (total >= maxItems) break;
                 String href = link.attr("href");
                 if (!href.matches("/mv/\\d+\\.html")) continue;
+                if (seenUrls.contains(href)) continue;
+                seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlVarietyDetail(detailUrl, stopFlag);
@@ -355,6 +364,7 @@ public class CrawlerCore {
             Document listDoc = fetchWithRetry(listUrl);
             if (listDoc == null) break;
 
+            Set<String> seenUrls = new HashSet<>();
             Elements links = listDoc.select("a[href^='/mv/']");
             if (links.isEmpty()) break;
 
@@ -362,6 +372,8 @@ public class CrawlerCore {
                 if (total >= maxItems) break;
                 String href = link.attr("href");
                 if (!href.matches("/mv/\\d+\\.html")) continue;
+                if (seenUrls.contains(href)) continue;
+                seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlAnimeDetail(detailUrl, stopFlag);
@@ -385,6 +397,7 @@ public class CrawlerCore {
             Document listDoc = fetchWithRetry(listUrl);
             if (listDoc == null) break;
 
+            Set<String> seenUrls = new HashSet<>();
             Elements links = listDoc.select("a[href^='/mv/']");
             if (links.isEmpty()) break;
 
@@ -392,6 +405,8 @@ public class CrawlerCore {
                 if (total >= maxItems) break;
                 String href = link.attr("href");
                 if (!href.matches("/mv/\\d+\\.html")) continue;
+                if (seenUrls.contains(href)) continue;
+                seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlShortDramaDetail(detailUrl, stopFlag);
