@@ -209,7 +209,12 @@ public class CrawlerCore {
             movie.setScoreDouban(score);
             movie.setStatus(1);
 
-            movieService.save(movie);
+            if (isNew) {
+                movieService.save(movie);
+            } else {
+                movie.setId(contentId);
+                movieService.updateById(movie);
+            }
             Long dbId = movie.getId();
             extractMovieResources(doc, "movie", dbId);
 
@@ -289,7 +294,12 @@ public class CrawlerCore {
             drama.setTotalEpisode(totalEpisode);
             drama.setStatus(1);
 
-            dramaService.save(drama);
+            if (isNew) {
+                dramaService.save(drama);
+            } else {
+                drama.setId(contentId);
+                dramaService.updateById(drama);
+            }
             extractMovieResources(doc, "drama", drama.getId());
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
@@ -419,7 +429,12 @@ public class CrawlerCore {
             variety.setTotalEpisode(totalEpisode);
             variety.setStatus(1);
 
-            varietyService.save(variety);
+            if (isNew) {
+                varietyService.save(variety);
+            } else {
+                variety.setId(contentId);
+                varietyService.updateById(variety);
+            }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Variety detail parse error: {}", detailUrl, e.getMessage());
@@ -460,7 +475,12 @@ public class CrawlerCore {
             anime.setTotalEpisode(totalEpisode);
             anime.setStatus(1);
 
-            animeService.save(anime);
+            if (isNew) {
+                animeService.save(anime);
+            } else {
+                anime.setId(contentId);
+                animeService.updateById(anime);
+            }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Anime detail parse error: {}", detailUrl, e.getMessage());
@@ -497,7 +517,12 @@ public class CrawlerCore {
             shortDrama.setTotalEpisode(totalEpisode);
             shortDrama.setStatus(1);
 
-            shortDramaService.save(shortDrama);
+            if (isNew) {
+                shortDramaService.save(shortDrama);
+            } else {
+                shortDrama.setId(contentId);
+                shortDramaService.updateById(shortDrama);
+            }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Short drama detail parse error: {}", detailUrl, e.getMessage());
