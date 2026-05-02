@@ -38,9 +38,10 @@ services:
     working_dir: /app
     environment:
       - PORT=3000
+      - HOSTNAME=0.0.0.0
     volumes:
       - ./frontend:/app:ro
-    command: ["sh", "-c", "cd /app && node server.js"]
+    command: ["sh", "-c", "cd /app && HOSTNAME=0.0.0.0 node server.js"]
     restart: unless-stopped
     stop_grace_period: 5s
 
@@ -52,8 +53,9 @@ services:
     working_dir: /app
     environment:
       - PORT=3001
+      - HOSTNAME=0.0.0.0
     volumes:
       - ./admin:/app:ro
-    command: ["sh", "-c", "cd /app && node server.js"]
+    command: ["sh", "-c", "cd /app && HOSTNAME=0.0.0.0 node server.js"]
     restart: unless-stopped
     stop_grace_period: 5s

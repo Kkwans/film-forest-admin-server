@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-02 16:39
+> 最后更新: 2026-05-03 00:00
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -569,3 +569,51 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
   - `haishanh/yacd:latest` 管理面板运行中（9080）
   - 配置文件已存在: `/volume1/docker/clash/config/config.yaml`
   - 主人可通过 `http://100.106.29.60:9080` 访问 yacd UI 选择节点
+
+### 2026-05-02 23:08 健康检查 + GitHub 同步完成 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29, dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影）
+- **GitHub 同步完成** ✅:
+  - admin-server: 推送成功 `5f93896`（docker-compose port binding fix），与 origin/master 同步
+  - admin-ui: docker-workflow 分支合并到 main，推送成功 `450d63f`（移动端适配：sidebar z-index/button positioning 微调 + 合并所有历史移动端改进），与 origin/main 同步
+  - 所有 4 个仓库均与 origin 同步，无待 push 代码
+
+### 2026-05-02 23:30 Docker 部署验证成功 + docker-compose.yml 修复 ✅
+- **Docker 已可用**: NAS 上 `sudo docker compose version` 返回 `v2.26.1`，Docker 完全可用
+- **Java 服务 Docker 验证成功** ✅:
+  - `eclipse-temurin:17-jre` 镜像可正常运行 JAR，Tomcat 启动正常
+  - `film-forest-client-server` Docker 容器运行正常，返回 29 条电影记录
+  - `film-forest-admin-server` Docker 容器运行正常，返回 stats API 正常
+- **docker-compose.yml 关键修复**:
+  - 镜像 `openjdk:17-slim` → `docker.io/library/eclipse-temurin:17-jre`（slim 可能损坏）
+  - 移除 `version: '3.8'`（已废弃）
+  - 移除 `SERVER_PORT` 环境变量（Spring Boot 不读取，需用 `--server.port`）
+  - 添加 `./frontend/.next:/app/.next:rw` 和 `./admin/.next:/app/.next:rw` 卷挂载
+  - 添加 `PORT` 和 `HOSTNAME=0.0.0.0` 环境变量到 node 容器
+  - 镜像 `node:18-alpine` → `docker.io/library/node:18-alpine`（明确 registry）
+- **commit** `29f19f4` 已本地提交，待网络恢复后 push
+- **前端 Node 服务**: 3000 端口已被 Next.js 占用（PID 67939），admin 启动时顺带占用了 3000 改为启动在 3001
+- **服务状态**: 4 服务全部运行中（Java×2 via Docker，Node×2 via nohup）
+  - client-server(8080) ✅ Docker 容器
+  - admin-server(8081) ✅ Docker 容器
+  - client-ui(3000) ✅ nohup node
+  - admin-ui(3001) ✅ nohup node
+
+### 2026-05-02 23:53 Docker 部署完成（所有 4 服务全部 Docker 化）✅
+- **全部 4 服务已 Docker 容器化，全部绑定 0.0.0.0 ✅**:
+  - `film-forest-client-server`: `*:8080` ✅ Docker
+  - `film-forest-admin-server`: `*:8081` ✅ Docker
+  - `film-forest-client-ui`: `0.0.0.0:3000` ✅ Docker
+  - `film-forest-admin-ui`: `0.0.0.0:3001` ✅ Docker
+- **关键 bug 修复 - HOSTNAME 环境污染**:
+  - Docker 容器内 `hostname` = `DH4300PLUS`（NAS 主机名），被解析为 Tailscale IP `100.106.29.60`
+  - Next.js 的 `server.js` 读取 `process.env.HOSTNAME`，错误绑定到 Tailscale IP，导致端口冲突无法重启
+  - 修复：在 `docker-compose.yml` 中通过 `command: ["sh", "-c", "cd /app && HOSTNAME=0.0.0.0 node server.js"]` 覆盖 HOSTNAME 环境变量
+  - 同时在 NAS 上直接修改 `/volume1/docker/film-forest/*/server.js` 源码，确保重启后仍生效
+- **docker-compose.yml 最终版本关键配置**:
+  - `eclipse-temurin:17-jre`（Java 镜像）
+  - `.next` 卷挂载（Next.js 静态文件）
+  - `HOSTNAME=0.0.0.0 node server.js`（绕过 hostname 污染）
+- **当前无未同步代码**: 所有修改已 commit 待 push（GitHub 网络问题暂未推送）
+- **注意**: `HOSTNAME=0.0.0.0` 作为命令行参数传入可覆盖 Docker 容器内部 HOSTNAME 环境变量
