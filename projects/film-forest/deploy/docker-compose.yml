@@ -1,66 +1,100 @@
 version: '3.8'
 
+# ============================================
+# 影视森林 - Docker Compose 部署
+# 使用说明: 上传至 NAS /volume1/docker/film-forest/
+# 执行: cd /volume1/docker/film-forest && sudo docker compose up -d
+# ============================================
+
 services:
-  # 用户端后端 (client-server) — SpringBoot
+  # ==================== 用户端后端 ====================
   client-server:
-    build:
-      context: ../client-server
-      dockerfile: ../client-server/Dockerfile
+    image: eclipse-temurin:17-jre-alpine
     container_name: film-forest-client-server
-    ports:
-      - "8080:8080"
+    network_mode: host
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
+    volumes:
+      - ./backend/film-forest-backend-new.jar:/app.jar:ro
+    command: ["java", "-jar", "/app.jar"]
     restart: unless-stopped
-    networks:
-      - film-forest-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - mysql8
 
-  # 用户端前端 (client-ui) — Next.js
+  # ==================== 用户端前端 ====================
   client-ui:
-    build:
-      context: ../client-ui
-      dockerfile: ../client-ui/Dockerfile
+    image: node:18-alpine
     container_name: film-forest-client-ui
-    ports:
-      - "3000:3000"
+    network_mode: host
+    working_dir: /app
     environment:
-      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8080
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8080
+      - NODE_ENV=production
+    volumes:
+      - ./frontend:/app:ro
+    command: ["sh", "-c", "npm install && node server.js"]
     restart: unless-stopped
-    networks:
-      - film-forest-net
+    depends_on:
+      - client-server
 
-  # 管理端后端 (admin-server) — SpringBoot
+  # ==================== 管理端后端 ====================
   admin-server:
-    build:
-      context: ../admin-server
-      dockerfile: ../admin-server/Dockerfile
+    image: eclipse-temurin:17-jre-alpine
     container_name: film-forest-admin-server
-    ports:
-      - "8081:8080"
+    network_mode: host
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
+    volumes:
+      - ./backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar:/app.jar:ro
+    command: ["java", "-jar", "/app.jar"]
     restart: unless-stopped
-    networks:
-      - film-forest-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - mysql8
 
-  # 管理端前端 (admin-ui) — Next.js
+  # ==================== 管理端前端 ====================
   admin-ui:
-    build:
-      context: ../admin-ui
-      dockerfile: ../admin-ui/Dockerfile
+    image: node:18-alpine
     container_name: film-forest-admin-ui
-    ports:
-      - "3001:3000"
+    network_mode: host
+    working_dir: /app
     environment:
-      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8081
+      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8081
+      - NODE_ENV=production
+    volumes:
+      - ./admin:/app:ro
+    command: ["sh", "-c", "npm install && node server.js"]
     restart: unless-stopped
-    networks:
-      - film-forest-net
+    depends_on:
+      - admin-server
 
-networks:
-  film-forest-net:
-    driver: bridge
+  # ==================== MySQL（纳入管理） ====================
+  mysql8:
+    image: mysql:8
+    container_name: film-forest-mysql
+    network_mode: host
+    environment:
+      - MYSQL_ROOT_PASSWORD=Root2026
+      - MYSQL_DATABASE=film_forest
+    volumes:
+      - ./mysql/data:/var/lib/mysql:rw
+    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-authentication-plugin=mysql_native_password"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
