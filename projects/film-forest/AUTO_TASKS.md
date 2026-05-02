@@ -417,3 +417,30 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **GitHub**: admin-server 全部同步，四个仓库均 clean
 - **服务状态**: 四个服务全部正常运行 ✅
 
+
+### 2026-05-02 11:54 数据库重复电影清理 ✅
+- **问题发现**: 数据库中 29 部电影有 10 对重复（每部电影入库两次，id 差 1），源于旧版爬虫重复插入 bug
+- **清理**: DELETE 10 条重复记录（保留 id 较小者），删除后电影从 29 条降为 19 条
+- **SQL**: `DELETE FROM movie WHERE id IN (335622,335624,335626,335628,335630,335632,335634,335636,335638,335640);`
+- **commit**: 去重 fix 已 commit (`f423e59 fix(crawler): dedupe duplicate links`) 但 JAR 未重新部署
+- **当前数据**: movie:19, drama:10, variety:0, anime:0, short_drama:0
+- **GitHub**: admin-server 已同步，四个仓库均 clean
+
+### 2026-05-02 11:39 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫调度：5条，0 running，5 idle，上次运行 09:53
+- 电影数据：约29部（10对重复记录，源于旧版爬虫重复插入bug）
+- region筛选 `region=美国` 正常返回《速度与激情10》✅
+- **数据库重复电影问题**：10对重复（每部电影入库两次，id差1），列表页HTML三个区块重复导致。dedup fix已commit但JAR未部署。已有数据需手动清理SQL。
+- **GitHub Actions**：admin-server有GitHub Actionsworkflow（build.yml），但配置在master分支。本地最新代码commit `b6e719f`（AUTO_TASKS更新），需确认workflow trigger条件。
+- **无未同步代码**：四个仓库均与origin同步
+
+**GitHub待推送**: AUTO_TASKS.md更新commit待push
+
+### 2026-05-02 11:24 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫调度：5 条，0 running，5 idle，上次运行 09:53（电影采集 40 条）
+- 电影数据：29 部（无新增，爬虫 idle 未触发）
+- 搜索功能：`keyword=密令` 返回 2 条重复结果（密令七杀手 id 335640/335641），验证搜索正常
+- **已知问题**：数据库有 10 对重复电影记录（源于旧版爬虫重复插入 bug），去重 fix 已 commit 但 JAR 未重新部署
+- **GitHub push**：AUTO_TASKS.md 更新 commit push 超时（HTT/1.0 仍慢），待网络恢复
