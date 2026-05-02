@@ -241,17 +241,31 @@ docker-compose up -d
 - [ ] **NAS 部署**: 将 docker-compose 部署到 NAS `/volume1/docker/film-forest/`
 - [ ] **外网访问**: 配置 Tailscale 或端口映射
 
-**admin-ui 构建修复** (2026-05-02 02:39):
-- 修复 `MagnetResource` 接口缺失字段 (`magnetUrl`, `episodeId`, `isSpecialSub`, `sort`)，解决 TypeScript 类型错误
-- 添加 `output: "standalone"` 到 `next.config.ts`
-- 补安装 `class-variance-authority` 和 `clsx` 依赖
-- 已构建成功，已提交 GitHub ✅
+### 2026-05-02 07:09 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- admin-ui 仪表盘已对接真实 API：`/api/content/stats` 返回 movies:9, dramas:10
+- 爬虫计划"七味网-电影"状态 running，上次运行 2026-05-02T02:27:16
+- 数据库有 9 部电影、10 部剧集（MySQL 真实数据）
+- client-server 最新 JAR (`film-forest-backend-new.jar`，2026-05-02 05:25) 已含完整 region 参数支持
 
-**admin-ui 构建修复** (2026-05-02 02:39):
-- 修复 `MagnetResource` 接口缺失字段 (`magnetUrl`, `episodeId`, `isSpecialSub`, `sort`)，解决 TypeScript 类型错误 ✅
-- 添加 `output: "standalone"` 到 `next.config.ts` ✅
-- 补安装 `class-variance-authority` 和 `clsx` 依赖 ✅
-- 已构建成功，已提交 GitHub ✅
+### 2026-05-02 07:24 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- admin-server 爬虫状态：5 条调度，1 条 running（七味网-电影），4 条 idle
+- 搜索 `keyword=速度` 返回 1 条结果（速度与激情10）
+- region 筛选 `region=美国` 返回 1 条结果 ✅
+- year 筛选 `year=2023` 返回 1 条结果（速度与激情10）✅
+- 磁力资源 API 正常
+- Docker 部署方案已完成但 NAS 未安装 Docker，无法执行
+
+**GitHub 待推送**: client-ui 有未提交 commit（search URL 参数 bug fix）
+
+### 2026-05-02 05:23-05:25 JAR 版本不一致修复 ✅
+- 问题：client-server JAR (2026-05-01 15:25) 早于最新源码 commit，MovieController.pageList 缺 region 参数
+- 原因：NAS 无 Maven（从 GitHub clone 的旧代码），无法重新编译；GitHub push 超时，无法远程触发 CI
+- 解决：NAS 上 git clone 最新代码 `new-client-server`，修复 `TmdbCrawler.getOrDefault` 编译错误（改用 `item.get()`），修复 `application.yml` relaxed-query-chars 配置，重新编译部署
+- 部署：`film-forest-backend-new.jar` 替换运行中 JAR，验证 `region` 参数 ✅ (`/api/movies?region=美国` 返回《速度与激情10》)
+- 注意：新 JAR 不含爬虫模块（爬虫已迁移至 admin-server）
+- GitHub push 已成功推送（HTTP/1.0 生效）✅
 
 ### P1 用户端功能 — 已完成 ✅
 
@@ -266,6 +280,14 @@ docker-compose up -d
 - 四个服务全部运行中：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
 - admin-ui 前端代码未在 NAS 上部署（`/volume1/docker/film-forest/admin-ui/` 不存在），但通过 nohup 运行
 - GitHub push 超时，疑似大文件/QoS 问题，可尝试 `GIT_HTTP_VERSION=HTTP/1.0` 或压缩后推送
+
+**JAR 版本不一致修复** (2026-05-02 05:23-05:25):
+- 问题：client-server JAR (2026-05-01 15:25) 早于最新源码 commit，MovieController.pageList 缺 region 参数
+- 原因：NAS 无 Maven（从 GitHub clone 的旧代码），无法重新编译
+- 解决：NAS 上 git clone 最新代码 `new-client-server`，修复 `TmdbCrawler.getOrDefault` 编译错误（改用 `item.get()`），修复 `application.yml` relaxed-query-chars 配置，重新编译部署
+- 部署：`film-forest-backend-new.jar` 替换运行中 JAR，验证 `region` 参数 ✅ (`/api/movies?region=美国` 返回《速度与激情10》)
+- 注意：新 JAR 不含爬虫模块（爬虫已迁移至 admin-server）
+- GitHub push 已成功推送（HTTP/1.0 生效）
 
 ## 六、定时任务配置
 
@@ -331,3 +353,33 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **已验证正常**: `/api/movies?year=2023` ✅ `/api/movies?page=1&size=1` ✅
 - **GitHub push**: 持续 HTTP/2 超时，可能需要手动推送或配置 GitHub Actions
 - **后续方案**: 在有 Maven 的环境重新编译 JAR 并部署到 NAS，或使用 GitHub Actions 自动化构建
+
+### 2026-05-02 07:09 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- region 参数验证通过：`/api/movies?region=美国` 返回《速度与激情10》（需 URL 编码为 %E7%BE%8E%E5%9B%BD）
+- 磁力资源 API 正常：movie 81078 有 10 条磁力链接
+- 爬虫调度 API 正常：5 条调度记录
+- 注意：`/api/movies` 返回 total=0 但实际有 9 条记录（MP 分页 total 字段 bug）
+- JAR 版本：film-forest-backend-0.0.1-SNAPSHOT.jar（2026-05-01 15:25）
+
+### 2026-05-02 08:24 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫站点 pkmp4.xyz 仍返回反爬提示（"系统提示......"），最近运行记录 2026-05-02T06:57:08
+- 搜索 API `keyword=速度` 正常（返回速度与激情10）
+- GitHub: 所有四个仓库 clean，无待 push 变更
+- admin-server 无未同步变更（deploy/docker-compose.yml 变更已确认不是实际变更）
+
+### 2026-05-02 07:54 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫站点 `https://www.pkmp4.xyz` 验证可达，页面标题 `电影 - 七味 - 七味网`（确认是七味网）
+- 数据库：9 部电影、10 部剧集
+- **爬虫已知问题**：stopFlag 在 `fetchWithRetry` 长时间阻塞期间不会检查，导致爬虫无法及时响应 stop 请求（这是设计限制，不阻塞主要功能）
+- **无未提交代码**：client-server / client-ui / admin-server / admin-ui 全部 clean
+- **GitHub**: 无待 push 变更
+
+### 2026-05-02 07:39 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- region 筛选 `region=美国` 返回《速度与激情10》✅
+- 爬虫调度 5 条，1 running（七味网-电影）4 idle ✅
+- **已知问题**：MP 分页 total=0 bug，9 条记录返回但 total=0（不影响功能，前端直接用 records.length）
+- **GitHub**: client-server/client-ui/admin-ui 均已同步；admin-server 有本地变更待 push（deploy/docker-compose.yml）

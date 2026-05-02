@@ -1,13 +1,14 @@
 version: '3.8'
 
 services:
-  film-forest-backend:
+  # 用户端后端 (client-server) — SpringBoot
+  client-server:
     build:
-      context: ../backend
-      dockerfile: ../backend/Dockerfile
-    container_name: film-forest-backend
+      context: ../client-server
+      dockerfile: ../client-server/Dockerfile
+    container_name: film-forest-client-server
     ports:
-      - "8888:8080"
+      - "8080:8080"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
@@ -16,15 +17,46 @@ services:
     networks:
       - film-forest-net
 
-  film-forest-frontend:
+  # 用户端前端 (client-ui) — Next.js
+  client-ui:
     build:
-      context: ../frontend
-      dockerfile: ../frontend/Dockerfile
-    container_name: film-forest-frontend
+      context: ../client-ui
+      dockerfile: ../client-ui/Dockerfile
+    container_name: film-forest-client-ui
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8888
+      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8080
+    restart: unless-stopped
+    networks:
+      - film-forest-net
+
+  # 管理端后端 (admin-server) — SpringBoot
+  admin-server:
+    build:
+      context: ../admin-server
+      dockerfile: ../admin-server/Dockerfile
+    container_name: film-forest-admin-server
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Root2026
+    restart: unless-stopped
+    networks:
+      - film-forest-net
+
+  # 管理端前端 (admin-ui) — Next.js
+  admin-ui:
+    build:
+      context: ../admin-ui
+      dockerfile: ../admin-ui/Dockerfile
+    container_name: film-forest-admin-ui
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://100.106.29.60:8081
     restart: unless-stopped
     networks:
       - film-forest-net
