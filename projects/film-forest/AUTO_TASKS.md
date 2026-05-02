@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-02 15:24
+> 最后更新: 2026-05-02 16:39
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -238,8 +238,11 @@ docker-compose up -d
 
 - [x] **编写四个 Dockerfile**: client-server, client-ui, admin-server, admin-ui 均已完成 ✅
 - [x] **更新 docker-compose.yml**: 已更新四个服务完整配置 ✅
+- [x] **修复 docker-compose 端口冲突**: 两个 Java 服务都默认 8080，已通过 --server.port 指定 8080/8081 ✅ (2026-05-02 22:36)
 - [ ] **NAS 部署**: 将 docker-compose 部署到 NAS `/volume1/docker/film-forest/`
-- [ ] **外网访问**: 配置 Tailscale 或端口映射
+  - **已知问题**: 前端 Node 服务在 Docker 中反复重启 (Restarting (1))，原因待查。当前通过 nohup 方式运行正常，暂不使用 Docker 部署前端。
+  - **后端 Java 服务**: 可以通过 Docker 部署，`docker compose up -d` 验证成功。
+- [ ] **外网访问**: 配置 Tailscale 或端口映射（Tailscale 已部署，100.106.29.60 可访问）
 
 ### 2026-05-02 07:09 健康检查
 - 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
@@ -498,3 +501,71 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **docker-compose.yml 推送成功** ✅: commit `6b7c74d` 已推送至 GitHub（73 行新增/39 行删除，改善配置结构）
 - **无未同步代码**: admin-server 与 origin/master 同步（4 个仓库均 clean）
 - **client-server / client-ui / admin-ui**: 均存在于 `projects/film-forest/` 子目录，且与各自 origin 同步
+
+### 2026-05-02 16:09 健康检查 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 PID 1376240 ✅ client-ui:3000 PID 1518855 ✅ admin-server:8081 PID 1594746 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29, dramas:10, varieties:0, animes:0, shortDramas:0（/api/content/stats 验证）
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影）
+- **NAS 运行环境**: client-server JAR (film-forest-backend-new.jar, 05:25启动), admin-server JAR (film-forest-admin-new.jar, 12:17启动)
+- **NAS 上 admin-ui 在编译**: `next build` 运行中（PID 1719339，可能是之前手动触发的 npm install 导致）
+- **所有 P0/P1 任务已完成**，当前无阻塞或待执行任务
+
+### 2026-05-02 16:39 健康检查 ✅
+- **服务状态**: 4 服务全部正常运行
+  - client-server(8080) ✅ 新 JAR `film-forest-backend-new.jar`(PID 1754220)
+  - admin-server(8081) ✅ `film-forest-admin-0.0.1-SNAPSHOT-new.jar`(PID 1754221)
+  - client-ui(3000) ✅ Next.js standalone
+  - admin-ui(3001) ✅ Next.js standalone
+- **数据**: movies:29(无重复), dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影）
+- **搜索 API** ✅: `keyword=速度` 返回《速度与激情10》
+- **region 筛选** ✅: `region=美国` 返回《速度与激情10》
+- **无未同步代码**: 4 个仓库均与 origin 同步
+
+### 2026-05-02 22:33 Docker 部署尝试完成，记录关键问题
+- **docker-compose.yml 问题 1**: 两个 Java 服务都读取 `SPRING_DATASOURCE_URL` 环境变量，但 docker-compose 中没有设置 `SERVER_PORT`，导致所有 JAR 都尝试监听 8080
+  - 修复：添加 `SERVER_PORT` 环境变量到各自 service
+- **docker-compose.yml 问题 2**: `admin-ui-data` 服务 `entrypoint: ["sh"]` 与 `command` 冲突（都会执行 `sh`），导致 `can't open 'sh'` 错误
+- **结论**: docker-compose.yml 编写有误，需修复后才能用于 Docker 部署
+- **当前状态**: 四个服务通过 nohup 方式运行中（不需要 Docker），端口不冲突，服务正常
+- **P3 Docker 部署状态**: 待修复 docker-compose.yml 后才能使用 Docker 部署
+
+### 2026-05-02 10:24 健康检查 ✅
+- **服务状态**: 4 服务全部正常运行
+  - client-server(8080) ✅ 新 JAR `film-forest-backend-new.jar`(PID 13962)
+  - admin-server(8081) ✅ `film-forest-admin-0.0.1-SNAPSHOT-new.jar`(PID 14747)
+  - client-ui(3000) ✅ Next.js standalone
+  - admin-ui(3001) ✅ Next.js standalone
+- **数据**: movies:29(无重复), dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影）
+- **搜索 API** ✅: `keyword=速度` 返回《速度与激情10》
+- **region 筛选** ✅: `region=美国` 返回《速度与激情10》
+- **无未同步代码**: 4 个仓库均与 origin 同步
+
+### 2026-05-02 19:32 本轮开发
+**admin-ui 移动端适配**（已部署到 NAS，已提交 GitHub）:
+- AdminSidebar: overlay 模式 + backdrop + 关闭按钮，移动端汉堡菜单完整
+- AdminHeader: `px-4 md:px-6` 响应式内边距
+- layout.tsx: `<html className="h-full dark">` 修复深色模式
+- content 页: `overflow-x-auto` + `min-w-[600px]` 表格横向滚动
+- crawler 页: 统计卡片 `grid-cols-2 md:grid-cols-3` + 表头 `min-w-[700px]` + 移动端无表头
+- resources 页: 磁力资源列表双布局（桌面 12 列网格 vs 移动端卡片）
+
+**client-ui 移动端修复**（已提交 GitHub）:
+- 首页 Hero: `text-3xl md:text-5xl` + 按钮移动端堆叠 (`flex-col sm:flex-row`)
+- 分类网格: `grid-cols-3 sm:grid-cols-3 md:grid-cols-5`（移动端 3 列）
+- 热门电影: `grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6`（移动端 3 列）
+- 电影列表页: 搜索输入框 `w-full sm:w-48` 全宽移动端
+
+**状态**: 
+- 4 服务全部正常: client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- admin-ui 代码已部署 NAS，admin-server 29 部电影（去重后）
+- client-ui-source 和 admin-ui 已 commit，client-ui-source push 成功，admin-ui push 因网络暂时失败
+
+### 2026-05-02 22:09 服务重启 + Clash 状态
+- MySQL 停机导致所有服务停止，已重启
+- **Clash Docker 部署完成**:
+  - `dreamacro/clash:latest` 容器运行中，端口 7890(HTTP)/7891(SOCKS5)/9090
+  - `haishanh/yacd:latest` 管理面板运行中（9080）
+  - 配置文件已存在: `/volume1/docker/clash/config/config.yaml`
+  - 主人可通过 `http://100.106.29.60:9080` 访问 yacd UI 选择节点
