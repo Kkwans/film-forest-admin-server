@@ -1,32 +1,44 @@
 version: '3.8'
 
 # ============================================
-# 影视森林 - Docker Compose 部署
-# 使用说明: 上传至 NAS /volume1/docker/film-forest/
+# 影视森林 - Docker Compose 部署（完整版）
+# 上传至 NAS: /volume1/docker/film-forest/docker-compose.yml
 # 执行: cd /volume1/docker/film-forest && sudo docker compose up -d
+# 说明: MySQL 和 OpenClaw 由系统管理，只需启动这4个服务
 # ============================================
 
 services:
   # ==================== 用户端后端 ====================
   client-server:
-    image: eclipse-temurin:17-jre-alpine
+    image: openjdk:17-slim
     container_name: film-forest-client-server
     network_mode: host
     environment:
+      - SERVER_PORT=8080
       - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
     volumes:
       - ./backend/film-forest-backend-new.jar:/app.jar:ro
-    command: ["java", "-jar", "/app.jar"]
+    command: ["java", "-jar", "/app.jar", "--server.port=8080"]
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    depends_on:
-      - mysql8
+    stop_grace_period: 10s
+
+  # ==================== 管理端后端 ====================
+  admin-server:
+    image: openjdk:17-slim
+    container_name: film-forest-admin-server
+    network_mode: host
+    environment:
+      - SERVER_PORT=8081
+      - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=Root2026
+    volumes:
+      - ./backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar:/app.jar:ro
+    command: ["java", "-jar", "/app.jar", "--server.port=8081"]
+    restart: unless-stopped
+    stop_grace_period: 10s
 
   # ==================== 用户端前端 ====================
   client-ui:
@@ -34,36 +46,11 @@ services:
     container_name: film-forest-client-ui
     network_mode: host
     working_dir: /app
-    environment:
-      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8080
-      - NODE_ENV=production
     volumes:
       - ./frontend:/app:ro
-    command: ["sh", "-c", "npm install && node server.js"]
+    command: ["sh", "-c", "cd /app && PORT=3000 node server.js"]
     restart: unless-stopped
-    depends_on:
-      - client-server
-
-  # ==================== 管理端后端 ====================
-  admin-server:
-    image: eclipse-temurin:17-jre-alpine
-    container_name: film-forest-admin-server
-    network_mode: host
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/film_forest?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-      - SPRING_DATASOURCE_USERNAME=root
-      - SPRING_DATASOURCE_PASSWORD=Root2026
-    volumes:
-      - ./backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar:/app.jar:ro
-    command: ["java", "-jar", "/app.jar"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8081/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    depends_on:
-      - mysql8
+    stop_grace_period: 5s
 
   # ==================== 管理端前端 ====================
   admin-ui:
@@ -71,30 +58,8 @@ services:
     container_name: film-forest-admin-ui
     network_mode: host
     working_dir: /app
-    environment:
-      - NEXT_PUBLIC_API_URL=http://127.0.0.1:8081
-      - NODE_ENV=production
     volumes:
       - ./admin:/app:ro
-    command: ["sh", "-c", "npm install && node server.js"]
+    command: ["sh", "-c", "cd /app && PORT=3001 node server.js"]
     restart: unless-stopped
-    depends_on:
-      - admin-server
-
-  # ==================== MySQL（纳入管理） ====================
-  mysql8:
-    image: mysql:8
-    container_name: film-forest-mysql
-    network_mode: host
-    environment:
-      - MYSQL_ROOT_PASSWORD=Root2026
-      - MYSQL_DATABASE=film_forest
-    volumes:
-      - ./mysql/data:/var/lib/mysql:rw
-    command: ["mysqld", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--default-authentication-plugin=mysql_native_password"]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+    stop_grace_period: 5s
