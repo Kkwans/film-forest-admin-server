@@ -778,3 +778,52 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **部署方式**: 源码编译 → 复制 JAR/前端到 `/volume1/docker/film-forest/` → `docker restart <container>`
 - **重要**: 以后更新代码后，必须用 `ssh + docker restart` 来生效，不能在 OpenClaw 容器内直接 kill java
 
+
+---
+
+## 十、2026-05-03 凌晨第六轮 (05:24-05:42)
+
+### 关键发现
+
+1. **Docker 卷挂载**: admin-server Docker 容器使用 `bind mount` 将 JAR 文件直接挂载为 `/app.jar`，重启后自动生效
+2. **爬虫数据入库成功**: 电影爬虫成功从 pkmp4.xyz 抓取 20 条数据（Log ID 7: items=20, added=20）并入库
+3. **数据质量问题**: 入库电影的 actor/director/genre/region 全为空（`[]`）- 因为 pkmp4.xyz HTML 中的演员/导演信息在 HTML 注释内
+
+### 已修复并部署
+
+1. **extractTextByLabel 修复**: 解析 HTML 前先移除所有 HTML 注释（`<!--...-->`），避免提取注释中的演员名
+2. **extractRegionFromTags 修复**: 正确返回 `List<String>` 并 inline JSON 编码
+3. **新 JAR 已部署到 NAS** (05:39)
+
+### 代码变更
+- `CrawlerCore.java`: extractTextByLabel / extractRegionFromTags / genre/region 字段提取逻辑
+
+
+---
+
+## 十一、2026-05-03 凌晨第七轮 (05:24-05:55) - 严重缩进 Bug 修复
+
+### 重大 Bug 发现
+
+**admin-server Maven 编译成功但代码逻辑被破坏**: `CrawlerCore.java` 第 167 行 `log.info("[CRAWLER-TEST"])` 被放在 `for` 循环体内但缩进只有 12 空格（应为 16），导致整个 `for` 循环体的逻辑链断裂，`crawlMovieDetail` 的结果无法被正确累计，`added`/`updated`/`total` 永远为 0。
+
+### 修复过程
+
+1. **第 1 次修复** - 缩进错误未完全修复
+2. **第 2 次修复** - 删除了重复的 `}` 但又引入了新的 `}` 问题
+3. **第 3 次修复** - 最终正确的缩进结构：
+   - line 166: `int[] r = crawlMovieDetail(...)` (16 spaces)
+   - line 167: `log.info("[CRAWLER-TEST"]...)` (16 spaces) 
+   - lines 168-170: `if (r[0]==1) added++; if (r[1]==1) updated++; total++;` (16 spaces)
+   - line 171: `}` (12 spaces) - closes `for (Element link : links)` 
+   - line 172: `page++;` (12 spaces)
+   - line 173: `}` (8 spaces) - closes `while (page <= maxPages)`
+   - line 174: `return new int[]{added, updated, total};` (8 spaces)
+
+4. **BUILD SUCCESS** at 05:53:12，部署到 NAS Docker 容器
+
+### 关键教训
+- Maven 编译通过 ≠ 代码逻辑正确
+- 缩进错误会导致代码结构被破坏（for 循环体内代码跑到循环外）
+- 需要在 Docker 日志中看到 `[CRAWLER-TEST]` 确认爬虫真正在运行
+
