@@ -9,8 +9,8 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
     volumes:
-      - ./backend/film-forest-backend-new.jar:/app.jar:ro
-      - ./frontend/.next:/app/.next:rw
+      - ./backend/film-forest-backend.jar:/app.jar:ro
+      - ./frontend:/app:ro
     command: ["java", "-jar", "/app.jar", "--server.port=8080"]
     restart: unless-stopped
     stop_grace_period: 10s
@@ -25,8 +25,8 @@ services:
       - SPRING_DATASOURCE_USERNAME=root
       - SPRING_DATASOURCE_PASSWORD=Root2026
     volumes:
-      - ./backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar:/app.jar:ro
-      - ./admin/.next:/app/.next:rw
+      - ./backend/film-forest-admin.jar:/app.jar:ro
+      - ./admin:/app:ro
     command: ["java", "-jar", "/app.jar", "--server.port=8081"]
     restart: unless-stopped
     stop_grace_period: 10s
