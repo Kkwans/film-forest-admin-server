@@ -1,0 +1,14 @@
+[Unit]
+Description=Film Forest Admin Server
+After=network.target mysql8.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/volume1/docker/film-forest/backend
+ExecStart=/usr/bin/java -jar /volume1/docker/film-forest/backend/film-forest-admin-0.0.1-SNAPSHOT-new.jar
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
