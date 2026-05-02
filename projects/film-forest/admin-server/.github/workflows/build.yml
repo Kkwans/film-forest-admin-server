@@ -3,8 +3,6 @@ name: Build admin-server JAR
 on:
   push:
     branches: [ master ]
-    paths:
-      - 'admin-server/**'
   workflow_dispatch:
 
 jobs:
@@ -25,17 +23,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('admin-server/pom.xml') }}
+          key: ${{ runner.os }}-maven-${{ hashFiles('pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
 
       - name: Build JAR
         run: |
-          mvn -f admin-server/pom.xml clean package -DskipTests
+          mvn -f pom.xml clean package -DskipTests
 
       - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
         with:
           name: admin-server-jar
-          path: admin-server/target/film-forest-admin-*.jar
+          path: target/film-forest-admin-*.jar
           retention-days: 5
