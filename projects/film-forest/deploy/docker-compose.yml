@@ -38,7 +38,6 @@ services:
     working_dir: /app
     environment:
       - PORT=3000
-      - HOSTNAME=0.0.0.0
     volumes:
       - ./frontend:/app:ro
     command: ["sh", "-c", "cd /app && node server.js"]
@@ -53,7 +52,6 @@ services:
     working_dir: /app
     environment:
       - PORT=3001
-      - HOSTNAME=0.0.0.0
     volumes:
       - ./admin:/app:ro
     command: ["sh", "-c", "cd /app && node server.js"]
