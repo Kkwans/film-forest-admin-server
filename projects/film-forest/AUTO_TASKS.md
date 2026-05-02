@@ -859,3 +859,27 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 2. NAS 无法从 GitHub clone (网络问题)
 3. **替代方案**: 在本地完成完整的 actor/director/genre/region 数据验证脚本，下次能 SSH 时用脚本修复 DB 中已有数据
 
+
+---
+
+## 十三、2026-05-03 凌晨第九轮 (06:16) - 突破！数据提取成功
+
+### 重大突破：演员/导演/类型/地区字段成功提取
+
+通过 Docker 容器重启，**新 JAR 成功被加载**（bind mount 缓存问题已绕过）！
+
+**数据验证结果**：
+- 电影 ID 476231: actor=`["范·迪塞尔", "米歇尔·罗德里格兹"]`, genre=`["动作", "犯罪"]`, region=`["美国"]`, director=`[]` (暂缺)
+- 电影 ID 490613: actor=`["赵又廷"]`, genre=`["剧情"]`, region=`["美国"]`, director=`[]` (暂缺)
+- 电影 ID 292700: actor=`["韩孝珠"]`, genre=`["剧情", "爱情"]`, region=`["韩国"]`, director=`[]` (暂缺)
+
+**说明**：
+- 爬虫已成功从 pkmp4.xyz 提取 actor/genre/region 数据（JSON 数组格式）
+- director 字段可能需要单独处理（页面结构可能与 actor 不同）
+- 总电影数量已达 100 条（包含 vvmp4.com 历史数据 + pkmp4.xyz 新数据）
+
+### 当前状态
+- admin-server: 新 JAR 运行中（05-03 05:57 编译版本）✅
+- 爬虫正常运行，字段提取逻辑工作正常
+- 所有 4 服务运行正常 ✅
+
