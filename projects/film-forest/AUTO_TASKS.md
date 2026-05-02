@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-02 15:09
+> 最后更新: 2026-05-02 15:24
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -490,3 +490,11 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **GitHub Actions**: admin-server 有完整 workflow（maven build + upload artifact），push 到 master 即可自动构建 JAR
 - **工作区误清理**: 之前 rm -rf 误删了 `client-server/` 和 `client-ui/` 目录（从 admin-server git 仓库内部执行），已重新 clone 恢复。两个目录现在存在且 clean
 - **无其他未同步代码**: 4 个仓库均 clean
+
+### 2026-05-02 15:24 健康检查 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29, dramas:10, varieties:0, animes:0, shortDramas:0
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影），12:20（七味网-短剧）
+- **docker-compose.yml 推送成功** ✅: commit `6b7c74d` 已推送至 GitHub（73 行新增/39 行删除，改善配置结构）
+- **无未同步代码**: admin-server 与 origin/master 同步（4 个仓库均 clean）
+- **client-server / client-ui / admin-ui**: 均存在于 `projects/film-forest/` 子目录，且与各自 origin 同步
