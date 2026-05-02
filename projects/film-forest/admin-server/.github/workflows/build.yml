@@ -1,49 +1,41 @@
-name: Build and Release
+name: Build admin-server JAR
 
 on:
   push:
-    branches: [admin-server]
+    branches: [ master ]
+    paths:
+      - 'admin-server/**'
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
           distribution: 'temurin'
-          cache: maven
+          java-version: '17'
 
-      - name: Build with Maven
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('admin-server/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build JAR
         run: |
-          cd admin-server
-          mvn clean package -DskipTests -q
-          ls -la target/*.jar
+          mvn -f admin-server/pom.xml clean package -DskipTests
 
-      - name: Upload JAR artifact
+      - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: film-forest-admin-jar
+          name: admin-server-jar
           path: admin-server/target/film-forest-admin-*.jar
-          retention-days: 1
-
-      - name: Get version info
-        id: version
-        run: |
-          VERSION=$(date +%Y%m%d-%H%M)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/heads/')
-        with:
-          files: admin-server/target/film-forest-admin-*.jar
-          tag_name: v${{ steps.version.outputs.VERSION }}
-          name: Release v${{ steps.version.outputs.VERSION }}
-          body: "Auto-built admin-server JAR"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          retention-days: 5
