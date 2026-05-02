@@ -754,3 +754,27 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - CrawlerCore 已适配真实页面结构
 - 爬虫可运行但需要人工触发一次完整抓取验证
 
+
+---
+
+## 九、2026-05-03 凌晨第五轮 (05:16-05:30) - 关键架构发现
+
+### 重大发现: 服务运行在 Docker 容器内（非 OpenClaw 容器）
+
+- OpenClaw 运行在 Docker 容器内（openclaw-gateway-1）
+- film-forest 服务运行在 NAS 宿主机的 Docker 容器中
+- 4 个 Docker 容器: film-forest-client-server / film-forest-admin-server / film-forest-client-ui / film-forest-admin-ui
+- 服务通过 `sshpass ssh Kkwans@192.168.5.110 "sudo docker restart <container>"` 方式重启
+
+### 本轮完成
+
+1. **确认架构**: 所有 4 个服务在 NAS 宿主机的 Docker 容器中运行
+2. **通过 Docker 重启所有服务**: `docker restart film-forest-admin-server` 等
+3. **admin-server 新 JAR 已生效**: 更新后的 CrawlerCore（pkmp4.xyz 页面结构适配）已在运行
+4. **4 服务全部正常运行** ✅ (8080/8081/3000/3001)
+
+### AUTO_TASKS 备注
+
+- **部署方式**: 源码编译 → 复制 JAR/前端到 `/volume1/docker/film-forest/` → `docker restart <container>`
+- **重要**: 以后更新代码后，必须用 `ssh + docker restart` 来生效，不能在 OpenClaw 容器内直接 kill java
+
