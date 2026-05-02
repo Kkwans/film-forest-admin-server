@@ -733,3 +733,24 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **增量更新策略**: 磁力/网盘链接时效性强，需定期重新抓取资源
 - **新数据验证**: 验证新抓取的数据 actor/director/genre 字段是否正确填充
 
+
+---
+
+## 八、2026-05-03 凌晨第四轮 (05:08-05:20)
+
+### 已完成
+
+1. **服务状态检查** - 4 服务全部正常运行 ✅
+
+2. **爬虫问题分析** - 发现旧数据来自 vvmp4.com（vvmp4.com），pkmp4.xyz 是真正的七味网
+   - pkmp4.xyz 可正常访问（54651字节列表页，42个唯一电影链接）
+   - 页面结构: h1 > title+year, div.img > poster, .movie-introduce p > storyline, span > 主演/导演
+   - 当前运行的爬虫 (status=running, items=0, added=0) 正在抓取但 itemsCrawled 未更新
+
+3. **潜在 bug 定位**: `crawlMovieList` 中 `total++` 计数了所有链接，但 `stopFlag.get()` 检查在 `crawlMovieDetail` 中缺失
+
+### 爬虫现状
+- pkmp4.xyz 真实 URL 已确认
+- CrawlerCore 已适配真实页面结构
+- 爬虫可运行但需要人工触发一次完整抓取验证
+
