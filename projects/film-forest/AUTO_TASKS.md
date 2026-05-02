@@ -708,3 +708,28 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 ### 构建状态
 - admin-server Maven 编译中 (04:49)
 
+
+---
+
+## 七、2026-05-03 凌晨第三轮 (04:56-05:10)
+
+### 已完成
+
+1. **GitHub push 已完成**:
+   - admin-server: `57a62c4` - pkmp4.xyz URL 和字段映射修复
+   - client-server: `8f0727d` - QiweiCrawler 更新
+
+2. **admin-server 重启 (04:49)**:
+   - 新 JAR 已部署到 NAS，进程重启成功
+   - 电影爬虫运行中，pkmp4.xyz 可正常抓取
+
+3. **爬虫测试运行**:
+   - `/api/crawler/start/1` 触发成功，爬虫正在运行
+   - pkmp4.xyz 页面结构: `a[href^="/mv/"]` 可正常匹配
+   - 数据库已有 60 条电影记录（vvmp4.com 旧数据）
+
+### 待实现
+
+- **增量更新策略**: 磁力/网盘链接时效性强，需定期重新抓取资源
+- **新数据验证**: 验证新抓取的数据 actor/director/genre 字段是否正确填充
+
