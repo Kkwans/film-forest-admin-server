@@ -1,0 +1,31 @@
+# Build outputs
+target/
+*.class
+*.jar
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ignore sibling project directories in parent
+../client-server/
+../client-ui/
+../admin-ui/
+client-server/
+client-ui/
+admin-ui/
+projects/
+
+# Ignore all projects/ subdirs
+/root/.openclaw/workspace/projects/film-forest/client-server/
+/root/.openclaw/workspace/projects/film-forest/client-ui/
+/root/.openclaw/workspace/projects/film-forest/admin-ui/
