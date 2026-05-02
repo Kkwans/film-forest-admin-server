@@ -92,7 +92,7 @@ public class CrawlerCore {
             } else if ("anime".equals(type)) {
                 int[] r = crawlAnimeList(1, batchSize, stopFlag);
                 added = r[0]; updated = r[1]; total = r[2];
-            } else if ("short_drama".equals(type)) {
+            } else if ("short_drama".equals(type) || "short".equals(type)) {
                 int[] r = crawlShortDramaList(1, batchSize, stopFlag);
                 added = r[0]; updated = r[1]; total = r[2];
             }
