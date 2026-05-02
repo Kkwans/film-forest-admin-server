@@ -630,3 +630,38 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
   - `*:8080` ✅ `*:8081` ✅ `0.0.0.0:3000` ✅ `0.0.0.0:3001` ✅
 - **数据**: movies:29, dramas:10
 - **无未同步代码**: 所有 4 仓库与 origin 同步
+
+---
+
+## 五、2026-05-03 凌晨完成的任务
+
+> 时间范围: 2026-05-03 04:08 - 04:25
+
+### 已完成 ✅
+
+1. **安装 Java 17 和 Maven** - 通过 apt-get 安装 openjdk-17-jdk-headless + maven（NAS 环境此前缺少 java）
+2. **修复 client-server 编译错误** - `TmdbCrawler.java` 第237/255行 `getOrDefault("vote_average")` 缺少默认值参数，改为 `getOrDefault("vote_average", null)`
+3. **编译 admin-server** - `mvn clean package -DskipTests` ✅ BUILD SUCCESS，JAR: `film-forest-admin-0.0.1-SNAPSHOT.jar`
+4. **编译 client-server** - `mvn clean package -DskipTests` ✅ BUILD SUCCESS，JAR: `film-forest-backend-0.0.1-SNAPSHOT.jar`
+5. **构建 client-ui-source** - `npm run build` ✅ Next.js standalone 输出，端口 3000
+6. **构建 admin-ui** - `npm run build` ✅ Next.js standalone 输出，端口 3001
+7. **部署到 NAS** - JARs/前端复制到 `/volume1/docker/film-forest/`
+8. **重启 4 个服务** - client-server(8080) / admin-server(8081) / client-ui(3000) / admin-ui(3001) 全部正常运行 ✅
+
+### GitHub Actions 工作流（新建）
+
+- ✅ `client-server/.github/workflows/build.yml` - Java 17 构建 JAR
+- ✅ `client-ui-source/.github/workflows/build.yml` - Next.js 构建
+
+### 待推送 GitHub
+
+- client-ui-source 的 viewport 修改
+- client-server 的 TmdbCrawler 修复
+- admin-ui submodule 更新
+
+### 发现的问题
+
+- **NAS 无 Java/Maven**: 通过 apt-get 解决
+- **GitHub 网络不通**: TLS 握手失败（GitHub 被墙），暂无法 push
+- **client-ui-source 无 standalone server.js**: 需用 `.next/standalone/server.js`
+
