@@ -185,20 +185,37 @@ public class CrawlerCore {
             }
 
             String posterUrl = null;
-            Element img = doc.selectFirst("div.li-img img, .movie-cover img");
+            Element img = doc.selectFirst("div.img img");
             if (img != null) posterUrl = img.attr("abs:src");
             if (posterUrl == null) {
                 Element ogImg = doc.selectFirst("meta[property=og:image]");
                 if (ogImg != null) posterUrl = ogImg.attr("content");
             }
 
-            Integer year = extractYear(doc);
-            String storyline = extractStoryline(doc);
-            String actor = parseTextField(doc, ".actor");
-            String director = parseTextField(doc, ".director");
-            String genre = parseTextField(doc, ".type, .tag");
-            String region = parseTextField(doc, ".area");
-            BigDecimal score = extractScore(doc);
+            Integer year = null;
+            String storyline = null;
+            Element h1El = doc.selectFirst("h1");
+            if (h1El != null) {
+                String h1Text = h1El.text();
+                Matcher ym = YEAR_PATTERN.matcher(h1Text);
+                if (ym.find()) year = Integer.parseInt(ym.group(1));
+            }
+            Element storylineEl = doc.selectFirst(".movie-introduce p, .zkjj_a, .con");
+            if (storylineEl != null) {
+                storyline = storylineEl.text().trim();
+                storyline = storyline.replaceAll("展开全部", "").replaceAll("收起部分", "").trim();
+            }
+
+            // 主演/导演: 从 .text-overflow 区域提取
+            String actor = extractTextByLabel(doc, "主演");
+            String director = extractTextByLabel(doc, "导演");
+
+            // 类型/地区: 从 tag 链接提取 (<a href="/ms/1---剧情--------.html">剧情</a>)
+            String genre = extractGenresFromTags(doc);
+            String region = extractRegionFromTags(doc);
+
+            // 评分: 尝试从 meta description (e.g. "豆瓣 8.6分") 或页面提取
+            BigDecimal score = extractScoreFromDescription(doc);
 
             Long contentId = extractContentId(detailUrl);
             Movie existing = movieService.getById(contentId);
@@ -706,5 +723,95 @@ public class CrawlerCore {
             try { return objectMapper.writeValueAsString(list); } catch (Exception ignored) { return text; }
         }
         try { return objectMapper.writeValueAsString(List.of(text.trim())); } catch (Exception ignored) { return text; }
+    }
+
+    // ========== pkmp4.xyz Real Page Helpers ==========
+
+    /** 从页面提取 "主演：xxx" 或 "导演：xxx" 文本 */
+    private String extractTextByLabel(Document doc, String label) {
+        // 寻找 <span>导演：</span> 或 <span>主演：</span> 后的文字
+        Elements spans = doc.select("span");
+        for (Element span : spans) {
+            if (span.text().trim().equals(label + "：") || span.text().trim().equals(label + ":")) {
+                Element next = span.parent();
+                if (next != null) {
+                    // 可能是紧跟的兄弟 div 或 直接文本
+                    String text = next.text();
+                    // 去掉标签名本身
+                    text = text.replaceFirst(label + "[：:]", "").trim();
+                    // 如果 text 和 span.parent 的 text 一样, 说明内容在同级下一个非 span 元素
+                    // 实际内容在 text-overflow div 里或直接在下一个元素
+                    Element parent = span.parent().parent(); // td or div
+                    if (parent != null) {
+                        // text-overflow div 包含多个子元素, text 是拼接的
+                        Elements children = parent.children();
+                        StringBuilder sb = new StringBuilder();
+                        boolean found = false;
+                        for (Element child : children) {
+                            if (child.selectFirst("span") != null && child.selectFirst("span").text().contains(label)) {
+                                found = true;
+                                continue;
+                            }
+                            if (found) {
+                                String t = child.text().trim();
+                                if (!t.isEmpty()) {
+                                    if (sb.length() > 0) sb.append(",");
+                                    sb.append(t);
+                                }
+                            }
+                        }
+                        if (sb.length() > 0) return sb.toString();
+                    }
+                    if (!text.equals(label + "：") && !text.equals(label + ":")) {
+                        return text;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    /** 从页面 tag 链接提取类型列表 */
+    private String extractGenresFromTags(Document doc) {
+        Elements tagLinks = doc.select("a[href^='/ms/1--']");
+        List<String> genres = new ArrayList<>();
+        for (Element link : tagLinks) {
+            String t = link.text().trim();
+            if (!t.isEmpty() && t.length() < 20 && !t.matches(".*[0-9]+.*")) {
+                genres.add(t);
+            }
+        }
+        if (!genres.isEmpty()) {
+            try { return objectMapper.writeValueAsString(genres); } catch (Exception ignored) {}
+        }
+        return "[]";
+    }
+
+    /** 从页面 tag 判断地区 */
+    private String extractRegionFromTags(Document doc) {
+        Elements tagLinks = doc.select("a[href^='/ms/1--']");
+        List<String> regions = new ArrayList<>();
+        Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国");
+        for (Element link : tagLinks) {
+            String t = link.text().trim();
+            if (knownRegions.contains(t)) regions.add(t);
+        }
+        if (!regions.isEmpty()) {
+            try { return objectMapper.writeValueAsString(regions); } catch (Exception ignored) {}
+        }
+        return "[]";
+    }
+
+    /** 从 meta description 中提取豆瓣评分 (e.g. "豆瓣 8.6分") */
+    private BigDecimal extractScoreFromDescription(Document doc) {
+        Element metaDesc = doc.selectFirst("meta[name=description]");
+        if (metaDesc == null) return null;
+        String desc = metaDesc.attr("content");
+        Pattern p = Pattern.compile("豆瓣[\s:：]*([\\d.]+)分");
+        Matcher m = p.matcher(desc);
+        if (m.find()) {
+            try { return new BigDecimal(m.group(1)); } catch (Exception ignored) {}
+        }
+        return null;
     }
 }

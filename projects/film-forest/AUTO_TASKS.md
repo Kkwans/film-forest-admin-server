@@ -229,7 +229,7 @@ docker-compose up -d
 
 ### P2 -- 爬虫开发
 
-- [ ] **七味网 URL 确认**: 目前七味网目标站点 URL 未知，需要调研确认
+- [x] **七味网 URL 确认**: www.pkmp4.xyz 已确认（而非 qiwei666.com），CrawlerCore 已更新 ✅ 2026-05-03
 - [ ] **爬虫核心实现**: QiweiCrawler 或其他爬虫核心，采集影视数据
 - [ ] **增量更新策略**: 磁力/网盘链接有时效性，需实现增量更新
 - [ ] **爬虫可视化**: admin-ui 爬虫页面已有 UI，需对接后端真实状态
@@ -664,4 +664,47 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **NAS 无 Java/Maven**: 通过 apt-get 解决
 - **GitHub 网络不通**: TLS 握手失败（GitHub 被墙），暂无法 push
 - **client-ui-source 无 standalone server.js**: 需用 `.next/standalone/server.js`
+
+
+### 2026-05-03 04:32 完成 ✅
+
+- **GitHub push 全部成功**:
+  - admin-server: `d234bb0` fix(deploy): update docker-compose.yml JAR names
+  - client-server: `4f4bb90` fix(crawler): add default value to getOrDefault calls
+  - client-ui-source: `af7ba9a` fix(ui): add Viewport metadata
+- **docker-compose.yml 更新**: JAR 文件名修正（与实际部署文件名一致）
+- **4 服务稳定运行**: client-server / admin-server / client-ui / admin-ui
+
+### 2026-05-03 04:32 GitHub 状态
+
+| 仓库 | 状态 | 最新 commit |
+|------|------|-------------|
+| film-forest-admin-server (workspace) | ✅ 已推送 | d234bb0 |
+| film-forest-client-server | ✅ 已推送 | 4f4bb90 |
+| film-forest-client-ui | ✅ 已推送 | af7ba9a |
+
+
+---
+
+## 六、2026-05-03 凌晨第二轮开发 (04:40-04:50)
+
+### 已完成
+
+1. **确认七味网真实 URL**: www.pkmp4.xyz（而非 qiwei666.com）
+   - 列表页: /vt/{type}.html (1=电影,2=剧集,3=综艺,4=动漫,30=短剧)
+   - 分页: /vt/{type}-{page}.html
+   - 详情页: /mv/{id}.html
+
+2. **更新 QiweiCrawler.java** (client-server):
+   - 将虚假 `qw.com` URL 替换为真实 `pkmp4.xyz` URL
+   - 修复列表页 CSS selector: `ul.content-list > a[href^=/mv/]`
+   - 实现 detail 页面解析（标题/海报/类型标签/豆瓣评分/导演/演员/剧情）
+
+3. **更新 CrawlerCore.java** (admin-server):
+   - 修复电影详情页解析字段映射（实际页面结构: h1 > year, div.img > 海报, .movie-introduce p > 剧情）
+   - 新增辅助方法: `extractTextByLabel()`, `extractGenresFromTags()`, `extractRegionFromTags()`, `extractScoreFromDescription()`
+   - 修复: storyline 变量未定义（增加 storylineEl 提取逻辑）
+
+### 构建状态
+- admin-server Maven 编译中 (04:49)
 
