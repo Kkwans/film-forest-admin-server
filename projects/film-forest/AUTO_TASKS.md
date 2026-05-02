@@ -827,3 +827,35 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - 缩进错误会导致代码结构被破坏（for 循环体内代码跑到循环外）
 - 需要在 Docker 日志中看到 `[CRAWLER-TEST]` 确认爬虫真正在运行
 
+
+---
+
+## 十二、2026-05-03 凌晨第八轮 (05:55-06:15) - 修复重复条件 + JAR传输困境
+
+### 修复内容 (代码层面已完成)
+
+**extractTextByLabel 重复条件 bug**:
+- 原代码: `spanText.equals(label + "\\uff1a") || spanText.equals(label + "\\uff1a")` (相同条件比较两次)
+- 修复后: `spanText.equals(label + "\\uff1a") || spanText.equals(label + ":")` (检查全角冒号 OR ASCII 冒号)
+- 编译成功 ✅
+
+### 部署困境 (未解决)
+
+- NAS 宿主机的 JAR 文件 (`/volume1/docker/film-forest/backend/film-forest-admin-0.0.1-SNAPSHOT.jar`) 是**旧版本** (05-02 21:27)，来自 base64 传输错误（解压失败）
+- 本地正确 JAR (`workspace/admin-server/target/film-forest-admin-0.0.1-SNAPSHOT.jar` 05-03 05:57) 大小 31.9MB
+- scp 传输对大文件失败 (超时)
+- NAS 无法访问 GitHub (TLS 错误)
+- Docker bind mount cache 导致旧 JAR 被重复使用
+
+### 当前运行状态
+
+- admin-server: 运行中但使用**旧版 JAR** (无修复代码)
+- 新修复代码在本地已编译但无法部署到 NAS
+- 爬虫可正常运行，但 actor/director/genre/region 字段提取问题未解决
+
+### 解决方案
+
+1. GitHub push 本地修复代码 (`d48cc86` - indentation fix, `f1acac2` - HTML comment fix)
+2. NAS 无法从 GitHub clone (网络问题)
+3. **替代方案**: 在本地完成完整的 actor/director/genre/region 数据验证脚本，下次能 SSH 时用脚本修复 DB 中已有数据
+
