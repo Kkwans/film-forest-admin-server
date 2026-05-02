@@ -634,20 +634,27 @@ public class CrawlerCore {
     private Document fetchWithRetry(String url) {
         for (int i = 0; i < RETRY_TIMES; i++) {
             try {
+                log.info("[HTTP-FETCH] GET {}", url);
                 Document doc = Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .referrer(BASE_URL)
                         .timeout(TIMEOUT_MS)
                         .ignoreHttpErrors(true)
+                        .followRedirects(true)
+                        .maxBodySize(10 * 1024 * 1024) // 10MB max to handle full content pages
                         .get();
                 if (doc != null && !doc.body().text().isEmpty()) {
+                    log.info("[HTTP-FETCH] OK {} ({} bytes, title=[{}])", url, doc.body().text().length(), doc.title());
                     return doc;
+                } else {
+                    log.warn("[HTTP-FETCH] EMPTY body for {} ({}/{})", url, i + 1, RETRY_TIMES);
                 }
             } catch (Exception e) {
-                log.warn("Fetch failed {} ({}/{}): {}", url, i + 1, RETRY_TIMES, e.getMessage());
+                log.warn("[HTTP-FETCH] FAIL {} ({}/{}): {} — retry in 2s", url, i + 1, RETRY_TIMES, e.getMessage());
                 try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
             }
         }
+        log.error("[HTTP-FETCH] GAVE UP after {} retries: {}", RETRY_TIMES, url);
         return null;
     }
 
