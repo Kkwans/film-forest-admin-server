@@ -29,6 +29,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -53,15 +54,16 @@ public class CrawlerCore {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Pattern YEAR_PATTERN = Pattern.compile("((?:19|20)\\d{2})");
     private final Pattern ID_PATTERN = Pattern.compile("/mv/(\\d+)");
+    private final ConcurrentHashMap<Long, AtomicBoolean> runningTasks = new ConcurrentHashMap<>();
 
     // ========== Async Entry Point ==========
 
     @Async
-    @Transactional
     public void executeCrawl(Long scheduleId, Long logId, AtomicBoolean stopFlag) {
         CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
         CrawlerTaskLog taskLog = taskLogMapper.selectById(logId);
         if (schedule == null || taskLog == null) return;
+
 
         try {
             int added = 0, updated = 0, total = 0;
@@ -121,6 +123,8 @@ public class CrawlerCore {
                 s2.setStatus("idle");
                 scheduleService.saveSchedule(s2);
             }
+        } finally {
+            runningTasks.remove(scheduleId);
         }
     }
 

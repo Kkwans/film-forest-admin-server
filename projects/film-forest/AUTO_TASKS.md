@@ -383,3 +383,24 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - 爬虫调度 5 条，1 running（七味网-电影）4 idle ✅
 - **已知问题**：MP 分页 total=0 bug，9 条记录返回但 total=0（不影响功能，前端直接用 records.length）
 - **GitHub**: client-server/client-ui/admin-ui 均已同步；admin-server 有本地变更待 push（deploy/docker-compose.yml）
+
+### 2026-05-02 10:09 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫调度：5 条，1 running（七味网-电影），4 idle
+- 电影数据库：新增大量电影记录（id 335641 起），总计约 30+ 条
+- **修复：爬虫增量更新 bug** ✅ 已提交 GitHub
+  - 问题：`CrawlerCore` 所有内容都用 `save()`，导致重复插入而非更新
+  - 修复：existing == null 时 save()，existing != null 时 updateById()
+  - 涉及：movie/drama/variety/anime/short_drama 五种类型
+  - commit: `5c7da9a fix(crawler): 修复增量更新逻辑，新内容save，已存在内容updateById`
+- **NAS 环境确认**：ARM64 架构（aarch64），无 Java / Maven，无法本地编译
+- **下一步**：需在有 Java 的环境重新编译 admin-server 并部署到 NAS
+
+### 2026-05-02 10:24 健康检查
+- 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
+- 爬虫调度：5 条，0 running（上次 09:53 运行完），5 idle
+- 电影数据：29 部（与 07:09 相比新增 20 条，来自 09:53 爬虫运行）
+- **admin-ui 修复** ✅ 已提交 GitHub: `efe27d7 fix(content): defensive null check on Promise result.value`（防止并行请求时 result.value 为 null 导致崩溃）
+- 数据库 stats：`/api/content/stats` → movies:29, dramas:10, varieties:0, animes:0, shortDramas:0
+- **注意**：电影列表有 20 条重复（id 335641/335640 同一电影两条），是爬虫 bug（每个电影采集了两条），后续需修复
+
