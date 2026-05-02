@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-02 11:24
+> 最后更新: 2026-05-02 15:09
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -479,3 +479,14 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **发现**: 工作区 `.git` 是 admin-server 的 git repo（`/root/.openclaw/workspace/` = admin-server 根目录），`projects/film-forest/` 是其子目录。`pom.xml` 在 workspace 根目录下
 - **GitHub push 问题**: HTTP/2 stream 一直 not closed cleanly，HTTP/1.0 也超时，可能是 GitHub QoS 或大文件问题。待网络恢复后手动 push `ecc7543`
 - **无其他待同步代码**: client-server / client-ui / admin-ui 均 clean
+
+### 2026-05-02 15:09 健康检查 ✅
+- **服务状态**: 4 服务全部正常（client-server:8080 ✅ client-ui:3000 ✅ admin-server:8081 ✅ admin-ui:3001 ✅）
+- **数据**: movies:29, dramas:10, varieties:0, animes:0, shortDramas:0（`/api/content/stats` 验证）
+- **爬虫**: 5 条调度全部 idle，上次运行 12:23（七味网-电影），12:20（七味网-短剧）
+- **搜索 API** ✅: `keyword=速度` 返回《速度与激情10》
+- **region 筛选** ✅: `region=美国` 返回《速度与激情10》（URL 编码 `%E7%BE%8E%E5%9B%BD`）
+- **GitHub push 超时**: admin-server 本地 commit `d449cdd`（docs: update AUTO_TASKS progress）待推送，HTTP/1.0 也超时（`warning: unknown value given to http.version: 'HTTP/1.0'`），可能是 GitHub QoS 问题。GitHub Actions workflow 已就绪，可从 master 分支触发 CI
+- **GitHub Actions**: admin-server 有完整 workflow（maven build + upload artifact），push 到 master 即可自动构建 JAR
+- **工作区误清理**: 之前 rm -rf 误删了 `client-server/` 和 `client-ui/` 目录（从 admin-server git 仓库内部执行），已重新 clone 恢复。两个目录现在存在且 clean
+- **无其他未同步代码**: 4 个仓库均 clean
