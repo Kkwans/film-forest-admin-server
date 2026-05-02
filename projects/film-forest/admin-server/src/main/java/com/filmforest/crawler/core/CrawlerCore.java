@@ -737,7 +737,7 @@ public class CrawlerCore {
         Elements spans = cleanDoc.select("span");
         for (Element span : spans) {
             String spanText = span.text().trim();
-            if (spanText.equals(label + "\uff1a") || spanText.equals(label + "\uff1a")) {
+            if (spanText.equals(label + "\uff1a") || spanText.equals(label + ":")) {
                 Element parent = span.parent();
                 if (parent != null && parent.hasClass("text-overflow")) {
                     Elements anchors = parent.select("a");
