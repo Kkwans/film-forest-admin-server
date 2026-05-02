@@ -212,7 +212,7 @@ public class CrawlerCore {
 
             // 类型/地区: 从 tag 链接提取 (<a href="/ms/1---剧情--------.html">剧情</a>)
             String genre = extractGenresFromTags(doc);
-            String region = extractRegionFromTags(doc);
+            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
 
             // 评分: 尝试从 meta description (e.g. "豆瓣 8.6分") 或页面提取
             BigDecimal score = extractScoreFromDescription(doc);
@@ -729,46 +729,30 @@ public class CrawlerCore {
 
     /** 从页面提取 "主演：xxx" 或 "导演：xxx" 文本 */
     private String extractTextByLabel(Document doc, String label) {
-        // 寻找 <span>导演：</span> 或 <span>主演：</span> 后的文字
-        Elements spans = doc.select("span");
+        // 去掉 HTML 注释，避免提取注释中的文字
+        String cleanHtml = doc.html().replaceAll("(?s)<!--.*?-->", "");
+        Document cleanDoc = Jsoup.parse(cleanHtml);
+        Elements spans = cleanDoc.select("span");
         for (Element span : spans) {
-            if (span.text().trim().equals(label + "：") || span.text().trim().equals(label + ":")) {
-                Element next = span.parent();
-                if (next != null) {
-                    // 可能是紧跟的兄弟 div 或 直接文本
-                    String text = next.text();
-                    // 去掉标签名本身
-                    text = text.replaceFirst(label + "[：:]", "").trim();
-                    // 如果 text 和 span.parent 的 text 一样, 说明内容在同级下一个非 span 元素
-                    // 实际内容在 text-overflow div 里或直接在下一个元素
-                    Element parent = span.parent().parent(); // td or div
-                    if (parent != null) {
-                        // text-overflow div 包含多个子元素, text 是拼接的
-                        Elements children = parent.children();
-                        StringBuilder sb = new StringBuilder();
-                        boolean found = false;
-                        for (Element child : children) {
-                            if (child.selectFirst("span") != null && child.selectFirst("span").text().contains(label)) {
-                                found = true;
-                                continue;
-                            }
-                            if (found) {
-                                String t = child.text().trim();
-                                if (!t.isEmpty()) {
-                                    if (sb.length() > 0) sb.append(",");
-                                    sb.append(t);
-                                }
-                            }
+            String spanText = span.text().trim();
+            if (spanText.equals(label + "\uff1a") || spanText.equals(label + "\uff1a")) {
+                Element parent = span.parent();
+                if (parent != null && parent.hasClass("text-overflow")) {
+                    Elements anchors = parent.select("a");
+                    if (!anchors.isEmpty()) {
+                        List<String> names = new ArrayList<>();
+                        for (Element a : anchors) {
+                            String name = a.text().trim();
+                            if (!name.isEmpty()) names.add(name);
                         }
-                        if (sb.length() > 0) return sb.toString();
-                    }
-                    if (!text.equals(label + "：") && !text.equals(label + ":")) {
-                        return text;
+                        if (!names.isEmpty()) {
+                            try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
+                        }
                     }
                 }
             }
         }
-        return "";
+        return "[]";
     }
 
     /** 从页面 tag 链接提取类型列表 */
@@ -788,7 +772,7 @@ public class CrawlerCore {
     }
 
     /** 从页面 tag 判断地区 */
-    private String extractRegionFromTags(Document doc) {
+    private List<String> extractRegionFromTags(Document doc) {
         Elements tagLinks = doc.select("a[href^='/ms/1--']");
         List<String> regions = new ArrayList<>();
         Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国");
@@ -796,10 +780,7 @@ public class CrawlerCore {
             String t = link.text().trim();
             if (knownRegions.contains(t)) regions.add(t);
         }
-        if (!regions.isEmpty()) {
-            try { return objectMapper.writeValueAsString(regions); } catch (Exception ignored) {}
-        }
-        return "[]";
+        return regions;
     }
 
     /** 从 meta description 中提取豆瓣评分 (e.g. "豆瓣 8.6分") */
