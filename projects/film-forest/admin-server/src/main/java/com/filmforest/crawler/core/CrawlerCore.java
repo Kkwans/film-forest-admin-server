@@ -202,6 +202,7 @@ public class CrawlerCore {
             boolean isNew = (existing == null);
 
             Movie movie = new Movie();
+            movie.setId(contentId);
             movie.setTitle(title);
             movie.setPosterUrl(posterUrl);
             movie.setYear(year);
@@ -216,7 +217,6 @@ public class CrawlerCore {
             if (isNew) {
                 movieService.save(movie);
             } else {
-                movie.setId(contentId);
                 movieService.updateById(movie);
             }
             Long dbId = movie.getId();
@@ -286,6 +286,7 @@ public class CrawlerCore {
             boolean isNew = (existing == null);
 
             Drama drama = new Drama();
+            drama.setId(contentId);
             drama.setTitle(title);
             drama.setPosterUrl(posterUrl);
             drama.setYear(year);
@@ -301,7 +302,6 @@ public class CrawlerCore {
             if (isNew) {
                 dramaService.save(drama);
             } else {
-                drama.setId(contentId);
                 dramaService.updateById(drama);
             }
             extractMovieResources(doc, "drama", drama.getId());
@@ -424,6 +424,7 @@ public class CrawlerCore {
             boolean isNew = (existing == null);
 
             Variety variety = new Variety();
+            variety.setId(contentId);
             variety.setTitle(title);
             variety.setPosterUrl(posterUrl);
             variety.setYear(year);
@@ -436,7 +437,6 @@ public class CrawlerCore {
             if (isNew) {
                 varietyService.save(variety);
             } else {
-                variety.setId(contentId);
                 varietyService.updateById(variety);
             }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
@@ -469,6 +469,7 @@ public class CrawlerCore {
             boolean isNew = (existing == null);
 
             Anime anime = new Anime();
+            anime.setId(contentId);
             anime.setTitle(title);
             anime.setPosterUrl(posterUrl);
             anime.setYear(year);
@@ -482,7 +483,6 @@ public class CrawlerCore {
             if (isNew) {
                 animeService.save(anime);
             } else {
-                anime.setId(contentId);
                 animeService.updateById(anime);
             }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
@@ -512,6 +512,7 @@ public class CrawlerCore {
             boolean isNew = (existing == null);
 
             ShortDrama shortDrama = new ShortDrama();
+            shortDrama.setId(contentId);
             shortDrama.setTitle(title);
             shortDrama.setPosterUrl(posterUrl);
             shortDrama.setYear(year);
@@ -524,7 +525,6 @@ public class CrawlerCore {
             if (isNew) {
                 shortDramaService.save(shortDrama);
             } else {
-                shortDrama.setId(contentId);
                 shortDramaService.updateById(shortDrama);
             }
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
