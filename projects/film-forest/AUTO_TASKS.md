@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-02 09:54
+> 最后更新: 2026-05-02 11:24
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -257,7 +257,9 @@ docker-compose up -d
 - 磁力资源 API 正常
 - Docker 部署方案已完成但 NAS 未安装 Docker，无法执行
 
-**GitHub 待推送**: client-ui 有未提交 commit（search URL 参数 bug fix）
+**GitHub 待推送**: admin-server 本地多 1 commit（`6108044` - 爬虫实体更新逻辑修复），待网络恢复后 push
+
+**注意**: 爬虫采集的数据存在大量重复记录（同一电影 id 出现两次），这是之前增量更新 bug 遗留的。本轮修复了逻辑，但已有重复数据需后续清理。
 
 ### 2026-05-02 05:23-05:25 JAR 版本不一致修复 ✅
 - 问题：client-server JAR (2026-05-01 15:25) 早于最新源码 commit，MovieController.pageList 缺 region 参数
@@ -403,4 +405,15 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **admin-ui 修复** ✅ 已提交 GitHub: `efe27d7 fix(content): defensive null check on Promise result.value`（防止并行请求时 result.value 为 null 导致崩溃）
 - 数据库 stats：`/api/content/stats` → movies:29, dramas:10, varieties:0, animes:0, shortDramas:0
 - **注意**：电影列表有 20 条重复（id 335641/335640 同一电影两条），是爬虫 bug（每个电影采集了两条），后续需修复
+
+
+### 2026-05-02 11:09 爬虫列表页重复链接修复 ✅
+- **问题发现**: 电影列表页HTML中同一详情链接出现3次（li-img/li-img-hide/li-bottom三个区块），导致同一电影被重复采集入库
+- **验证**: `curl -s https://www.pkmp4.xyz/vt/1.html | grep -o 'href="/mv/[0-9]*\.html"' | sort | uniq -c | sort -rn | head -5` 显示每个链接重复3次
+- **影响**: 数据库中 29 部电影里有 10 对重复（同一电影 id 不同），源于此 bug
+- **修复**: 在 crawlMovieList/crawlDramaList/crawlVarietyList/crawlAnimeList/crawlShortDramaList 的列表遍历中加 `HashSet<String> seenUrls` 去重
+- **commit**: `f423e59 fix(crawler): dedupe duplicate links in list pages to prevent duplicate inserts` ✅ 已推送 GitHub
+- **后续**: admin-server JAR 需重新编译部署；已有重复数据需手动清理（保留 id 较小者）
+- **GitHub**: admin-server 全部同步，四个仓库均 clean
+- **服务状态**: 四个服务全部正常运行 ✅
 
