@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-03 14:13
+> 最后更新: 2026-05-03 17:00
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -14,6 +14,37 @@
 | client-ui | Next.js 16 + TailwindCSS + Shadcn UI | 3000 | projects/film-forest/client-ui/ |
 | admin-server | SpringBoot 3 + MyBatis-Plus | 8081 | projects/film-forest/admin-server/ |
 | admin-ui | Next.js 16 + TailwindCSS + Shadcn UI | 3001 | projects/film-forest/admin-ui/ |
+
+---
+
+## 日志 2026-05-03 16:50 - 爬虫全量验证通过 ✅
+
+### 验证结果
+- **Jsoup 连接正常**：Java 容器能访问 pkmp4.xyz，Jsoup.fetch 成功（list pages 42 movie links/30 variety links）
+- **4 类内容更新正常**：scheduleId=3(variety) log 189 更新 20 条（added:0 updated:20）说明变更是更新而非新增
+- **数据质量正确**：`id=1 速度与激情10` 有正确 actor+region 数据
+- **重复记录已清**：5 张表每张 count==unique_ids，无重复
+- **GitHub push 成功**：16:30 时 `91a956c` 已推送到 GitHub
+
+### 当前数据状态
+| 类型 | 数量 | 最后爬虫 |
+|------|------|---------|
+| movies | 69 | scheduleId=1 @08:48 (更新 20) |
+| dramas | 49 | scheduleId=2 @08:46 |
+| varieties | 36 | scheduleId=3 @08:49 (更新 20) |
+| animes | 38 | scheduleId=4 @08:46 |
+| shortDramas | 54 | scheduleId=5 @08:48 |
+
+### admin-ui 部署状态（已确认正常）
+- **BUILD_ID**: `_0O00bzqDJ4-NuAsFe6Hl`（与 client 的 `18HMDT_Pl-fawWsNPvDCL` 不同）
+- **路由正确**：/content /crawler /resources /settings /stats（非 client 的 anime/drama/movie 路由）
+- **Tailscale 外网可访问**：`curl http://100.106.29.60:3001/` 返回 "影视森林 - 管理后台" ✅
+- **本机 `localhost:3001` 不可访问**：admin-ui 只绑定 `100.106.29.60:3001`（Tailscale IP），不绑定 `0.0.0.0:3001`
+
+### 下一步优先任务
+1. **P2 增量更新策略**：磁力/网盘链接时效性，需实现定期重新抓取：删除损坏的 `/volume1/docker/film-forest/admin`（之前 rsync 中断导致）
+2. **新 admin-ui build 部署**：`admin_next_new.tar.xz` 已上传待提取
+3. **外网访问优化**：3001 端口 admin-ui 在 Tailscale 外网不可用（绑定 100.106.29.60:3001）
 
 ---
 
@@ -230,7 +261,10 @@ docker-compose up -d
 ### P2 -- 爬虫开发
 
 - [x] **七味网 URL 确认**: www.pkmp4.xyz 已确认（而非 qiwei666.com），CrawlerCore 已更新 ✅ 2026-05-03
-- [ ] **爬虫核心实现**: QiweiCrawler 或其他爬虫核心，采集影视数据
+- [x] **爬虫核心实现**: QiweiCrawler 已在运行，5 类内容全部爬取成功 ✅ 2026-05-03 16:30
+  - 当前问题：itemsAdded=0 因为重复记录去重（增量更新正常）
+  - **待处理：数据库重复记录清理**（同一 id 出现多次）
+- [ ] **数据库重复记录清理**: 同一 content id 出现多次（需清理）
 - [ ] **增量更新策略**: 磁力/网盘链接有时效性，需实现增量更新
 - [ ] **爬虫可视化**: admin-ui 爬虫页面已有 UI，需对接后端真实状态
 
@@ -1446,3 +1480,28 @@ movies:49(新采集有actor+region) | dramas:49 | varieties:20 | animes:38 | sho
 ### 下一步
 - 触发 movie 爬虫任务，更新旧数据 region 字段（自动 update）
 - 继续 AUTO_TASKS 下一项
+
+
+## 日志 2026-05-03 16:25 - 爬虫调度器僵尸状态修复 + 新JAR部署 ✅
+
+### 问题
+- 5 个爬虫调度全部 stuck 在 `running` 状态（`running:5 idle:0`）
+- 原因：`@Async` 在 `executeCrawl` 上产生额外线程层，导致 `runningTasks.remove(scheduleId)` 在外层 `triggerCrawl` 标记 `status=idle` **之前**就执行了
+- `@Async` → `new Thread()` 双层线程：外层 Thread-0 立即结束 → scheduler 看到 idle → 触发新爬虫 → 旧爬虫 finally 才 remove
+
+### 修复
+- 删除 `CrawlerCore.executeCrawl()` 上的 `@Async` 注解
+- 线程管理完全由 `triggerCrawl` 的 `Thread.start()/join()` 处理
+
+### 部署
+- 新 JAR md5: `9abfefb15909ec15ce806c369250f8a8` ✅
+- 验证: `running:0 idle:5` ✅ (08:18:02)
+- 数据: movies:69 | dramas:49 | varieties:36 | animes:38 | shortDramas:54
+
+### 待推送
+- `91a956c` fix(scheduler): remove @Async from executeCrawl - GitHub push 超时待下次网络恢复
+
+### 下一步
+- 触发爬虫验证 region 字段被正确更新（更新旧数据空 region）
+- 继续 P2 增量更新策略开发
+- 继续 P3 外网访问优化
