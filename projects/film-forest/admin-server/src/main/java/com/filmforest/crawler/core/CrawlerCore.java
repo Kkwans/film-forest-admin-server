@@ -298,10 +298,10 @@ public class CrawlerCore {
 
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
-            String actor = parseTextField(doc, ".actor");
-            String director = parseTextField(doc, ".director");
-            String genre = parseTextField(doc, ".type");
-            String region = parseTextField(doc, ".area");
+            String actor = extractTextByLabel(doc, "主演");
+            String director = extractTextByLabel(doc, "导演");
+            String genre = extractGenresFromTags(doc);
+            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
             BigDecimal score = extractScore(doc);
             Integer totalEpisode = extractEpisodeCount(doc);
 
@@ -448,8 +448,8 @@ public class CrawlerCore {
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
-            String actor = parseTextField(doc, ".actor");
-            String genre = parseTextField(doc, ".type");
+            String actor = extractTextByLabel(doc, "主演");
+            String genre = extractGenresFromTags(doc);
             Integer totalEpisode = extractEpisodeCount(doc);
 
             Long contentId = extractContentId(detailUrl);
@@ -492,9 +492,10 @@ public class CrawlerCore {
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
-            String actor = parseTextField(doc, ".actor");
-            String director = parseTextField(doc, ".director");
-            String genre = parseTextField(doc, ".type");
+            String actor = extractTextByLabel(doc, "主演");
+            String director = extractTextByLabel(doc, "导演");
+            String genre = extractGenresFromTags(doc);
+            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
             Integer totalEpisode = extractEpisodeCount(doc);
 
             Long contentId = extractContentId(detailUrl);
@@ -510,6 +511,7 @@ public class CrawlerCore {
             anime.setActor(toJsonArray(actor));
             anime.setDirector(toJsonArray(director));
             anime.setGenre(toJsonArray(genre));
+            anime.setRegion(toJsonArray(region));
             anime.setTotalEpisode(totalEpisode);
             anime.setStatus(1);
 
@@ -536,8 +538,9 @@ public class CrawlerCore {
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
-            String actor = parseTextField(doc, ".actor");
-            String genre = parseTextField(doc, ".type");
+            String actor = extractTextByLabel(doc, "主演");
+            String genre = extractGenresFromTags(doc);
+            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
             Integer totalEpisode = extractEpisodeCount(doc);
 
             Long contentId = extractContentId(detailUrl);
@@ -552,6 +555,7 @@ public class CrawlerCore {
             shortDrama.setStoryline(storyline);
             shortDrama.setActor(toJsonArray(actor));
             shortDrama.setGenre(toJsonArray(genre));
+            shortDrama.setRegion(toJsonArray(region));
             shortDrama.setTotalEpisode(totalEpisode);
             shortDrama.setStatus(1);
 
@@ -735,28 +739,49 @@ public class CrawlerCore {
 
     // ========== pkmp4.xyz Real Page Helpers ==========
 
-    /** 从页面提取 "主演：xxx" 或 "导演：xxx" 文本 */
+    /** 从页面提取 "主演：xxx" 或 "导演：xxx" 文本 (修复版 - 跨 div 提取) */
     private String extractTextByLabel(Document doc, String label) {
         log.trace("extractTextByLabel label={}", label);
         // 去掉 HTML 注释，避免提取注释中的文字
         String cleanHtml = doc.html().replaceAll("(?s)<!--.*?-->", "");
         Document cleanDoc = Jsoup.parse(cleanHtml);
+        String labelSpan = label + "：";
+        // 找到所有 span
         Elements spans = cleanDoc.select("span");
         for (Element span : spans) {
             String spanText = span.text().trim();
-            if (spanText.equals(label + "\uff1a") || spanText.equals(label + ":")) {
-                Element parent = span.parent();
-                if (parent != null && parent.hasClass("text-overflow")) {
-                    Elements anchors = parent.select("a");
-                    if (!anchors.isEmpty()) {
-                        List<String> names = new ArrayList<>();
-                        for (Element a : anchors) {
-                            String name = a.text().trim();
-                            if (!name.isEmpty()) names.add(name);
-                        }
-                        if (!names.isEmpty()) {
-                            try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
-                        }
+            if (!spanText.equals(labelSpan) && !spanText.equals(label + ":")) continue;
+            // 找父 div，名字在父 div 内的 <a> 标签中（span 后）
+            Element parentDiv = span.parent();
+            if (parentDiv == null) continue;
+            // 收集父 div 中 span 之后的所有 <a> 标签的名字
+            List<String> names = new ArrayList<>();
+            boolean foundSpan = false;
+            for (Element child : parentDiv.children()) {
+                if (child == span) { foundSpan = true; continue; }
+                if (foundSpan) {
+                    Elements anchors = child.select("a");
+                    for (Element a : anchors) {
+                        String name = a.text().trim();
+                        if (!name.isEmpty() && name.length() < 50) names.add(name);
+                    }
+                }
+            }
+            if (!names.isEmpty()) {
+                try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
+            }
+            // 也检查紧邻的下一个兄弟 div 中的 <a>
+            Element nextDiv = parentDiv.nextElementSibling();
+            if (nextDiv != null) {
+                Elements nextAnchors = nextDiv.select("a");
+                if (!nextAnchors.isEmpty()) {
+                    names = new ArrayList<>();
+                    for (Element a : nextAnchors) {
+                        String name = a.text().trim();
+                        if (!name.isEmpty() && name.length() < 50) names.add(name);
+                    }
+                    if (!names.isEmpty()) {
+                        try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
                     }
                 }
             }

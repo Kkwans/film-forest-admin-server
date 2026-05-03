@@ -625,6 +625,54 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 - **P3 Docker 部署**: 全部 4 服务已完成 Docker 化（见 23:53 记录）
 - **GitHub**: 5f93896 → 2161b2f 已推送，与 origin/master 同步
 
+### 2026-05-03 12:48 - admin-ui CSS/静态资源修复完成 ✅
+
+**问题**: admin-ui 的 CSS/JS 全部返回 404（包括 `06fo4kvhtvhp9.css` 和所有 JS chunk）。
+
+**根因**: 
+1. 静态文件目录 `.next/static/` 的 owner 是 root:root，而 Next.js container 内以 node:1000 用户运行，有权限问题
+2. 更关键：container 内用 `nsenter` 看 `/app/.next/static/chunks/` 有文件（CSS/JS 都在），但外部 HTTP 请求返回 404，说明 server 找不到静态文件
+
+**修复**:
+1. 停止容器 `docker stop film-forest-admin-ui`
+2. 修复权限 `sudo chown -R 1000:1000 /volume1/docker/film-forest/admin/.next/static/`
+3. 重启容器 `docker start film-forest-admin-ui`
+
+**验证结果** ✅:
+- `curl 100.106.29.60:3001/_next/static/chunks/06fo4kvhtvhp9.css` → 200 ✅
+- `curl 100.106.29.60:3001/_next/static/chunks/0b5i-yv-ub-pf.js` → 200 ✅
+- `curl 100.106.29.60:3001/` → 22101 bytes ✅
+- **3000 标题: 影视森林** ✅
+- **3001 标题: 影视森林 - 管理后台** ✅
+- 所有 4 个 Docker 服务运行正常
+
+**注意**: admin-ui 绑定 100.106.29.60:3001（不绑定 0.0.0.0），client-ui 绑定 0.0.0.0:3000。Tailscale 外网访问用 100.106.29.60:3001，3000 两边都能访问。
+
+---
+
+### 2026-05-03 12:48 - admin-ui 修复成功 ✅
+
+**问题**: admin-ui Docker 容器 26 分钟前 Exit (1)，端口 3001 无响应。
+
+**根因**: `/volume1/docker/film-forest/admin/` 目录在之前 rsync 调试期间被清空（0 bytes），导致 Docker bind mount 指向空目录，Next.js standalone 无法找到 `.next` 目录。
+
+**修复**:
+1. 重新上传 admin-ui standalone 构建（38MB）到 NAS：`tar cf - . | ssh "sudo tar xf - -C /volume1/docker/film-forest/admin/"`
+2. 修复权限：`sudo chown -R 1000:1000 /volume1/docker/film-forest/admin/`
+3. 重启容器：`sudo docker restart film-forest-admin-ui`
+
+**验证结果** ✅:
+- `http://100.106.29.60:3001/` → 22101 bytes，`<title>影视森林 - 管理后台</title>` ✅
+- `http://100.106.29.60:3001/crawler` → 包含"爬虫"文字 ✅
+- `http://100.106.29.60:3001/stats` → 包含"统计"文字 ✅
+- 容器运行中（Up 33 seconds）✅
+
+**说明**: admin-ui 绑定到 `100.106.29.60:3001`（Tailscale IP），不绑定 0.0.0.0:3001，所以 localhost:3001 访问不到（但 tailscale IP 可以）。这是网络配置问题，不影响实际使用。
+
+**GitHub 待推送**: admin-server 2 个 local commits（ahead of origin/master）
+
+---
+
 ### 2026-05-03 00:24 健康检查 ✅
 - **服务状态**: 4 Docker 服务全部稳定运行（uptime 31-59min）
   - `*:8080` ✅ `*:8081` ✅ `0.0.0.0:3000` ✅ `0.0.0.0:3001` ✅
@@ -1177,3 +1225,198 @@ page=1&size=1  → total=49 pages=49 current=1 ✅
 | 磁力链接正常 | ✅ 64 条/movie |
 | 爬虫详情页正常 | ✅ added:0 updated:1 |
 | GitHub 已推送 | ✅ 3 个 commit |
+
+---
+
+## 二十二、2026-05-03 08:25 - 爬虫 CSS 选择器问题 + NAS SSH 卡住
+
+### 本轮发现
+
+**关键调试发现：HTML 结构 vs CSS 选择器** ✅
+- `crawlMovieDetail` 用 `parseTextField(doc, ".actor")` 等 CSS 选择器
+- pkmp4.xyz 详情页 HTML 结构分析：
+  - 没有 `.actor` / `.type` / `.area` / `.director` CSS 类 ❌
+  - 但有 `主演：` / `导演：` / `类型：` / `地区：` 文本标签 ✅
+- `extractTextByLabel(doc, "主演")` 可以正确提取主演（即使有注释干扰）
+- **同一种 HTML 结构适用于所有内容类型**：movie/drama/variety/anime/shortDrama
+
+**修复方案**：
+```java
+// 旧代码（CSS 选择器，不存在）
+actor = parseTextField(doc, ".actor");
+
+// 新代码（文本标签，存在于所有详情页）
+actor = extractTextByLabel(doc, "主演");
+```
+
+### 已修改文件
+- `CrawlerCore.java` 4 个详情页方法全部改为 `extractTextByLabel`
+- `AdminApplication.java` 添加 `@EnableScheduling`
+- `CrawlerScheduler.java` 新增（自动调度器）
+- `fetchWithRetry` 添加 `maxBodySize(10MB)` + debug 日志
+
+### 当前困境：NAS SSH 完全卡住
+- 所有 SSH 连接（port 22）挂起，无法交互
+- 原因：大量 background SSH sessions created during debugging
+- JAR 文件 (43MB) 无法上传到 NAS
+- admin-server 当前运行的是 **未修复的旧版本 JAR**
+
+### 替代方案尝试（均失败）
+1. rsync: 43MB 文件，传输中断/超时
+2. scp: SSH 挂起，传输超时
+3. Tailscale HTTP: 传输中断
+4. docker cp: 需要 SSH 先可用
+5. git push: SSH 挂起，push 超时
+6. GitHub bundle: 需要 rsync/scp 上传
+
+### 当前状态
+- 4 服务正常运行（但 admin-server 是未修复的旧版本 JAR）
+- 五类数据正常（49/30/20/20/30）
+- 爬虫正常（但 `actor/director/genre/region` 字段为空，因为 CSS 选择器不存在）
+
+### 待处理
+1. **SSH 恢复后立即上传修复后的 JAR**（当前 JAR 是旧版本）
+2. 然后爬虫可以正确提取 actor/director/genre/region 字段
+3. 用户端 UI（movie detail 页）需要显示这些字段
+
+### NAS SSH 卡住（2026-05-03 08:30）
+
+**现象**：exec 工具可正常运行，但所有 SSH 连接（sshpass + ssh）挂起无法交互
+- `timeout 8 sshpass ... ssh Kkwans@192.168.5.110` 挂起
+- `ping 192.168.5.110` 正常（0.5ms）
+- `nc -zv 192.168.5.110 22` 挂起
+- 说明：网络层正常，但 SSH 服务本身有问题
+
+**原因分析**：
+- 推测：大量 background SSH sessions（调试期间创建的）阻塞了新的 SSH 连接
+- 可能的 MTU/fragmentation 问题（1400+ 字节包可能触发）
+- 可能 NAS 的 SSH 服务达到最大连接数限制
+
+**当前状态**：
+- 4 服务正常运行（但 admin-server 是未修复的旧 JAR）
+- 代码修改已保存在本地 JAR（43MB）
+- GitHub push 失败（SSH 卡住）
+
+**恢复后操作**：
+1. Kill 所有 stuck SSH processes: `pkill -f "sshpass.*192.168"`
+2. 检查 NAS SSH: `sudo systemctl status ssh`
+3. 重启 NAS SSH: `sudo systemctl restart ssh`
+4. 上传新 JAR 到 NAS 并 restart admin-server
+
+---
+
+## 二十三、2026-05-03 09:20 - MySQL 重启导致服务全停 + admin-server JAR 挂载修复
+
+### 本轮完成
+
+**现象**：凌晨 MySQL8 容器自动停止（`Exited (0) 6 minutes ago`）→ client-server 重启后连不上 MySQL → 一直 Restarting
+- 原因：之前 docker system prune 或某操作停止了 mysql8 容器
+
+**修复步骤**：
+1. `docker start mysql8` → MySQL 恢复
+2. `docker restart film-forest-client-server film-forest-admin-server` → 服务恢复
+3. admin-server 启动失败：bind mount 变成 directory 导致 OCI runtime 错误
+4. `docker rm film-forest-admin-server` + 重新 `docker run` → 成功
+
+### 当前状态
+- 4 服务全部运行正常：
+  - `film-forest-admin-server` (Up ~1 min, via new docker run)
+  - `film-forest-client-server` (Up 3 min)
+  - `film-forest-client-ui` (Up 10 min)
+  - `film-forest-admin-ui` (Up 10 min)
+- mysql8 正常运行（3306）
+- admin-server 当前运行的是旧 JAR（`film-forest-admin-0.0.1-SNAPSHOT-old-broken.jar`，31MB，修复前版本）
+  - actor/director 等字段为空（CSS 选择器不存在的旧 bug）
+- client-server 正常运行（`film-forest-backend-new.jar`，38MB，有 PaginationInnerInterceptor）
+
+### 待处理
+1. **上传修复后的 admin-server JAR** → 修复 drama/variety/anime/shortDrama 的 actor/director 字段提取
+2. **自动调度器测试** → 5个 schedule 都是 running，需验证它们是否正常工作
+3. **用户端 UI 检查** → movie detail 页面是否正确显示字段
+
+### AUTO_TASKS 更新
+- 优先级：P2（用户端增量更新）已推进至"有数据但字段不完整"阶段
+- 新问题：MySQL 意外停止 → 需要考虑 MySQL 重启后的自动恢复
+
+---
+
+## 二十四、2026-05-03 09:28 - 系统恢复正常运行
+
+### 本轮完成
+
+**系统状态（当前）**：
+| 服务 | 容器 | 状态 | 端口 |
+|------|------|------|------|
+| admin-server | 3ecddc3619d4 | Up ~1min | 8081 |
+| client-server | film-forest-client-server | Up 9min | 8080 |
+| client-ui | film-forest-client-ui | Up 16min | 3000 |
+| admin-ui | film-forest-admin-ui | Up 16min | 3001 |
+| mysql8 | mysql8 | Up 40min+ | 3306 |
+
+**API 验证通过**：
+- `/api/movies?page=1&size=1` → total=49, pages=49 ✅
+- `/api/dramas?page=1&size=1` → total=30 ✅
+- `/api/movies/476231` → actor=[], director=[]（旧 bug，仍存在）
+- 爬虫调度器正常（schedule 1 从 running 变为 idle，自动完成）
+
+### 待修复（优先级 P2）
+
+1. **admin-server JAR 需更新** - 当前运行的是旧版本（31MB 5月3日 06:08）
+   - 修复了 drama/variety/anime/shortDrama 的 CSS 选择器 bug（应使用 extractTextByLabel）
+   - 本地 JAR 有修复代码，但无法上传至 NAS
+
+2. **MySQL 自动重启** - mysql8 容器意外停止，导致所有服务挂起
+   - 需要设置 mysql8 为 `restart: always`
+
+### AUTO_TASKS 完成情况
+- P1: 增量更新 ✅（爬虫正常，更新了20条 movie 数据）
+- P2: 数据字段不完整（actor/director 字段为空）
+- P3: Docker 部署规范（MySQL 重启问题）
+
+### GitHub 状态
+- admin-server 本地修改未推送（SSH 卡住）
+- 最新 commit: 643f731（HTTP-FETCH log level）
+- 新文件未提交: `crawler_core_fix.patch`（补丁文件）
+
+---
+
+## 二十五、2026-05-03 09:50 - 新 JAR 上传成功（分段 cat 方法）+ 根因分析
+
+### 本轮完成
+
+**JAR 上传成功（分段 cat 方法）**：
+- SCP/rsync/scp 全部失败（SSH 挂起）
+- 成功方案：`cat file | ssh` 逐段传输
+  - `split -b 10m` 将 JAR 拆分为 4 个 10MB chunk
+  - `cat chunk | ssh Kkwans@192.168.5.110 "cat > /home/Kkwans/jar_transfer/part_aa"` 逐个上传
+  - `cat part_aa part_ab part_ac part_ad > film-forest-admin-new.jar` 合并
+  - md5sum 验证: `bddf9f6b1b5fe8978c60e20ac3a5a1f5` ✅
+  - 上传至 NAS bind mount 路径，重启容器
+
+### 新 JAR 验证
+- `sudo docker exec admin-server md5sum /app.jar` → `bddf9f6b1b5fe8978c60e20ac3a5a1f5` ✅
+- 容器启动正常，爬虫运行正常（`crawlMovieDetail completed` debug 日志可见）
+
+### 根因分析：actor/director 字段仍为空
+**问题**：新代码使用 `extractTextByLabel(doc, "主演")` / `extractTextByLabel(doc, "导演")`
+从 `span` 标签 + `.text-overflow` class 提取，但 pkmp4.xyz 的 HTML 结构导致：
+- `span` 内部只有 "导演：" / "主演：" 文本，名字在 `</div>` 之后
+- HTML 结构：`</div><div><span>导演：</span><div class="text-overflow">...</div><a>菲尔·罗德</a><a>克里斯托弗·米勒</a></div>`
+- 名字在 `<span>导演：</span>` 同级 div 的后续元素中，不在 `.text-overflow` 内
+
+**修复方案**：重写 `extractTextByLabel`，从 `<span>label：</span>` 向上找父 div，然后提取后续 `<a>` 标签中的名字
+
+### 当前状态
+- 4 服务正常运行
+- MySQL restart always 已设置
+- 新 JAR 已部署（bddf9f6b1b5fe8978c60e20ac3a5a1f5）
+- actor/director 字段需要修复提取逻辑
+- genre 提取正常（`["剧情", "科幻", "惊悚", "人性", "英语"]` for 挽救计划）
+
+### MySQL 重启配置
+- `docker update --restart always mysql8` ✅
+- 验证: `{always 0}`
+
+### AUTO_TASKS 优先级更新
+- P2（用户端增量更新）：进行中 - 根因已找到，修复需要改 extractTextByLabel 逻辑
+- P3（Docker 部署规范）：MySQL 重启已解决
