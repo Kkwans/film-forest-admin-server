@@ -473,6 +473,7 @@ public class CrawlerCore {
             } else {
                 varietyService.updateById(variety);
             }
+            extractMovieResources(doc, "variety", variety.getId());
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Variety detail parse error: {}", detailUrl, e.getMessage());
@@ -521,6 +522,7 @@ public class CrawlerCore {
             } else {
                 animeService.updateById(anime);
             }
+            extractMovieResources(doc, "anime", anime.getId());
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Anime detail parse error: {}", detailUrl, e.getMessage());
@@ -565,6 +567,7 @@ public class CrawlerCore {
             } else {
                 shortDramaService.updateById(shortDrama);
             }
+            extractMovieResources(doc, "short_drama", shortDrama.getId());
             return new int[]{isNew ? 1 : 0, isNew ? 0 : 1, 0};
         } catch (Exception e) {
             log.error("Short drama detail parse error: {}", detailUrl, e.getMessage());
