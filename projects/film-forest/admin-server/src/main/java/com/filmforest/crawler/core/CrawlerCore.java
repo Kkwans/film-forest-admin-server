@@ -164,7 +164,7 @@ public class CrawlerCore {
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
                 int[] r = crawlMovieDetail(detailUrl, stopFlag);
-            log.info("[CRAWLER-TEST] crawlMovieDetail completed for: {} -> added:{} updated:{} error:{}", detailUrl, r[0], r[1], r[2] > 0 ? "yes" : "no");
+            log.debug("crawlMovieDetail completed for: {} -> added:{} updated:{}", detailUrl, r[0], r[1]);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
@@ -737,7 +737,7 @@ public class CrawlerCore {
 
     /** 从页面提取 "主演：xxx" 或 "导演：xxx" 文本 */
     private String extractTextByLabel(Document doc, String label) {
-        log.info("[CRAWLER-TEST] extractTextByLabel called with label={}", label);
+        log.trace("extractTextByLabel label={}", label);
         // 去掉 HTML 注释，避免提取注释中的文字
         String cleanHtml = doc.html().replaceAll("(?s)<!--.*?-->", "");
         Document cleanDoc = Jsoup.parse(cleanHtml);
