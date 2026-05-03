@@ -1,6 +1,6 @@
 # AUTO_TASKS.md -- 影视森林自动开发任务
 
-> 最后更新: 2026-05-03 00:24
+> 最后更新: 2026-05-03 14:13
 > 定时任务: film-forest-continuous-dev (每10分钟, 超时30分钟)
 > 工作目录: /root/.openclaw/workspace/projects/film-forest/
 
@@ -1420,3 +1420,29 @@ actor = extractTextByLabel(doc, "主演");
 ### AUTO_TASKS 优先级更新
 - P2（用户端增量更新）：进行中 - 根因已找到，修复需要改 extractTextByLabel 逻辑
 - P3（Docker 部署规范）：MySQL 重启已解决
+
+---
+
+## 日志 2026-05-03 14:13 - region 字段提取修复 ✅
+
+### 问题定位
+- `extractRegionFromTags` 旧实现只从 `/ms/1-{region}----------.html` 链接提取已知地区列表
+- 大部分电影地区（如法国/意大利/香港/日本等）在 knownRegions 列表之外，导致 region 为空
+- 主演和导演提取已正确，新采集的电影已有数据；region 为空是旧实现 bug
+
+### 修复方案
+- `extractRegionFromTags(doc)` 改为先用 `extractTextByLabel(doc, "地区")` 提取（与 actor/director 共用逻辑）
+- 失败时再用原链接 fallback（保留向后兼容）
+- `extractTextByLabel` 同时修复：原代码只检查紧邻下一个兄弟 div，现改为遍历所有后续兄弟 div（因为 pkmp4.xyz 的字段值可能跨多个 div）
+
+### 新 JAR 部署验证
+- 部署 md5: `6a5287bfa427f5aced2678b4c355e7f2` ✅
+- 新采集电影 actor+region 正确：法国/台湾/意大利/日本/香港/美国/瑞典 等
+- GitHub: `d79d156` ✅
+
+### 当前数据
+movies:49(新采集有actor+region) | dramas:49 | varieties:20 | animes:38 | shortDramas:30
+
+### 下一步
+- 触发 movie 爬虫任务，更新旧数据 region 字段（自动 update）
+- 继续 AUTO_TASKS 下一项

@@ -59,7 +59,6 @@ public class CrawlerCore {
 
     // ========== Async Entry Point ==========
 
-    @Async
     public void executeCrawl(Long scheduleId, Long logId, AtomicBoolean stopFlag) {
         CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
         CrawlerTaskLog taskLog = taskLogMapper.selectById(logId);
