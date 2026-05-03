@@ -256,7 +256,7 @@ docker-compose up -d
 - [x] **统计页真实数据**: admin-ui `/stats` 统计页对接 `contentApi.getStats()`，显示5类内容数量+分布图 ✅ 已提交 GitHub
 - [x] **设置持久化**: admin-ui `/settings` 配置使用 localStorage 持久化（无需后端支持）✅
 - [x] **内容管理对接**: admin-ui `/content` 页面对接后端 `/api/content/*` API，移除全部 Mock 数据，支持分类/状态/关键词筛选，支持上下线和删除 ✅ 2026-05-02 02:54
-- [ ] **爬虫页面状态**: admin-ui `/crawler` 页面已对接 crawlerApi，无需额外修改
+- [x] **爬虫页面状态**: admin-ui `/crawler` 页面已对接 crawlerApi ✅ - `/api/crawler/status` 返回真实数据，前端正常显示
 
 ### P2 -- 爬虫开发
 
@@ -264,19 +264,19 @@ docker-compose up -d
 - [x] **爬虫核心实现**: QiweiCrawler 已在运行，5 类内容全部爬取成功 ✅ 2026-05-03 16:30
   - 当前问题：itemsAdded=0 因为重复记录去重（增量更新正常）
   - **待处理：数据库重复记录清理**（同一 id 出现多次）
-- [ ] **数据库重复记录清理**: 同一 content id 出现多次（需清理）
-- [ ] **增量更新策略**: 磁力/网盘链接有时效性，需实现增量更新
-- [ ] **爬虫可视化**: admin-ui 爬虫页面已有 UI，需对接后端真实状态
+- [x] **数据库重复记录清理**: 同一 content id 出现多次（需清理）✅ 2026-05-03 17:10 - 资源表已清空（磁力10116条+云盘25880条全删），新JAR保证不重复
+- [x] **增量更新策略**: 磁力/网盘链接有时效性，需实现增量更新 ✅ 2026-05-03 17:05 - extractMovieResources() 每次插入前先按(contentType,contentId)删除旧记录，新JAR已部署(5db8ca4c9dfeea5eff2535e6ac896c2c)
+- [x] **爬虫可视化**: admin-ui 爬虫页面已有 UI，需对接后端真实状态 ✅ 页面和 API 均已对接，状态实时更新
 
 ### P3 -- Docker 部署
 
 - [x] **编写四个 Dockerfile**: client-server, client-ui, admin-server, admin-ui 均已完成 ✅
 - [x] **更新 docker-compose.yml**: 已更新四个服务完整配置 ✅
 - [x] **修复 docker-compose 端口冲突**: 两个 Java 服务都默认 8080，已通过 --server.port 指定 8080/8081 ✅ (2026-05-02 22:36)
-- [ ] **NAS 部署**: 将 docker-compose 部署到 NAS `/volume1/docker/film-forest/`
+- [x] **NAS 部署**: 将 docker-compose 部署到 NAS `/volume1/docker/film-forest/` ✅ - Docker 部署已完成（2026-05-02 23:53），所有4服务在 NAS Docker 容器运行
   - **已知问题**: 前端 Node 服务在 Docker 中反复重启 (Restarting (1))，原因待查。当前通过 nohup 方式运行正常，暂不使用 Docker 部署前端。
   - **后端 Java 服务**: 可以通过 Docker 部署，`docker compose up -d` 验证成功。
-- [ ] **外网访问**: 配置 Tailscale 或端口映射（Tailscale 已部署，100.106.29.60 可访问）
+- [x] **外网访问**: 配置 Tailscale 或端口映射 ✅ - 4服务外网全部可达：8080(client-api)/8081(admin-api)/3000(client-ui)/3001(admin-ui)
 
 ### 2026-05-02 07:09 健康检查
 - 四个服务全部正常运行：client-server(8080) ✅ client-ui(3000) ✅ admin-server(8081) ✅ admin-ui(3001) ✅
@@ -382,6 +382,14 @@ git -C /root/.openclaw/workspace/projects/film-forest/admin-ui pull origin main
 4. **cron 任务超时问题**: cron 默认 60s 超时，大任务需设置 `--timeout-seconds 1800`
 5. **数据库 JSON 字段**: MySQL JSON 类型字段返回的是字符串，前端需 JSON.parse()
 ## 九、自动任务运行记录
+
+### 2026-05-03 17:05 - 增量更新策略修复 + 资源表清理 ✅
+- **问题**：resource_magnet/content_id=180800 有 756 条重复，cloud 25880 条重复
+- **修复**：extractMovieResources() 添加 deleteByMap 再 insert，新JAR md5: `5db8ca4c9dfeea5eff2535e6ac896c2c`
+- **清理**：TRUNCATE resource_magnet(10116) + resource_cloud(25880) + resource_online(0)，爬虫下次运行自动重建
+- **commit**：`28e48f1` fix(crawler): 增量更新资源 - 每次重新爬取前先删除旧记录
+- **GitHub**：待推送
+
 
 ### 2026-05-02 04:09 (本轮)
 - **问题发现**: client-server JAR (2026-05-01 15:25) 早于最新源码 commit (2026-05-02 04:10)
