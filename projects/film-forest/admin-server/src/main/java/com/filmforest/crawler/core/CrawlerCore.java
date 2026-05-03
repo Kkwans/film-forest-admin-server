@@ -1,6 +1,7 @@
 package com.filmforest.crawler.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import com.filmforest.crawler.entity.CrawlerSchedule;
@@ -770,20 +771,18 @@ public class CrawlerCore {
             if (!names.isEmpty()) {
                 try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
             }
-            // 也检查紧邻的下一个兄弟 div 中的 <a>
-            Element nextDiv = parentDiv.nextElementSibling();
-            if (nextDiv != null) {
-                Elements nextAnchors = nextDiv.select("a");
-                if (!nextAnchors.isEmpty()) {
-                    names = new ArrayList<>();
-                    for (Element a : nextAnchors) {
-                        String name = a.text().trim();
-                        if (!name.isEmpty() && name.length() < 50) names.add(name);
-                    }
-                    if (!names.isEmpty()) {
-                        try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
-                    }
+            // 也检查紧邻的后续所有兄弟 div 中的 <a>（主演可能有多个 div）
+            Element sibling = parentDiv.nextElementSibling();
+            while (sibling != null) {
+                Elements nextAnchors = sibling.select("a");
+                for (Element a : nextAnchors) {
+                    String name = a.text().trim();
+                    if (!name.isEmpty() && name.length() < 50) names.add(name);
                 }
+                sibling = sibling.nextElementSibling();
+            }
+            if (!names.isEmpty()) {
+                try { return objectMapper.writeValueAsString(names); } catch (Exception ignored) {}
             }
         }
         return "[]";
@@ -807,14 +806,21 @@ public class CrawlerCore {
 
     /** 从页面 tag 判断地区 */
     private List<String> extractRegionFromTags(Document doc) {
-        Elements tagLinks = doc.select("a[href^='/ms/1--']");
-        List<String> regions = new ArrayList<>();
-        Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国");
-        for (Element link : tagLinks) {
-            String t = link.text().trim();
-            if (knownRegions.contains(t)) regions.add(t);
+        // pkmp4.xyz: 地区字段结构与主演相同，使用 extractTextByLabel 逻辑
+        String regionJson = extractTextByLabel(doc, "地区");
+        try {
+            return objectMapper.readValue(regionJson, new TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            // Fallback: 尝试从 /ms/1-{region}----------.html 链接提取
+            Elements tagLinks = doc.select("a[href^='/ms/1-']");
+            List<String> regions = new ArrayList<>();
+            Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国");
+            for (Element link : tagLinks) {
+                String t = link.text().trim();
+                if (knownRegions.contains(t)) regions.add(t);
+            }
+            return regions;
         }
-        return regions;
     }
 
     /** 从 meta description 中提取豆瓣评分 (e.g. "豆瓣 8.6分") */
