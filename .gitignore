@@ -29,3 +29,5 @@ projects/
 /root/.openclaw/workspace/projects/film-forest/client-server/
 /root/.openclaw/workspace/projects/film-forest/client-ui/
 /root/.openclaw/workspace/projects/film-forest/admin-ui/
+-e target/
+*.jar

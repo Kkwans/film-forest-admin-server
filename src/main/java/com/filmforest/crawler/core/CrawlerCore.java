@@ -26,6 +26,8 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -42,6 +44,8 @@ public class CrawlerCore {
     private static final String BASE_URL = "https://www.pkmp4.xyz";
     private static final int TIMEOUT_MS = 15000;
     private static final int RETRY_TIMES = 2;
+    private static final String PROXY_HOST = "127.0.0.1";
+    private static final int PROXY_PORT = 7890;
 
     @Autowired private MovieService movieService;
     @Autowired private DramaService dramaService;
@@ -722,10 +726,11 @@ public class CrawlerCore {
                 Document doc = Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .referrer(BASE_URL)
+                        .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_HOST, PROXY_PORT)))
                         .timeout(TIMEOUT_MS)
                         .ignoreHttpErrors(true)
                         .followRedirects(true)
-                        .maxBodySize(10 * 1024 * 1024) // 10MB max to handle full content pages
+                        .maxBodySize(10 * 1024 * 1024)
                         .get();
                 if (doc != null && !doc.body().text().isEmpty()) {
                     log.info("[HTTP-FETCH] OK {} ({} bytes, title=[{}])", url, doc.body().text().length(), doc.title());
