@@ -63,6 +63,7 @@ public class CrawlerCore {
     private final Pattern YEAR_PATTERN = Pattern.compile("((?:19|20)\\d{2})");
     private final Pattern ID_PATTERN = Pattern.compile("/mv/(\\d+)");
     private final ConcurrentHashMap<Long, AtomicBoolean> runningTasks = new ConcurrentHashMap<>();
+    private volatile Boolean proxyAvailable = null;
 
     // ========== Async Entry Point ==========
 
@@ -717,18 +718,37 @@ public class CrawlerCore {
         }
     }
 
+    /** 检测代理是否可用 */
+    private boolean isProxyAvailable() {
+        if (proxyAvailable != null) return proxyAvailable;
+        try {
+            var socket = new java.net.Socket();
+            socket.connect(new InetSocketAddress(PROXY_HOST, PROXY_PORT), 2000);
+            socket.close();
+            proxyAvailable = true;
+            log.info("[PROXY] 代理可用 {}:{}", PROXY_HOST, PROXY_PORT);
+        } catch (Exception e) {
+            proxyAvailable = false;
+            log.warn("[PROXY] 代理不可用 {}:{}, 将直连", PROXY_HOST, PROXY_PORT);
+        }
+        return proxyAvailable;
+    }
+
     // ========== HTTP Helper ==========
 
     private Document fetchWithRetry(String url) {
         for (int i = 0; i < RETRY_TIMES; i++) {
             try {
                 log.info("[HTTP-FETCH] GET {}", url);
-                Document doc = Jsoup.connect(url)
+                var conn = Jsoup.connect(url)
                         .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
                         .referrer(BASE_URL)
-                        .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_HOST, PROXY_PORT)))
-                        .timeout(TIMEOUT_MS)
-                        .ignoreHttpErrors(true)
+                        .timeout(TIMEOUT_MS);
+                // 仅在代理可用时使用代理
+                if (isProxyAvailable()) {
+                    conn.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(PROXY_HOST, PROXY_PORT)));
+                }
+                Document doc = conn.ignoreHttpErrors(true)
                         .followRedirects(true)
                         .maxBodySize(10 * 1024 * 1024)
                         .get();
