@@ -3,9 +3,11 @@ package com.filmforest.resource.service.impl;
 import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceCloud;
+import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceOnlineMapper;
 import com.filmforest.resource.mapper.ResourceMagnetMapper;
 import com.filmforest.resource.mapper.ResourceCloudMapper;
+import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.filmforest.resource.service.ResourceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -20,10 +22,13 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
 
     private final ResourceMagnetMapper magnetMapper;
     private final ResourceCloudMapper cloudMapper;
+    private final ResourceSourceMapper sourceMapper;
 
-    public ResourceServiceImpl(ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper) {
+    public ResourceServiceImpl(ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper,
+                              ResourceSourceMapper sourceMapper) {
         this.magnetMapper = magnetMapper;
         this.cloudMapper = cloudMapper;
+        this.sourceMapper = sourceMapper;
     }
 
     // ===== 在线资源 =====
@@ -123,6 +128,37 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     @Override
     public boolean deleteCloudResource(Long id) {
         return cloudMapper.deleteById(id) > 0;
+    }
+
+    // ===== 资源来源 =====
+    @Override
+    public List<ResourceSource> listSources() {
+        return sourceMapper.selectList(new LambdaQueryWrapper<ResourceSource>()
+                .orderByAsc(ResourceSource::getSort));
+    }
+
+    @Override
+    public ResourceSource saveSource(ResourceSource source) {
+        if (source.getId() == null) {
+            source.setCreatedAt(LocalDateTime.now());
+            sourceMapper.insert(source);
+        } else {
+            sourceMapper.updateById(source);
+        }
+        return source;
+    }
+
+    @Override
+    public boolean deleteSource(Long id) {
+        return sourceMapper.deleteById(id) > 0;
+    }
+
+    @Override
+    public boolean toggleSource(Long id, boolean enabled) {
+        ResourceSource source = sourceMapper.selectById(id);
+        if (source == null) return false;
+        source.setEnabled(enabled ? 1 : 0);
+        return sourceMapper.updateById(source) > 0;
     }
 
     // ===== 统计 =====

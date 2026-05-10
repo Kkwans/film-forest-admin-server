@@ -4,6 +4,7 @@ import com.filmforest.common.dto.Result;
 import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceCloud;
+import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.service.ResourceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -85,6 +86,27 @@ public class ResourceController {
     @DeleteMapping("/cloud/{id}")
     public Result<Boolean> deleteCloud(@PathVariable Long id) {
         return Result.ok(resourceService.deleteCloudResource(id));
+    }
+
+    // ===== 资源来源 =====
+    @GetMapping("/sources")
+    public Result<List<ResourceSource>> listSources() {
+        return Result.ok(resourceService.listSources());
+    }
+
+    @PostMapping("/sources")
+    public Result<ResourceSource> saveSource(@RequestBody ResourceSource source) {
+        return Result.ok(resourceService.saveSource(source));
+    }
+
+    @DeleteMapping("/sources/{id}")
+    public Result<Boolean> deleteSource(@PathVariable Long id) {
+        return Result.ok(resourceService.deleteSource(id));
+    }
+
+    @PostMapping("/sources/{id}/toggle")
+    public Result<Boolean> toggleSource(@PathVariable Long id, @RequestParam boolean enabled) {
+        return Result.ok(resourceService.toggleSource(id, enabled));
     }
 
     // ===== 全局统计 =====
