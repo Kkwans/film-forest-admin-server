@@ -8,6 +8,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import org.springframework.scheduling.support.CronExpression;
+
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
@@ -62,62 +65,30 @@ public class CrawlerScheduler {
         if (lastRun == null) return true;
 
         try {
-            long intervalSeconds = parseCronInterval(cron);
-            if (intervalSeconds <= 0) return false;
+            // 支持 5 段标准 cron（如 "0 2 * * *"）和 Spring 6 段格式（如 "0 0 2 * * *"）
+            String normalizedCron = normalizeCron(cron);
+            CronExpression expression = CronExpression.parse(normalizedCron);
 
-            // 如果距离上次运行超过 interval 则触发
-            long elapsedSeconds = java.time.Duration.between(lastRun, now).getSeconds();
-            return elapsedSeconds >= intervalSeconds;
+            // 计算上次运行后下一次应该触发的时间
+            LocalDateTime nextRun = expression.next(lastRun);
+            if (nextRun == null) return false;
+
+            // 如果 now >= nextRun 则触发
+            return !now.isBefore(nextRun);
         } catch (Exception e) {
-            log.warn("无法解析cron表达式: {} for schedule {}", cron, schedule.getId());
+            log.warn("无法解析cron表达式: {} for schedule {} — {}", cron, schedule.getId(), e.getMessage());
             return false;
         }
     }
 
-    /** 解析 cron 表达式为间隔秒数（仅支持标准格式） */
-    private long parseCronInterval(String cron) {
-        // 格式: 秒 分 时 日 月 周
-        // 例如: "0 */5 * * * *" = 每5分钟
+    /** 将 5 段 cron 标准化为 Spring 6 段格式（前面补秒字段） */
+    private String normalizeCron(String cron) {
         String[] parts = cron.trim().split("\\s+");
-        if (parts.length < 6) return 0;
-
-        // 检查各段并找最大周期
-        // 秒: parts[0]
-        // 分: parts[1]
-        // 时: parts[2]
-        // 日: parts[3]
-        // 月: parts[4]
-        // 周: parts[5]
-
-        // 简化处理：找第一个非固定值（* 或固定数字以外的）作为周期
-        // 只支持 */n 格式的简化 cron
-        long seconds = 1;
-        long minutes = 1;
-        long hours = 1;
-
-        // 分 (parts[1]): */5 -> 5分钟
-        if (parts[1].startsWith("*/")) {
-            minutes = Long.parseLong(parts[1].substring(2));
-        } else if (!parts[1].equals("*")) {
-            // 固定分钟，需要转换为小时周期
-            minutes = 0;
+        if (parts.length == 5) {
+            // 标准 5 段: 分 时 日 月 周 → 补秒字段 "0"
+            return "0 " + cron.trim();
         }
-
-        // 时 (parts[2])
-        if (parts[2].startsWith("*/")) {
-            hours = Long.parseLong(parts[2].substring(2));
-        }
-
-        // 计算总秒数
-        // 如果分钟是 */n，最小周期是 n * 60 秒
-        // 如果小时是 */n，最小周期是 n * 3600 秒
-        if (minutes > 0) {
-            return minutes * 60;
-        } else if (hours > 0) {
-            return hours * 3600;
-        }
-
-        return 0;
+        return cron.trim(); // 已经是 6 段
     }
 
     /** 触发爬虫任务（异步执行） */

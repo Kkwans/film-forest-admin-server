@@ -223,8 +223,8 @@ public class CrawlerCore {
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
 
-            // 评分: 尝试从 meta description (e.g. "豆瓣 8.6分") 或页面提取
-            BigDecimal score = extractScoreFromDescription(doc);
+            // 评分: 优先从豆瓣链接提取，fallback 到 meta description
+            BigDecimal score = extractScore(doc);
 
             Long contentId = extractContentId(detailUrl);
             Movie existing = movieService.getById(contentId);
@@ -301,7 +301,8 @@ public class CrawlerCore {
             String title = doc.selectFirst("h1").text().trim();
 
             String posterUrl = null;
-            Element img = doc.selectFirst("div.li-img img, .movie-cover img");
+            Element img = doc.selectFirst("div.img img");
+            if (img == null) img = doc.selectFirst("div.li-img img, .movie-cover img");
             if (img != null) posterUrl = img.attr("abs:src");
 
             Integer year = extractYear(doc);
@@ -453,7 +454,8 @@ public class CrawlerCore {
         try {
             String title = doc.selectFirst("h1").text().trim();
             String posterUrl = null;
-            Element img = doc.selectFirst("div.li-img img, .movie-cover img");
+            Element img = doc.selectFirst("div.img img");
+            if (img == null) img = doc.selectFirst("div.li-img img, .movie-cover img");
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
@@ -499,7 +501,8 @@ public class CrawlerCore {
         try {
             String title = doc.selectFirst("h1").text().trim();
             String posterUrl = null;
-            Element img = doc.selectFirst("div.li-img img, .movie-cover img");
+            Element img = doc.selectFirst("div.img img");
+            if (img == null) img = doc.selectFirst("div.li-img img, .movie-cover img");
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
@@ -547,7 +550,8 @@ public class CrawlerCore {
         try {
             String title = doc.selectFirst("h1").text().trim();
             String posterUrl = null;
-            Element img = doc.selectFirst("div.li-img img, .movie-cover img");
+            Element img = doc.selectFirst("div.img img");
+            if (img == null) img = doc.selectFirst("div.li-img img, .movie-cover img");
             if (img != null) posterUrl = img.attr("abs:src");
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
@@ -792,11 +796,40 @@ public class CrawlerCore {
     }
 
     private BigDecimal extractScore(Document doc) {
-        Element el = doc.selectFirst(".score, [class*=score], .rating");
-        if (el == null) return null;
-        String text = el.text().replaceAll("[^0-9.]", "");
-        if (text.isEmpty()) return null;
-        try { return new BigDecimal(text); } catch (Exception ignored) { return null; }
+        // pkmp4.xyz 评分结构:
+        // <a href="https://movie.douban.com/..."><span style="color: green;">豆瓣 8.6</span></a>
+        // <a href="https://www.imdb.com/..."><span style="color: #dba400;">IMDB 8.3</span></a>
+        // <a href="https://www.rottentomatoes.com/..."><span style="color: #ff5b5b;">烂番茄 94%</span></a>
+
+        // 优先从豆瓣链接提取
+        Elements scoreLinks = doc.select("a[href*=douban], a[href*=imdb], a[href*=rottentomatoes]");
+        for (Element link : scoreLinks) {
+            String href = link.attr("href");
+            String text = link.text();
+            // 匹配 "豆瓣 8.6" 或 "IMDB 8.3" 或 "烂番茄 94%"
+            Pattern scorePattern = Pattern.compile("(?:豆瓣|IMDB|烂番茄)[\s:：]*(\\d+\\.\\d+)");
+            Matcher m = scorePattern.matcher(text);
+            if (m.find()) {
+                try {
+                    BigDecimal score = new BigDecimal(m.group(1));
+                    if (score.compareTo(BigDecimal.ZERO) > 0 && score.compareTo(new BigDecimal("10")) <= 0) {
+                        return score;
+                    }
+                } catch (Exception ignored) {}
+            }
+            // 也处理百分比格式（烂番茄 94% -> 9.4）
+            Pattern pctPattern = Pattern.compile("烂番茄[\s:：]*(\\d+)%");
+            Matcher pm = pctPattern.matcher(text);
+            if (pm.find()) {
+                try {
+                    int pct = Integer.parseInt(pm.group(1));
+                    return new BigDecimal(pct).divide(new BigDecimal("10"), 1, BigDecimal.ROUND_HALF_UP);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Fallback: 从 meta description 提取
+        return extractScoreFromDescription(doc);
     }
 
     private Integer extractEpisodeCount(Document doc) {
