@@ -665,6 +665,7 @@ public class CrawlerCore {
 
         int magnetSort = 0;
         int onlineSort = 0;
+        int cloudSort = 0;
 
         // Magnet links
         Elements magnetLinks = doc.select("a[href^=magnet:]");
@@ -704,8 +705,8 @@ public class CrawlerCore {
             onlineMapper.insert(online);
         }
 
-        // Cloud disk links
-        Elements cloudLinks = doc.select("a[href*=pan.baidu], a[href*=quark], a[href*=lanzou], a[href*=xunlei]");
+        // Cloud disk links (百度/夸克/迅雷/UC/阿里/123/蓝奏)
+        Elements cloudLinks = doc.select("a[href*=pan.baidu], a[href*=quark], a[href*=lanzou], a[href*=xunlei], a[href*=uc.cn], a[href*=alipan], a[href*=aliyundrive], a[href*=123pan], a[href*=123.com]");
         for (Element el : cloudLinks) {
             String href = el.attr("href");
             if (href.isEmpty() || href.startsWith("javascript")) continue;
@@ -717,7 +718,7 @@ public class CrawlerCore {
             cloud.setDiskType(detectDiskType(href));
             cloud.setTitle(text);
             cloud.setUrl(href);
-            cloud.setSort(0);
+            cloud.setSort(cloudSort++);
             cloudMapper.insert(cloud);
         }
     }
@@ -852,6 +853,9 @@ public class CrawlerCore {
         if (url.contains("quark")) return "quark";
         if (url.contains("lanzou") || url.contains("lanzouk")) return "lanzou";
         if (url.contains("xunlei") || url.contains("thunder")) return "xunlei";
+        if (url.contains("uc.cn") || url.contains("drive.uc")) return "uc";
+        if (url.contains("alipan") || url.contains("aliyundrive") || url.contains("ali.com")) return "ali";
+        if (url.contains("123pan") || url.contains("123.com")) return "123";
         return "other";
     }
 
