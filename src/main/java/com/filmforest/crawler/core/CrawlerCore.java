@@ -927,11 +927,19 @@ public class CrawlerCore {
 
     /** 从页面 tag 链接提取类型列表 */
     private String extractGenresFromTags(Document doc) {
-        Elements tagLinks = doc.select("a[href^='/ms/1--']");
+        // pkmp4 URL 格式: /ms/{type}---{genre}--------.html
+        // type 可能是 1(电影), 2(剧集), 3(综艺), 4(动漫), 30(短剧)
+        // 选择器匹配所有 /ms/ 开头且包含 --- 的链接
+        Elements tagLinks = doc.select("a[href*='/ms/'][href*='---']");
         List<String> genres = new ArrayList<>();
         for (Element link : tagLinks) {
+            String href = link.attr("href");
+            // 排除地区链接（格式 /ms/{type}-{region}----------.html，只有1个短横线分隔）
+            // 排除语言链接（格式 /ms/{type}----{lang}-------.html）
+            // 类型链接格式: /ms/{type}---{genre}--------.html (3个短横线后接genre)
+            if (!href.matches(".*/ms/\\d+---[^-].*")) continue;
             String t = link.text().trim();
-            if (!t.isEmpty() && t.length() < 20 && !t.matches(".*[0-9]+.*")) {
+            if (!t.isEmpty() && t.length() < 20 && !t.matches(".*\\d+.*")) {
                 genres.add(t);
             }
         }
@@ -948,10 +956,11 @@ public class CrawlerCore {
         try {
             return objectMapper.readValue(regionJson, new TypeReference<List<String>>() {});
         } catch (Exception e) {
-            // Fallback: 尝试从 /ms/1-{region}----------.html 链接提取
-            Elements tagLinks = doc.select("a[href^='/ms/1-']");
+            // Fallback: 尝试从 /ms/{type}-{region}----------.html 链接提取
+            // type 可能是 1(电影), 2(剧集), 30(短剧) 等
+            Elements tagLinks = doc.select("a[href*='/ms/'][href$='----------.html']");
             List<String> regions = new ArrayList<>();
-            Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国");
+            Set<String> knownRegions = Set.of("美国", "中国", "英国", "法国", "德国", "日本", "韩国", "香港", "台湾", "大陆", "印度", "加拿大", "澳大利亚", "西班牙", "意大利", "泰国", "中国大陆");
             for (Element link : tagLinks) {
                 String t = link.text().trim();
                 if (knownRegions.contains(t)) regions.add(t);
