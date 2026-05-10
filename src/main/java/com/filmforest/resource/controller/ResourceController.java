@@ -3,6 +3,7 @@ package com.filmforest.resource.controller;
 import com.filmforest.common.dto.Result;
 import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
+import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.service.ResourceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -68,12 +69,31 @@ public class ResourceController {
         return Result.ok(resourceService.deleteMagnetResource(id));
     }
 
+    // ===== 网盘资源 =====
+    @GetMapping("/cloud")
+    public Result<List<ResourceCloud>> listCloud(
+            @RequestParam(required = false) String contentType,
+            @RequestParam(required = false) Long contentId) {
+        return Result.ok(resourceService.listCloudResources(contentType, contentId));
+    }
+
+    @PostMapping("/cloud")
+    public Result<ResourceCloud> saveCloud(@RequestBody ResourceCloud resource) {
+        return Result.ok(resourceService.saveCloudResource(resource));
+    }
+
+    @DeleteMapping("/cloud/{id}")
+    public Result<Boolean> deleteCloud(@PathVariable Long id) {
+        return Result.ok(resourceService.deleteCloudResource(id));
+    }
+
     // ===== 全局统计 =====
     @GetMapping("/stats")
     public Result<Map<String, Object>> getStats() {
         Map<String, Object> stats = new HashMap<>();
         stats.put("online", resourceService.countOnline());
         stats.put("magnet", resourceService.countMagnet());
+        stats.put("cloud", resourceService.countCloud());
         stats.put("todayNew", resourceService.countTodayNew());
         return Result.ok(stats);
     }

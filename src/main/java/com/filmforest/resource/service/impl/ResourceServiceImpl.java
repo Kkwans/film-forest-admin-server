@@ -2,8 +2,10 @@ package com.filmforest.resource.service.impl;
 
 import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
+import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.mapper.ResourceOnlineMapper;
 import com.filmforest.resource.mapper.ResourceMagnetMapper;
+import com.filmforest.resource.mapper.ResourceCloudMapper;
 import com.filmforest.resource.service.ResourceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -17,9 +19,11 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         implements ResourceService {
 
     private final ResourceMagnetMapper magnetMapper;
+    private final ResourceCloudMapper cloudMapper;
 
-    public ResourceServiceImpl(ResourceMagnetMapper magnetMapper) {
+    public ResourceServiceImpl(ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper) {
         this.magnetMapper = magnetMapper;
+        this.cloudMapper = cloudMapper;
     }
 
     // ===== 在线资源 =====
@@ -88,6 +92,39 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         return magnetMapper.deleteById(id) > 0;
     }
 
+    // ===== 网盘资源 =====
+    @Override
+    public List<ResourceCloud> listCloudResources(String contentType, Long contentId) {
+        return cloudMapper.selectList(new LambdaQueryWrapper<ResourceCloud>()
+                .eq(contentType != null, ResourceCloud::getContentType, contentType)
+                .eq(contentId != null, ResourceCloud::getContentId, contentId)
+                .orderByAsc(ResourceCloud::getSort));
+    }
+
+    @Override
+    public List<ResourceCloud> listCloudByContentType(String contentType) {
+        return cloudMapper.selectList(new LambdaQueryWrapper<ResourceCloud>()
+                .eq(ResourceCloud::getContentType, contentType)
+                .orderByDesc(ResourceCloud::getCreatedAt)
+                .last("LIMIT 200"));
+    }
+
+    @Override
+    public ResourceCloud saveCloudResource(ResourceCloud resource) {
+        if (resource.getId() == null) {
+            resource.setCreatedAt(LocalDateTime.now());
+            cloudMapper.insert(resource);
+        } else {
+            cloudMapper.updateById(resource);
+        }
+        return resource;
+    }
+
+    @Override
+    public boolean deleteCloudResource(Long id) {
+        return cloudMapper.deleteById(id) > 0;
+    }
+
     // ===== 统计 =====
     @Override
     public long countOnline() {
@@ -100,12 +137,19 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     }
 
     @Override
+    public long countCloud() {
+        return cloudMapper.selectCount(null);
+    }
+
+    @Override
     public long countTodayNew() {
         LocalDateTime start = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
         long online = count(new LambdaQueryWrapper<ResourceOnline>()
                 .ge(ResourceOnline::getCreatedAt, start));
         long magnet = magnetMapper.selectCount(new LambdaQueryWrapper<ResourceMagnet>()
                 .ge(ResourceMagnet::getCreatedAt, start));
-        return online + magnet;
+        long cloud = cloudMapper.selectCount(new LambdaQueryWrapper<ResourceCloud>()
+                .ge(ResourceCloud::getCreatedAt, start));
+        return online + magnet + cloud;
     }
 }
