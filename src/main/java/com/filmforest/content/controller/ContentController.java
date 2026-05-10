@@ -286,13 +286,13 @@ public class ContentController {
                 results.add(item);
             }
         }
-        if (type == null || type.equals("short")) {
+        if (type == null || type.equals("short_drama") || type.equals("short")) {
             IPage<ShortDrama> sp = shortDramaService.pageList(page, size, null, null, null);
             for (ShortDrama s : sp.getRecords()) {
                 java.util.Map<String, Object> item = new java.util.HashMap<>();
                 item.put("id", s.getId());
                 item.put("title", s.getTitle());
-                item.put("type", "short");
+                item.put("type", "short_drama");
                 item.put("posterUrl", s.getPosterUrl());
                 item.put("year", s.getYear());
                 item.put("status", s.getStatus());
