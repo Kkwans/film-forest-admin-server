@@ -460,7 +460,10 @@ public class CrawlerCore {
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
             String actor = extractTextByLabel(doc, "主演");
+            String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
+            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            BigDecimal score = extractScore(doc);
             Integer totalEpisode = extractEpisodeCount(doc);
 
             Long contentId = extractContentId(detailUrl);
@@ -474,7 +477,10 @@ public class CrawlerCore {
             variety.setYear(year);
             variety.setStoryline(storyline);
             variety.setActor(toJsonArray(actor));
+            variety.setDirector(toJsonArray(director));
             variety.setGenre(toJsonArray(genre));
+            variety.setRegion(toJsonArray(region));
+            variety.setScoreDouban(score);
             variety.setTotalEpisode(totalEpisode);
             variety.setStatus(1);
 
@@ -556,6 +562,7 @@ public class CrawlerCore {
             Integer year = extractYear(doc);
             String storyline = extractStoryline(doc);
             String actor = extractTextByLabel(doc, "主演");
+            String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
             Integer totalEpisode = extractEpisodeCount(doc);
@@ -571,6 +578,7 @@ public class CrawlerCore {
             shortDrama.setYear(year);
             shortDrama.setStoryline(storyline);
             shortDrama.setActor(toJsonArray(actor));
+            shortDrama.setDirector(toJsonArray(director));
             shortDrama.setGenre(toJsonArray(genre));
             shortDrama.setRegion(toJsonArray(region));
             shortDrama.setTotalEpisode(totalEpisode);
