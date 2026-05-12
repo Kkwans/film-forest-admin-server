@@ -14,7 +14,6 @@ import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.mapper.ResourceMagnetMapper;
 import com.filmforest.resource.mapper.ResourceOnlineMapper;
 import com.filmforest.resource.mapper.ResourceCloudMapper;
-import com.filmforest.content.mapper.EpisodeMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -57,7 +56,6 @@ public class CrawlerCore {
     @Autowired private ResourceMagnetMapper magnetMapper;
     @Autowired private ResourceOnlineMapper onlineMapper;
     @Autowired private ResourceCloudMapper cloudMapper;
-    @Autowired private EpisodeMapper episodeMapper;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Pattern YEAR_PATTERN = Pattern.compile("((?:19|20)\\d{2})");
@@ -598,13 +596,17 @@ public class CrawlerCore {
         }
     }
 
-    // ========== Episode Extraction ==========
+    // ========== Episode -> ResourceOnline ==========
 
+    /**
+     * 解析播放链接，写入 resource_online（含剧集信息）
+     * 替代原 episode 表，播放链接 + 剧集元信息合一
+     */
     private void extractEpisodes(Document doc, String contentType, Long contentId) {
-        // 增量更新：删除旧剧集记录
-        episodeMapper.delete(new LambdaQueryWrapper<Episode>()
-                .eq(Episode::getContentType, contentType)
-                .eq(Episode::getContentId, contentId));
+        // 增量更新：删除旧的在线播放记录
+        onlineMapper.delete(new LambdaQueryWrapper<ResourceOnline>()
+                .eq(ResourceOnline::getContentType, contentType)
+                .eq(ResourceOnline::getContentId, contentId));
 
         // 解析在线播放区域的剧集链接
         // 格式: <li><a href="/py/475547-7-1.html" target="blank">第01集</a></li>
@@ -617,23 +619,24 @@ public class CrawlerCore {
             // 从文本提取集数: "第01集" -> 1
             Integer episodeNum = extractEpisodeNumber(text);
             if (episodeNum == null) {
-                // fallback: 从 URL 提取集数 /py/475547-7-1.html -> 1
                 episodeNum = extractEpisodeNumberFromUrl(href);
             }
             if (episodeNum == null) continue;
 
-            Episode episode = new Episode();
-            episode.setContentType(contentType);
-            episode.setContentId(contentId);
-            episode.setSeason(1);
-            episode.setEpisodeNumber(episodeNum);
-            episode.setTitle(text);
-            episodeMapper.insert(episode);
-            count++;
+            ResourceOnline online = new ResourceOnline();
+            online.setContentType(contentType);
+            online.setContentId(contentId);
+            online.setSeason(1);
+            online.setEpisodeNumber(episodeNum);
+            online.setEpisodeTitle(text);
+            online.setSourceName(text);
+            online.setSourceUrl(href.startsWith("http") ? href : BASE_URL + href);
+            online.setSort(count++);
+            onlineMapper.insert(online);
         }
 
         if (count > 0) {
-            log.info("Extracted {} episodes for {} {}", count, contentType, contentId);
+            log.info("Extracted {} play links for {} {}", count, contentType, contentId);
         }
     }
 

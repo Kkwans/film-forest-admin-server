@@ -17,14 +17,17 @@ public class Variety {
     private String posterUrl;
     private Integer year;
     private String director;
+    private String writer;                  // 编剧（JSON数组）
     private String actor;
     private String genre;
     private String region;
     private String language;
     private String releaseDate;
+    private Integer duration;               // 单期时长（分钟）
     private Integer totalEpisode;
     private String storyline;
     private BigDecimal scoreDouban;
+    private BigDecimal scoreImdb;           // IMDB评分
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

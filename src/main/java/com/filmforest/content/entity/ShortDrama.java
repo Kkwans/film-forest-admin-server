@@ -2,6 +2,7 @@ package com.filmforest.content.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -24,6 +25,8 @@ public class ShortDrama {
     private Integer totalEpisode;
     private Integer duration;
     private String storyline;
+    private BigDecimal scoreDouban;         // 豆瓣评分
+    private BigDecimal scoreImdb;           // IMDB评分
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

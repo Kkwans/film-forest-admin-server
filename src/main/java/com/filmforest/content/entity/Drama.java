@@ -23,6 +23,7 @@ public class Drama {
     private String region;
     private String language;
     private String releaseDate;
+    private Integer duration;               // 单集片长（分钟）
     private Integer totalEpisode;
     private String storyline;
     private BigDecimal scoreDouban;

@@ -16,11 +16,19 @@ public class ResourceCloud {
 
     private String contentType;      // movie/drama/variety/anime/short
     private Long contentId;
-    private Long episodeId;
-    private String diskType;        // baidu/quark/thunder/uc/ed2k
+    private String diskType;         // baidu/quark/thunder/uc/123
     private String title;            // 资源标题
-    private String url;             // 分享链接
+    private String url;              // 分享链接
     private String password;         // 提取密码
     private Integer sort;
+
+    @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt;
+
+    @TableLogic
+    @TableField("is_deleted")
+    private Integer deleted;
 }

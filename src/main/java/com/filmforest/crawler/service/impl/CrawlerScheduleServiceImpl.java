@@ -47,6 +47,10 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     @Override
     @Transactional
     public boolean saveSchedule(CrawlerSchedule schedule) {
+        // 修复 #6: genreFilter 是 JSON 列，空字符串/null/非法值统一转为 null
+        // 合法格式: 逗号分隔的中文标签 "爱情,科幻" 或 JSON 数组 "[\"爱情\",\"科幻\"]"
+        schedule.setGenreFilter(normalizeGenreFilter(schedule.getGenreFilter()));
+
         if (schedule.getId() == null) {
             schedule.setStatus("idle");
             schedule.setTotalRuns(0);
@@ -54,6 +58,46 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
             return scheduleMapper.insert(schedule) > 0;
         } else {
             return scheduleMapper.updateById(schedule) > 0;
+        }
+    }
+
+    /**
+     * 将 genreFilter 统一转为 JSON 数组字符串或 null。
+     * 输入: null / "" / "爱情,科幻" / "[\"爱情\",\"科幻\"]"
+     * 输出: null / "[\"爱情\",\"科幻\"]"
+     */
+    private String normalizeGenreFilter(String genreFilter) {
+        if (genreFilter == null || genreFilter.trim().isEmpty()) {
+            return null;
+        }
+        genreFilter = genreFilter.trim();
+        // 已经是 JSON 数组格式
+        if (genreFilter.startsWith("[") && genreFilter.endsWith("]")) {
+            // 验证是否合法 JSON
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                mapper.readTree(genreFilter);
+                // 空数组也返回 null
+                if ("[]".equals(genreFilter)) return null;
+                return genreFilter;
+            } catch (Exception e) {
+                // 非法 JSON，当作逗号分隔处理
+            }
+        }
+        // 逗号分隔格式 -> JSON 数组
+        String[] parts = genreFilter.split("[，,]");
+        java.util.List<String> genres = new java.util.ArrayList<>();
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                genres.add(trimmed);
+            }
+        }
+        if (genres.isEmpty()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(genres);
+        } catch (Exception e) {
+            return null;
         }
     }
 
