@@ -5,6 +5,8 @@ import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.resource.entity.ResourceSource;
+import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +24,9 @@ public class CrawlerController {
 
     @Autowired
     private CrawlerTaskLogMapper taskLogMapper;
+
+    @Autowired
+    private ResourceSourceMapper resourceSourceMapper;
 
     /** 获取所有定时配置 */
     @GetMapping("/schedules")
@@ -74,6 +79,16 @@ public class CrawlerController {
             wrapper.eq(CrawlerTaskLog::getScheduleId, scheduleId);
         }
         return Result.ok(taskLogMapper.selectList(wrapper));
+    }
+
+    /** 获取资源来源列表（爬虫配置用） */
+    @GetMapping("/sources")
+    public Result<List<ResourceSource>> listSources() {
+        return Result.ok(resourceSourceMapper.selectList(
+            new LambdaQueryWrapper<ResourceSource>()
+                .eq(ResourceSource::getEnabled, 1)
+                .orderByAsc(ResourceSource::getSort)
+        ));
     }
 
     /** 获取爬虫状态概览 */

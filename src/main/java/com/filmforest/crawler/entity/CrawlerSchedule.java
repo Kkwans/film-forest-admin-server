@@ -25,6 +25,8 @@ public class CrawlerSchedule {
     private LocalDateTime nextRunTime;
     private Integer totalRuns;
     private Integer totalItems;
+    private Integer lastCrawledPage;  // 断点续爬：上次爬到第几页
+    private Long lastCrawledId;       // 断点续爬：上次爬到哪个内容ID
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

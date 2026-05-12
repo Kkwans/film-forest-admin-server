@@ -204,6 +204,45 @@ public class ContentController {
         return Result.ok(shortDramaService.removeById(id));
     }
 
+    // ==================== Genre 列表（爬虫配置用） ====================
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    /**
+     * 获取指定内容类型的所有 genre 标签（去重）
+     * 用于爬虫配置的 genre_filter 多选
+     */
+    @GetMapping("/genres")
+    public Result<java.util.List<String>> getGenres(@RequestParam String contentType) {
+        java.util.Set<String> genres = new java.util.TreeSet<>();
+        String table;
+        switch (contentType) {
+            case "movie": table = "movie"; break;
+            case "drama": table = "drama"; break;
+            case "variety": table = "variety"; break;
+            case "anime": table = "anime"; break;
+            case "short": table = "short_drama"; break;
+            default: return Result.ok(java.util.Collections.emptyList());
+        }
+        try {
+            java.util.List<String> genreJsons = jdbcTemplate.queryForList(
+                "SELECT genre FROM " + table + " WHERE genre IS NOT NULL AND genre != '[]'",
+                String.class
+            );
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (String json : genreJsons) {
+                try {
+                    java.util.List<String> arr = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {});
+                    genres.addAll(arr);
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            return Result.fail("获取 genre 失败: " + e.getMessage());
+        }
+        return Result.ok(new java.util.ArrayList<>(genres));
+    }
+
     // ==================== 统计 ====================
 
     @GetMapping("/stats")
