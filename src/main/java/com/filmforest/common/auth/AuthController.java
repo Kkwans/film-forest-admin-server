@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -21,15 +23,15 @@ import java.util.Map;
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     @Autowired
     private UserMapper userMapper;
 
     /** 登录 */
     @PostMapping("/login")
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
-        if (req.getUsername() == null || req.getPassword() == null) {
-            return Result.fail("用户名和密码不能为空");
-        }
+        log.info("登录请求: username={}", req.getUsername());
 
         User user = userMapper.selectOne(
             new LambdaQueryWrapper<User>()
@@ -38,19 +40,23 @@ public class AuthController {
         );
 
         if (user == null) {
+            log.warn("登录失败: 用户不存在, username={}", req.getUsername());
             return Result.fail("用户不存在");
         }
 
         // 验证密码（SHA-256 哈希）
         if (!hashPassword(req.getPassword()).equals(user.getPasswordHash())) {
+            log.warn("登录失败: 密码错误, username={}", req.getUsername());
             return Result.fail("密码错误");
         }
 
         if (user.getStatus() != null && user.getStatus() == 0) {
+            log.warn("登录失败: 账号已禁用, userId={}", user.getId());
             return Result.fail("账号已被禁用");
         }
 
         String token = JwtUtil.generateToken(user.getId(), user.getUsername());
+        log.info("登录成功: userId={}, username={}", user.getId(), user.getUsername());
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
@@ -66,18 +72,14 @@ public class AuthController {
     /** 注册（管理员） */
     @PostMapping("/register")
     public Result<Map<String, Object>> register(@Valid @RequestBody LoginRequest req) {
-        if (req.getUsername() == null || req.getPassword() == null) {
-            return Result.fail("用户名和密码不能为空");
-        }
-        if (req.getUsername().length() < 3 || req.getPassword().length() < 6) {
-            return Result.fail("用户名至少3位，密码至少6位");
-        }
+        log.info("注册请求: username={}", req.getUsername());
 
         // 检查用户名是否已存在
         Long count = userMapper.selectCount(
             new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())
         );
         if (count > 0) {
+            log.warn("注册失败: 用户名已存在, username={}", req.getUsername());
             return Result.fail("用户名已存在");
         }
 
@@ -89,6 +91,7 @@ public class AuthController {
         userMapper.insert(user);
 
         String token = JwtUtil.generateToken(user.getId(), user.getUsername());
+        log.info("注册成功: userId={}, username={}", user.getId(), user.getUsername());
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
@@ -105,16 +108,19 @@ public class AuthController {
     public Result<Map<String, Object>> refresh(jakarta.servlet.http.HttpServletRequest request) {
         String auth = request.getHeader("Authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {
+            log.warn("Token 刷新失败: 缺少 Authorization 头");
             return Result.fail("Token 无效");
         }
         String token = auth.substring(7);
         if (!JwtUtil.validateToken(token)) {
+            log.warn("Token 刷新失败: Token 已过期");
             return Result.fail("Token 已过期");
         }
 
         Long userId = JwtUtil.getUserId(token);
         String username = JwtUtil.getUsername(token);
         String newToken = JwtUtil.generateToken(userId, username);
+        log.info("Token 刷新成功: userId={}, username={}", userId, username);
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", newToken);

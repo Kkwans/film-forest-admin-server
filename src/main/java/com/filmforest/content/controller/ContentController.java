@@ -9,6 +9,8 @@ import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -23,6 +25,8 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/content")
 public class ContentController {
+
+    private static final Logger log = LoggerFactory.getLogger(ContentController.class);
 
     @Autowired private MovieService movieService;
     @Autowired private DramaService dramaService;
@@ -63,6 +67,7 @@ public class ContentController {
     @PostMapping("/movies")
     public Result<Movie> createMovie(@Valid @RequestBody Movie movie) {
         movieService.save(movie);
+        log.info("创建电影: id={}, title={}", movie.getId(), movie.getTitle());
         return Result.ok(movie);
     }
 
@@ -70,11 +75,13 @@ public class ContentController {
     public Result<Movie> updateMovie(@PathVariable Long id, @Valid @RequestBody Movie movie) {
         movie.setId(id);
         movieService.updateById(movie);
+        log.info("更新电影: id={}, title={}", id, movie.getTitle());
         return Result.ok(movie);
     }
 
     @DeleteMapping("/movies/{id}")
     public Result<Boolean> deleteMovie(@PathVariable Long id) {
+        log.info("删除电影: id={}", id);
         return Result.ok(movieService.removeById(id));
     }
 
@@ -99,6 +106,7 @@ public class ContentController {
     @PostMapping("/dramas")
     public Result<Drama> createDrama(@Valid @RequestBody Drama drama) {
         dramaService.save(drama);
+        log.info("创建剧集: id={}, title={}", drama.getId(), drama.getTitle());
         return Result.ok(drama);
     }
 
@@ -106,11 +114,13 @@ public class ContentController {
     public Result<Drama> updateDrama(@PathVariable Long id, @Valid @RequestBody Drama drama) {
         drama.setId(id);
         dramaService.updateById(drama);
+        log.info("更新剧集: id={}, title={}", id, drama.getTitle());
         return Result.ok(drama);
     }
 
     @DeleteMapping("/dramas/{id}")
     public Result<Boolean> deleteDrama(@PathVariable Long id) {
+        log.info("删除剧集: id={}", id);
         return Result.ok(dramaService.removeById(id));
     }
 
@@ -135,6 +145,7 @@ public class ContentController {
     @PostMapping("/varieties")
     public Result<Variety> createVariety(@Valid @RequestBody Variety variety) {
         varietyService.save(variety);
+        log.info("创建综艺: id={}, title={}", variety.getId(), variety.getTitle());
         return Result.ok(variety);
     }
 
@@ -142,11 +153,13 @@ public class ContentController {
     public Result<Variety> updateVariety(@PathVariable Long id, @Valid @RequestBody Variety variety) {
         variety.setId(id);
         varietyService.updateById(variety);
+        log.info("更新综艺: id={}, title={}", id, variety.getTitle());
         return Result.ok(variety);
     }
 
     @DeleteMapping("/varieties/{id}")
     public Result<Boolean> deleteVariety(@PathVariable Long id) {
+        log.info("删除综艺: id={}", id);
         return Result.ok(varietyService.removeById(id));
     }
 
@@ -171,6 +184,7 @@ public class ContentController {
     @PostMapping("/animes")
     public Result<Anime> createAnime(@Valid @RequestBody Anime anime) {
         animeService.save(anime);
+        log.info("创建动漫: id={}, title={}", anime.getId(), anime.getTitle());
         return Result.ok(anime);
     }
 
@@ -178,11 +192,13 @@ public class ContentController {
     public Result<Anime> updateAnime(@PathVariable Long id, @Valid @RequestBody Anime anime) {
         anime.setId(id);
         animeService.updateById(anime);
+        log.info("更新动漫: id={}, title={}", id, anime.getTitle());
         return Result.ok(anime);
     }
 
     @DeleteMapping("/animes/{id}")
     public Result<Boolean> deleteAnime(@PathVariable Long id) {
+        log.info("删除动漫: id={}", id);
         return Result.ok(animeService.removeById(id));
     }
 
@@ -207,6 +223,7 @@ public class ContentController {
     @PostMapping("/short-dramas")
     public Result<ShortDrama> createShortDrama(@Valid @RequestBody ShortDrama shortDrama) {
         shortDramaService.save(shortDrama);
+        log.info("创建短剧: id={}, title={}", shortDrama.getId(), shortDrama.getTitle());
         return Result.ok(shortDrama);
     }
 
@@ -214,11 +231,13 @@ public class ContentController {
     public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @Valid @RequestBody ShortDrama shortDrama) {
         shortDrama.setId(id);
         shortDramaService.updateById(shortDrama);
+        log.info("更新短剧: id={}, title={}", id, shortDrama.getTitle());
         return Result.ok(shortDrama);
     }
 
     @DeleteMapping("/short-dramas/{id}")
     public Result<Boolean> deleteShortDrama(@PathVariable Long id) {
+        log.info("删除短剧: id={}", id);
         return Result.ok(shortDramaService.removeById(id));
     }
 
@@ -253,8 +272,10 @@ public class ContentController {
                     // 跳过无法解析的 JSON
                 }
             }
+            log.debug("获取 genre 列表: contentType={}, 共 {} 个", contentType, genres.size());
             return Result.ok(new ArrayList<>(genres));
         } catch (Exception e) {
+            log.error("获取 genre 列表失败: contentType={}", contentType, e);
             return Result.fail("获取 genre 失败: " + e.getMessage());
         }
     }

@@ -26,6 +26,7 @@ public class GlobalExceptionHandler {
                 .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
                 .reduce((a, b) -> a + "; " + b)
                 .orElse("参数校验失败");
+        log.warn("参数校验失败: {}", message);
         return Result.fail(HttpStatus.BAD_REQUEST.value(), message);
     }
 
@@ -44,6 +45,7 @@ public class GlobalExceptionHandler {
     /** 业务异常（可直接抛出，携带友好提示） */
     @ExceptionHandler(BusinessException.class)
     public Result<?> handleBusinessException(BusinessException e) {
+        log.warn("业务异常: code={}, message={}", e.getCode(), e.getMessage());
         return Result.fail(e.getCode(), e.getMessage());
     }
 

@@ -6,6 +6,8 @@ import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.service.ResourceService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +19,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/admin/resources")
 public class ResourceController {
+
+    private static final Logger log = LoggerFactory.getLogger(ResourceController.class);
 
     @Autowired
     private ResourceService resourceService;
@@ -31,11 +35,14 @@ public class ResourceController {
 
     @PostMapping("/online")
     public Result<ResourceOnline> saveOnline(@Valid @RequestBody ResourceOnline resource) {
-        return Result.ok(resourceService.saveOnlineResource(resource));
+        ResourceOnline saved = resourceService.saveOnlineResource(resource);
+        log.info("保存在线资源: id={}, contentType={}, contentId={}", saved.getId(), resource.getContentType(), resource.getContentId());
+        return Result.ok(saved);
     }
 
     @DeleteMapping("/online/{id}")
     public Result<Boolean> deleteOnline(@PathVariable Long id) {
+        log.info("删除在线资源: id={}", id);
         return Result.ok(resourceService.deleteOnlineResource(id));
     }
 
@@ -58,11 +65,14 @@ public class ResourceController {
 
     @PostMapping("/magnet")
     public Result<ResourceMagnet> saveMagnet(@Valid @RequestBody ResourceMagnet resource) {
-        return Result.ok(resourceService.saveMagnetResource(resource));
+        ResourceMagnet saved = resourceService.saveMagnetResource(resource);
+        log.info("保存磁力资源: id={}, contentType={}, contentId={}", saved.getId(), resource.getContentType(), resource.getContentId());
+        return Result.ok(saved);
     }
 
     @DeleteMapping("/magnet/{id}")
     public Result<Boolean> deleteMagnet(@PathVariable Long id) {
+        log.info("删除磁力资源: id={}", id);
         return Result.ok(resourceService.deleteMagnetResource(id));
     }
 
@@ -76,11 +86,14 @@ public class ResourceController {
 
     @PostMapping("/cloud")
     public Result<ResourceCloud> saveCloud(@Valid @RequestBody ResourceCloud resource) {
-        return Result.ok(resourceService.saveCloudResource(resource));
+        ResourceCloud saved = resourceService.saveCloudResource(resource);
+        log.info("保存网盘资源: id={}, contentType={}, contentId={}", saved.getId(), resource.getContentType(), resource.getContentId());
+        return Result.ok(saved);
     }
 
     @DeleteMapping("/cloud/{id}")
     public Result<Boolean> deleteCloud(@PathVariable Long id) {
+        log.info("删除网盘资源: id={}", id);
         return Result.ok(resourceService.deleteCloudResource(id));
     }
 
@@ -92,16 +105,20 @@ public class ResourceController {
 
     @PostMapping("/sources")
     public Result<ResourceSource> saveSource(@Valid @RequestBody ResourceSource source) {
-        return Result.ok(resourceService.saveSource(source));
+        ResourceSource saved = resourceService.saveSource(source);
+        log.info("保存资源来源: id={}, name={}", saved.getId(), source.getName());
+        return Result.ok(saved);
     }
 
     @DeleteMapping("/sources/{id}")
     public Result<Boolean> deleteSource(@PathVariable Long id) {
+        log.info("删除资源来源: id={}", id);
         return Result.ok(resourceService.deleteSource(id));
     }
 
     @PostMapping("/sources/{id}/toggle")
     public Result<Boolean> toggleSource(@PathVariable Long id, @RequestParam boolean enabled) {
+        log.info("切换资源来源状态: id={}, enabled={}", id, enabled);
         return Result.ok(resourceService.toggleSource(id, enabled));
     }
 

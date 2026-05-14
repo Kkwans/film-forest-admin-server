@@ -8,6 +8,8 @@ import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +21,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/crawler")
 public class CrawlerController {
+
+    private static final Logger log = LoggerFactory.getLogger(CrawlerController.class);
 
     @Autowired
     private CrawlerScheduleService scheduleService;
@@ -44,30 +48,36 @@ public class CrawlerController {
     /** 保存/更新配置 */
     @PostMapping("/schedule")
     public Result<Boolean> saveSchedule(@Valid @RequestBody CrawlerSchedule schedule) {
-        return Result.ok(scheduleService.saveSchedule(schedule));
+        boolean saved = scheduleService.saveSchedule(schedule);
+        log.info("保存爬虫配置: id={}, name={}", schedule.getId(), schedule.getName());
+        return Result.ok(saved);
     }
 
     /** 删除配置 */
     @DeleteMapping("/schedule/{id}")
     public Result<Boolean> deleteSchedule(@PathVariable Long id) {
+        log.info("删除爬虫配置: id={}", id);
         return Result.ok(scheduleService.deleteSchedule(id));
     }
 
     /** 启动爬虫 */
     @PostMapping("/start/{id}")
     public Result<Boolean> startCrawler(@PathVariable Long id) {
+        log.info("启动爬虫: scheduleId={}", id);
         return Result.ok(scheduleService.startCrawler(id));
     }
 
     /** 停止爬虫 */
     @PostMapping("/stop/{id}")
     public Result<Boolean> stopCrawler(@PathVariable Long id) {
+        log.info("停止爬虫: scheduleId={}", id);
         return Result.ok(scheduleService.stopCrawler(id));
     }
 
     /** 切换启用状态 */
     @PostMapping("/toggle/{id}")
     public Result<Boolean> toggleEnabled(@PathVariable Long id, @RequestParam boolean enabled) {
+        log.info("切换爬虫状态: scheduleId={}, enabled={}", id, enabled);
         return Result.ok(scheduleService.toggleEnabled(id, enabled));
     }
 
