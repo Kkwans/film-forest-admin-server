@@ -17,17 +17,25 @@ spring:
       max-wait: 60000
       time-between-eviction-runs-millis: 60000
       min-evictable-idle-time-millis: 300000
+      max-evictable-idle-time-millis: 900000
       validation-query: SELECT 1
       test-while-idle: true
       test-on-borrow: false
       test-on-return: false
+      keep-alive: true
+      keep-alive-between-time-millis: 60000
+      remove-abandoned: true
+      remove-abandoned-timeout-millis: 300000
+      log-abandoned: true
+      filters: stat,wall
+      connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=5000
 
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
   type-aliases-package: com.filmforest.content.entity
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     db-config:
       id-type: auto
