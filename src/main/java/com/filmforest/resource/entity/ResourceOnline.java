@@ -1,6 +1,8 @@
 package com.filmforest.resource.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -14,7 +16,10 @@ public class ResourceOnline {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotBlank(message = "内容类型不能为空")
     private String contentType;      // movie/drama/variety/anime/short
+
+    @NotNull(message = "内容 ID 不能为空")
     private Long contentId;          // 内容ID
 
     // 剧集信息（替代原 episode 表）
@@ -23,6 +28,7 @@ public class ResourceOnline {
     private String episodeTitle;     // 集标题
 
     private String sourceName;       // 来源名称
+    @NotBlank(message = "播放 URL 不能为空")
     private String sourceUrl;        // 播放URL
     private Integer sort;
 

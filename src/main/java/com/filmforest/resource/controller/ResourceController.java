@@ -7,6 +7,7 @@ import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.service.ResourceService;
 import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -29,7 +30,7 @@ public class ResourceController {
     }
 
     @PostMapping("/online")
-    public Result<ResourceOnline> saveOnline(@RequestBody ResourceOnline resource) {
+    public Result<ResourceOnline> saveOnline(@Valid @RequestBody ResourceOnline resource) {
         return Result.ok(resourceService.saveOnlineResource(resource));
     }
 
@@ -56,7 +57,7 @@ public class ResourceController {
     }
 
     @PostMapping("/magnet")
-    public Result<ResourceMagnet> saveMagnet(@RequestBody ResourceMagnet resource) {
+    public Result<ResourceMagnet> saveMagnet(@Valid @RequestBody ResourceMagnet resource) {
         return Result.ok(resourceService.saveMagnetResource(resource));
     }
 
@@ -74,7 +75,7 @@ public class ResourceController {
     }
 
     @PostMapping("/cloud")
-    public Result<ResourceCloud> saveCloud(@RequestBody ResourceCloud resource) {
+    public Result<ResourceCloud> saveCloud(@Valid @RequestBody ResourceCloud resource) {
         return Result.ok(resourceService.saveCloudResource(resource));
     }
 
@@ -90,7 +91,7 @@ public class ResourceController {
     }
 
     @PostMapping("/sources")
-    public Result<ResourceSource> saveSource(@RequestBody ResourceSource source) {
+    public Result<ResourceSource> saveSource(@Valid @RequestBody ResourceSource source) {
         return Result.ok(resourceService.saveSource(source));
     }
 

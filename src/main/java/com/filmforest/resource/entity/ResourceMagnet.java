@@ -1,6 +1,8 @@
 package com.filmforest.resource.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -14,9 +16,15 @@ public class ResourceMagnet {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotBlank(message = "内容类型不能为空")
     private String contentType;      // movie/drama/variety/anime/short
+
+    @NotNull(message = "内容 ID 不能为空")
     private Long contentId;
+
     private String title;            // 资源标题（如"HD高清"）
+
+    @NotBlank(message = "磁力链接不能为空")
     private String magnetUrl;        // 磁力链接
     private String resolution;       // 分辨率（1080p/4K等）
     private Boolean hasSubtitle;     // 是否有字幕

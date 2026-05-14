@@ -1,6 +1,7 @@
 package com.filmforest.content.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -16,6 +17,7 @@ public class Variety {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotBlank(message = "综艺标题不能为空")
     private String title;
     private String alias;
     private String posterUrl;

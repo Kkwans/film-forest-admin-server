@@ -5,6 +5,9 @@ import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.*;
 import java.security.MessageDigest;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +26,7 @@ public class AuthController {
 
     /** 登录 */
     @PostMapping("/login")
-    public Result<Map<String, Object>> login(@RequestBody LoginRequest req) {
+    public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         if (req.getUsername() == null || req.getPassword() == null) {
             return Result.fail("用户名和密码不能为空");
         }
@@ -62,7 +65,7 @@ public class AuthController {
 
     /** 注册（管理员） */
     @PostMapping("/register")
-    public Result<Map<String, Object>> register(@RequestBody LoginRequest req) {
+    public Result<Map<String, Object>> register(@Valid @RequestBody LoginRequest req) {
         if (req.getUsername() == null || req.getPassword() == null) {
             return Result.fail("用户名和密码不能为空");
         }
@@ -154,8 +157,14 @@ public class AuthController {
 
     /** 登录/注册请求体 */
     public static class LoginRequest {
+        @NotBlank(message = "用户名不能为空")
+        @Size(min = 3, max = 30, message = "用户名长度 3~30 位")
         private String username;
+
+        @NotBlank(message = "密码不能为空")
+        @Size(min = 6, max = 100, message = "密码长度至少 6 位")
         private String password;
+
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }

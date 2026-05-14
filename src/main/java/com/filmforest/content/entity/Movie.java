@@ -1,6 +1,7 @@
 package com.filmforest.content.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -15,6 +16,7 @@ public class Movie {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotBlank(message = "电影标题不能为空")
     private String title;                    // 标题
     private String alias;                   // 别名（JSON数组）
     private String posterUrl;                // 海报URL

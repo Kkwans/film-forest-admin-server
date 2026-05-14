@@ -9,6 +9,7 @@ import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -42,7 +43,7 @@ public class CrawlerController {
 
     /** 保存/更新配置 */
     @PostMapping("/schedule")
-    public Result<Boolean> saveSchedule(@RequestBody CrawlerSchedule schedule) {
+    public Result<Boolean> saveSchedule(@Valid @RequestBody CrawlerSchedule schedule) {
         return Result.ok(scheduleService.saveSchedule(schedule));
     }
 

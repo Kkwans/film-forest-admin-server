@@ -8,6 +8,7 @@ import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -60,13 +61,13 @@ public class ContentController {
     }
 
     @PostMapping("/movies")
-    public Result<Movie> createMovie(@RequestBody Movie movie) {
+    public Result<Movie> createMovie(@Valid @RequestBody Movie movie) {
         movieService.save(movie);
         return Result.ok(movie);
     }
 
     @PutMapping("/movies/{id}")
-    public Result<Movie> updateMovie(@PathVariable Long id, @RequestBody Movie movie) {
+    public Result<Movie> updateMovie(@PathVariable Long id, @Valid @RequestBody Movie movie) {
         movie.setId(id);
         movieService.updateById(movie);
         return Result.ok(movie);
@@ -96,13 +97,13 @@ public class ContentController {
     }
 
     @PostMapping("/dramas")
-    public Result<Drama> createDrama(@RequestBody Drama drama) {
+    public Result<Drama> createDrama(@Valid @RequestBody Drama drama) {
         dramaService.save(drama);
         return Result.ok(drama);
     }
 
     @PutMapping("/dramas/{id}")
-    public Result<Drama> updateDrama(@PathVariable Long id, @RequestBody Drama drama) {
+    public Result<Drama> updateDrama(@PathVariable Long id, @Valid @RequestBody Drama drama) {
         drama.setId(id);
         dramaService.updateById(drama);
         return Result.ok(drama);
@@ -132,13 +133,13 @@ public class ContentController {
     }
 
     @PostMapping("/varieties")
-    public Result<Variety> createVariety(@RequestBody Variety variety) {
+    public Result<Variety> createVariety(@Valid @RequestBody Variety variety) {
         varietyService.save(variety);
         return Result.ok(variety);
     }
 
     @PutMapping("/varieties/{id}")
-    public Result<Variety> updateVariety(@PathVariable Long id, @RequestBody Variety variety) {
+    public Result<Variety> updateVariety(@PathVariable Long id, @Valid @RequestBody Variety variety) {
         variety.setId(id);
         varietyService.updateById(variety);
         return Result.ok(variety);
@@ -168,13 +169,13 @@ public class ContentController {
     }
 
     @PostMapping("/animes")
-    public Result<Anime> createAnime(@RequestBody Anime anime) {
+    public Result<Anime> createAnime(@Valid @RequestBody Anime anime) {
         animeService.save(anime);
         return Result.ok(anime);
     }
 
     @PutMapping("/animes/{id}")
-    public Result<Anime> updateAnime(@PathVariable Long id, @RequestBody Anime anime) {
+    public Result<Anime> updateAnime(@PathVariable Long id, @Valid @RequestBody Anime anime) {
         anime.setId(id);
         animeService.updateById(anime);
         return Result.ok(anime);
@@ -204,13 +205,13 @@ public class ContentController {
     }
 
     @PostMapping("/short-dramas")
-    public Result<ShortDrama> createShortDrama(@RequestBody ShortDrama shortDrama) {
+    public Result<ShortDrama> createShortDrama(@Valid @RequestBody ShortDrama shortDrama) {
         shortDramaService.save(shortDrama);
         return Result.ok(shortDrama);
     }
 
     @PutMapping("/short-dramas/{id}")
-    public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @RequestBody ShortDrama shortDrama) {
+    public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @Valid @RequestBody ShortDrama shortDrama) {
         shortDrama.setId(id);
         shortDramaService.updateById(shortDrama);
         return Result.ok(shortDrama);
