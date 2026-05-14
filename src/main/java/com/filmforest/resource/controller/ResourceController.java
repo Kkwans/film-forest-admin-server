@@ -41,14 +41,9 @@ public class ResourceController {
     @GetMapping("/online/stats")
     public Result<Map<String, Object>> statsOnline() {
         Map<String, Object> stats = new HashMap<>();
+        // 使用单次 GROUP BY 查询替代 5 次全量加载（每类型最多 200 条记录 → 单次 COUNT 聚合）
         stats.put("total", resourceService.countOnline());
-        stats.put("byType", Map.of(
-                "movie", resourceService.listOnlineByContentType("movie").size(),
-                "drama", resourceService.listOnlineByContentType("drama").size(),
-                "variety", resourceService.listOnlineByContentType("variety").size(),
-                "anime", resourceService.listOnlineByContentType("anime").size(),
-                "short", resourceService.listOnlineByContentType("short").size()
-        ));
+        stats.put("byType", resourceService.countOnlineByContentType());
         return Result.ok(stats);
     }
 

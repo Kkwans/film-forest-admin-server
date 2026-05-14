@@ -38,4 +38,7 @@ public interface ResourceService {
     long countMagnet();
     long countCloud();
     long countTodayNew();
+
+    /** 按内容类型分组统计在线资源数量（单次查询替代 5 次全量加载） */
+    java.util.Map<String, Long> countOnlineByContentType();
 }

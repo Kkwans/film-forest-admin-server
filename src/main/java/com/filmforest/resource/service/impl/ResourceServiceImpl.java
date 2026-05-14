@@ -180,6 +180,7 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     @Override
     public long countTodayNew() {
         LocalDateTime start = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
+        // 3 次 COUNT 查询（已是 count 语义，无 N+1 问题）
         long online = count(new LambdaQueryWrapper<ResourceOnline>()
                 .ge(ResourceOnline::getCreatedAt, start));
         long magnet = magnetMapper.selectCount(new LambdaQueryWrapper<ResourceMagnet>()
@@ -187,5 +188,36 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         long cloud = cloudMapper.selectCount(new LambdaQueryWrapper<ResourceCloud>()
                 .ge(ResourceCloud::getCreatedAt, start));
         return online + magnet + cloud;
+    }
+
+    @Override
+    public java.util.Map<String, Long> countOnlineByContentType() {
+        // 使用 GROUP BY 单次查询获取各类型数量（替代 5 次 list().size()，每类型最多 200 条 → 单次 COUNT）
+        java.util.Map<String, Long> result = new java.util.HashMap<>();
+        result.put("movie", 0L);
+        result.put("drama", 0L);
+        result.put("variety", 0L);
+        result.put("anime", 0L);
+        result.put("short", 0L);
+        try {
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, Object>> rows = getBaseMapper()
+                    .selectMaps(new LambdaQueryWrapper<ResourceOnline>()
+                            .select("content_type AS contentType", "COUNT(*) AS cnt")
+                            .groupBy(ResourceOnline::getContentType));
+            for (java.util.Map<String, Object> row : rows) {
+                String type = (String) row.get("contentType");
+                Long cnt = ((Number) row.get("cnt")).longValue();
+                result.put(type, cnt);
+            }
+        } catch (Exception e) {
+            // fallback: 逐个 count（不含完整记录加载）
+            result.put("movie", count(new LambdaQueryWrapper<ResourceOnline>().eq(ResourceOnline::getContentType, "movie")));
+            result.put("drama", count(new LambdaQueryWrapper<ResourceOnline>().eq(ResourceOnline::getContentType, "drama")));
+            result.put("variety", count(new LambdaQueryWrapper<ResourceOnline>().eq(ResourceOnline::getContentType, "variety")));
+            result.put("anime", count(new LambdaQueryWrapper<ResourceOnline>().eq(ResourceOnline::getContentType, "anime")));
+            result.put("short", count(new LambdaQueryWrapper<ResourceOnline>().eq(ResourceOnline::getContentType, "short")));
+        }
+        return result;
     }
 }

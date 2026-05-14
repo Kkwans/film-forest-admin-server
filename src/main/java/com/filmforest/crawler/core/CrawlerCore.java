@@ -736,15 +736,13 @@ public class CrawlerCore {
 
     private void extractMovieResources(Document doc, String contentType, Long contentId) {
         // 增量更新：删除旧资源记录，重新插入（确保磁力/网盘链接时效性）
+        // 注意：online 资源由 extractEpisodes 统一处理，此处只清理磁力和网盘
         magnetMapper.delete(new LambdaQueryWrapper<ResourceMagnet>()
                 .eq(ResourceMagnet::getContentType, contentType)
                 .eq(ResourceMagnet::getContentId, contentId));
         cloudMapper.delete(new LambdaQueryWrapper<ResourceCloud>()
                 .eq(ResourceCloud::getContentType, contentType)
                 .eq(ResourceCloud::getContentId, contentId));
-        onlineMapper.delete(new LambdaQueryWrapper<ResourceOnline>()
-                .eq(ResourceOnline::getContentType, contentType)
-                .eq(ResourceOnline::getContentId, contentId));
 
         int magnetSort = 0;
         int onlineSort = 0;
