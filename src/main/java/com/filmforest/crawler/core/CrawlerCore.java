@@ -63,6 +63,9 @@ public class CrawlerCore {
     private final ConcurrentHashMap<Long, AtomicBoolean> runningTasks = new ConcurrentHashMap<>();
     private volatile Boolean proxyAvailable = null;
 
+    /** 速率限制：请求间隔毫秒数（由 schedule.rateLimitMs 配置） */
+    private volatile int rateLimitMs = 0;
+
     // ========== Async Entry Point ==========
 
     public void executeCrawl(Long scheduleId, Long logId, AtomicBoolean stopFlag) {
@@ -89,22 +92,26 @@ public class CrawlerCore {
             // 断点续爬：从上次停止的页码继续
             int startPage = schedule.getLastCrawledPage() != null ? schedule.getLastCrawledPage() : 1;
             if (startPage < 1) startPage = 1;
-            log.info("[CrawlerCore] Starting crawl for type={}, startPage={}, batchSize={}", type, startPage, batchSize);
+            // 应用速率限制
+            this.rateLimitMs = schedule.getRateLimitMs() != null ? Math.max(0, schedule.getRateLimitMs()) : 0;
+            // 解析 genreFilter（JSON 数组字符串）
+            Set<String> genreFilter = parseGenreFilter(schedule.getGenreFilter());
+            log.info("[CrawlerCore] Starting crawl for type={}, startPage={}, batchSize={}, rateLimitMs={}, genreFilter={}", type, startPage, batchSize, rateLimitMs, genreFilter);
 
             if ("movie".equals(type)) {
-                int[] r = crawlMovieList(startPage, batchSize, stopFlag, scheduleId);
+                int[] r = crawlMovieList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("drama".equals(type)) {
-                int[] r = crawlDramaList(startPage, batchSize, stopFlag, scheduleId);
+                int[] r = crawlDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("variety".equals(type)) {
-                int[] r = crawlVarietyList(startPage, batchSize, stopFlag, scheduleId);
+                int[] r = crawlVarietyList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("anime".equals(type)) {
-                int[] r = crawlAnimeList(startPage, batchSize, stopFlag, scheduleId);
+                int[] r = crawlAnimeList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("short_drama".equals(type) || "short".equals(type)) {
-                int[] r = crawlShortDramaList(startPage, batchSize, stopFlag, scheduleId);
+                int[] r = crawlShortDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
                 added = r[0]; updated = r[1]; total = r[2];
             }
 
@@ -152,7 +159,7 @@ public class CrawlerCore {
         return BASE_URL + "/vt/" + type + (page > 1 ? "-" + page : "") + ".html";
     }
 
-    public int[] crawlMovieList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId) {
+    public int[] crawlMovieList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
@@ -174,7 +181,7 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlMovieDetail(detailUrl, stopFlag);
+                int[] r = crawlMovieDetail(detailUrl, stopFlag, genreFilter);
                 log.debug("crawlMovieDetail completed for: {} -> added:{} updated:{}", detailUrl, r[0], r[1]);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
@@ -187,7 +194,7 @@ public class CrawlerCore {
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlMovieDetail(String detailUrl, AtomicBoolean stopFlag) {
+    public int[] crawlMovieDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
         Document doc = fetchWithRetry(detailUrl);
         if (doc == null) return new int[]{0, 0, 0};
 
@@ -226,6 +233,11 @@ public class CrawlerCore {
 
             // 类型/地区: 从 tag 链接提取 (<a href="/ms/1---剧情--------.html">剧情</a>)
             String genre = extractGenresFromTags(doc);
+            // 类型筛选：如果配置了 genreFilter 且当前内容的类型不在过滤列表中，跳过
+            if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
+                log.debug("Skipping {} due to genre filter", detailUrl);
+                return new int[]{0, 0, 0};
+            }
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
 
             // 评分: 优先从豆瓣链接提取，fallback 到 meta description
@@ -280,7 +292,7 @@ public class CrawlerCore {
     // ========== Drama Crawler ==========
 
     // type=2 剧集列表: /vt/2.html, /vt/2-2.html
-    public int[] crawlDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId) {
+    public int[] crawlDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
@@ -302,7 +314,7 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlDramaDetail(detailUrl, stopFlag);
+                int[] r = crawlDramaDetail(detailUrl, stopFlag, genreFilter);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
@@ -313,7 +325,7 @@ public class CrawlerCore {
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlDramaDetail(String detailUrl, AtomicBoolean stopFlag) {
+    public int[] crawlDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
         Document doc = fetchWithRetry(detailUrl);
         if (doc == null) return new int[]{0, 0, 0};
 
@@ -331,6 +343,11 @@ public class CrawlerCore {
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            // 类型筛选：如果配置了 genreFilter 且当前内容的类型不在过滤列表中，跳过
+            if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
+                log.debug("Skipping {} due to genre filter", detailUrl);
+                return new int[]{0, 0, 0};
+            }
             BigDecimal score = extractScore(doc);
             BigDecimal imdbScore = extractImdbScore(doc);
             Integer totalEpisode = extractEpisodeCount(doc);
@@ -381,7 +398,7 @@ public class CrawlerCore {
     // ========== Variety Crawler ==========
 
     // type=3 综艺列表
-    public int[] crawlVarietyList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId) {
+    public int[] crawlVarietyList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
@@ -403,7 +420,7 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlVarietyDetail(detailUrl, stopFlag);
+                int[] r = crawlVarietyDetail(detailUrl, stopFlag, genreFilter);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
@@ -415,7 +432,7 @@ public class CrawlerCore {
     }
 
     // type=4 动漫列表
-    public int[] crawlAnimeList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId) {
+    public int[] crawlAnimeList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
@@ -437,7 +454,7 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlAnimeDetail(detailUrl, stopFlag);
+                int[] r = crawlAnimeDetail(detailUrl, stopFlag, genreFilter);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
@@ -449,7 +466,7 @@ public class CrawlerCore {
     }
 
     // type=30 短剧列表
-    public int[] crawlShortDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId) {
+    public int[] crawlShortDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
@@ -471,7 +488,7 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlShortDramaDetail(detailUrl, stopFlag);
+                int[] r = crawlShortDramaDetail(detailUrl, stopFlag, genreFilter);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
@@ -482,7 +499,7 @@ public class CrawlerCore {
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlVarietyDetail(String detailUrl, AtomicBoolean stopFlag) {
+    public int[] crawlVarietyDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
         Document doc = fetchWithRetry(detailUrl);
         if (doc == null) return new int[]{0, 0, 0};
 
@@ -498,6 +515,10 @@ public class CrawlerCore {
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
+                log.debug("Skipping {} due to genre filter", detailUrl);
+                return new int[]{0, 0, 0};
+            }
             BigDecimal score = extractScore(doc);
             BigDecimal imdbScore = extractImdbScore(doc);
             Integer totalEpisode = extractEpisodeCount(doc);
@@ -547,7 +568,7 @@ public class CrawlerCore {
 
     // ========== Resource Extraction ==========
 
-    public int[] crawlAnimeDetail(String detailUrl, AtomicBoolean stopFlag) {
+    public int[] crawlAnimeDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
         Document doc = fetchWithRetry(detailUrl);
         if (doc == null) return new int[]{0, 0, 0};
 
@@ -563,6 +584,10 @@ public class CrawlerCore {
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
+                log.debug("Skipping {} due to genre filter", detailUrl);
+                return new int[]{0, 0, 0};
+            }
             Integer totalEpisode = extractEpisodeCount(doc);
             String language = extractLanguage(doc);
             Integer duration = extractDuration(doc);
@@ -608,7 +633,7 @@ public class CrawlerCore {
         }
     }
 
-    public int[] crawlShortDramaDetail(String detailUrl, AtomicBoolean stopFlag) {
+    public int[] crawlShortDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
         Document doc = fetchWithRetry(detailUrl);
         if (doc == null) return new int[]{0, 0, 0};
 
@@ -624,6 +649,10 @@ public class CrawlerCore {
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
             List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
+                log.debug("Skipping {} due to genre filter", detailUrl);
+                return new int[]{0, 0, 0};
+            }
             Integer totalEpisode = extractEpisodeCount(doc);
             String language = extractLanguage(doc);
             Integer duration = extractDuration(doc);
@@ -768,22 +797,25 @@ public class CrawlerCore {
         }
 
         // Online playback sources
-        Elements playLinks = doc.select("a[href*=player], a[href^=/play/], .stui-vodlist__item a[href]");
-        for (Element el : playLinks) {
-            String href = el.attr("href");
-            if (href.isEmpty() || href.startsWith("javascript")) continue;
-            if (!href.contains("player") && !href.startsWith("http")) continue;
+        // 注意：对于 drama/variety/anime/short，online 资源由 extractEpisodes() 统一管理，此处只处理 movie 类型
+        if ("movie".equals(contentType)) {
+            Elements playLinks = doc.select("a[href*=player], a[href^=/play/], .stui-vodlist__item a[href]");
+            for (Element el : playLinks) {
+                String href = el.attr("href");
+                if (href.isEmpty() || href.startsWith("javascript")) continue;
+                if (!href.contains("player") && !href.startsWith("http")) continue;
 
-            String name = el.text().trim();
-            if (name.isEmpty()) name = "Online Source";
+                String name = el.text().trim();
+                if (name.isEmpty()) name = "Online Source";
 
-            ResourceOnline online = new ResourceOnline();
-            online.setContentType(contentType);
-            online.setContentId(contentId);
-            online.setSourceName(name);
-            online.setSourceUrl(href.startsWith("http") ? href : BASE_URL + href);
-            online.setSort(onlineSort++);
-            onlineMapper.insert(online);
+                ResourceOnline online = new ResourceOnline();
+                online.setContentType(contentType);
+                online.setContentId(contentId);
+                online.setSourceName(name);
+                online.setSourceUrl(href.startsWith("http") ? href : BASE_URL + href);
+                online.setSort(onlineSort++);
+                onlineMapper.insert(online);
+            }
         }
 
         // Cloud disk links (百度/夸克/迅雷/UC/阿里/123/蓝奏)
@@ -856,6 +888,10 @@ public class CrawlerCore {
     // ========== HTTP Helper ==========
 
     private Document fetchWithRetry(String url) {
+        // 速率限制：请求间延迟
+        if (rateLimitMs > 0) {
+            try { Thread.sleep(rateLimitMs); } catch (InterruptedException ignored) {}
+        }
         for (int i = 0; i < RETRY_TIMES; i++) {
             try {
                 log.info("[HTTP-FETCH] GET {}", url);
@@ -884,6 +920,33 @@ public class CrawlerCore {
         }
         log.error("[HTTP-FETCH] GAVE UP after {} retries: {}", RETRY_TIMES, url);
         return null;
+    }
+
+    // ========== Genre Filter Helpers ==========
+
+    /** 解析 genreFilter JSON 数组字符串为 Set */
+    private Set<String> parseGenreFilter(String genreFilterJson) {
+        if (genreFilterJson == null || genreFilterJson.trim().isEmpty()) return null;
+        try {
+            List<String> list = objectMapper.readValue(genreFilterJson, new TypeReference<List<String>>() {});
+            return list.isEmpty() ? null : new HashSet<>(list);
+        } catch (Exception e) {
+            log.warn("Failed to parse genreFilter: {}", genreFilterJson);
+            return null;
+        }
+    }
+
+    /** 检查内容的 genre 是否匹配过滤器（任一类型命中即通过） */
+    private boolean matchesGenreFilter(String genreJson, Set<String> genreFilter) {
+        if (genreFilter == null || genreFilter.isEmpty()) return true;
+        if (genreJson == null || genreJson.isEmpty()) return false;
+        try {
+            List<String> genres = objectMapper.readValue(genreJson, new TypeReference<List<String>>() {});
+            for (String g : genres) {
+                if (genreFilter.contains(g)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     // ========== Field Parsing Helpers ==========

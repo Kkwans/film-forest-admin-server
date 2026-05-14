@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -36,6 +37,13 @@ public class CrawlerScheduler {
 
     /** 正在执行的任务（防止重复触发） */
     private final ConcurrentHashMap<Long, Boolean> runningJobs = new ConcurrentHashMap<>();
+
+    /** 爬虫执行线程池（限制并发数，防止资源耗尽） */
+    private final ExecutorService crawlerExecutor = new ThreadPoolExecutor(
+            2, 4, 60L, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(16),
+            new ThreadPoolExecutor.CallerRunsPolicy()
+    );
 
     /** 每分钟执行一次：检查所有启用的调度，触发到期的任务 */
     @Scheduled(fixedRate = 60000) // 每60秒
@@ -91,13 +99,12 @@ public class CrawlerScheduler {
         return cron.trim(); // 已经是 6 段
     }
 
-    /** 触发爬虫任务（异步执行） */
+    /** 触发爬虫任务（线程池执行，限制并发） */
     private void triggerCrawl(CrawlerSchedule schedule) {
         runningJobs.put(schedule.getId(), true);
         log.info("[SCHEDULER] 触发爬虫: id={} name={} cron={}", schedule.getId(), schedule.getName(), schedule.getCronExpression());
 
-        // 异步执行，不阻塞主线程
-        new Thread(() -> {
+        crawlerExecutor.submit(() -> {
             try {
                 scheduleService.startCrawler(schedule.getId());
             } catch (Exception e) {
@@ -105,6 +112,6 @@ public class CrawlerScheduler {
             } finally {
                 runningJobs.remove(schedule.getId());
             }
-        }).start();
+        });
     }
 }
