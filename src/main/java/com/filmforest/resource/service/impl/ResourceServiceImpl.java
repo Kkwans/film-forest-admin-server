@@ -200,13 +200,13 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         result.put("anime", 0L);
         result.put("short", 0L);
         try {
-            @SuppressWarnings("unchecked")
-            java.util.List<java.util.Map<String, Object>> rows = getBaseMapper()
-                    .selectMaps(new LambdaQueryWrapper<ResourceOnline>()
-                            .select("content_type AS contentType", "COUNT(*) AS cnt")
-                            .groupBy(ResourceOnline::getContentType));
+            // 使用 QueryWrapper（非 Lambda）支持原始 SQL 列名
+            com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ResourceOnline> wrapper =
+                    new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+            wrapper.select("content_type", "COUNT(*) AS cnt").groupBy("content_type");
+            java.util.List<java.util.Map<String, Object>> rows = getBaseMapper().selectMaps(wrapper);
             for (java.util.Map<String, Object> row : rows) {
-                String type = (String) row.get("contentType");
+                String type = (String) row.get("content_type");
                 Long cnt = ((Number) row.get("cnt")).longValue();
                 result.put(type, cnt);
             }
