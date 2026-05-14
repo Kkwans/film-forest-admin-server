@@ -290,35 +290,40 @@ public class ContentController {
             IPage<Movie> p = movieService.pageList(page, size, null, null, null);
             for (Movie m : p.getRecords()) {
                 results.add(toSummaryMap(m.getId(), "movie", m.getTitle(),
-                        m.getPosterUrl(), m.getYear(), m.getScoreDouban(), m.getStatus(), m.getCreatedAt()));
+                        m.getPosterUrl(), m.getYear(), m.getScoreDouban(), 
+                        m.getStatus() != null ? String.valueOf(m.getStatus()) : null, m.getCreatedAt()));
             }
         }
         if (type == null || "drama".equals(type)) {
             IPage<Drama> p = dramaService.pageList(page, size, null, null, null);
             for (Drama d : p.getRecords()) {
                 results.add(toSummaryMap(d.getId(), "drama", d.getTitle(),
-                        d.getPosterUrl(), d.getYear(), d.getScoreDouban(), d.getStatus(), d.getCreatedAt()));
+                        d.getPosterUrl(), d.getYear(), d.getScoreDouban(), 
+                        d.getStatus() != null ? String.valueOf(d.getStatus()) : null, d.getCreatedAt()));
             }
         }
         if (type == null || "variety".equals(type)) {
             IPage<Variety> p = varietyService.pageList(page, size, null, null, null);
             for (Variety v : p.getRecords()) {
                 results.add(toSummaryMap(v.getId(), "variety", v.getTitle(),
-                        v.getPosterUrl(), v.getYear(), v.getScoreDouban(), v.getStatus(), v.getCreatedAt()));
+                        v.getPosterUrl(), v.getYear(), v.getScoreDouban(), 
+                        v.getStatus() != null ? String.valueOf(v.getStatus()) : null, v.getCreatedAt()));
             }
         }
         if (type == null || "anime".equals(type)) {
             IPage<Anime> p = animeService.pageList(page, size, null, null, null);
             for (Anime a : p.getRecords()) {
                 results.add(toSummaryMap(a.getId(), "anime", a.getTitle(),
-                        a.getPosterUrl(), a.getYear(), a.getScoreDouban(), a.getStatus(), a.getCreatedAt()));
+                        a.getPosterUrl(), a.getYear(), a.getScoreDouban(), 
+                        a.getStatus() != null ? String.valueOf(a.getStatus()) : null, a.getCreatedAt()));
             }
         }
         if (type == null || "short_drama".equals(type) || "short".equals(type)) {
             IPage<ShortDrama> p = shortDramaService.pageList(page, size, null, null, null);
             for (ShortDrama s : p.getRecords()) {
                 results.add(toSummaryMap(s.getId(), "short_drama", s.getTitle(),
-                        s.getPosterUrl(), s.getYear(), null, s.getStatus(), s.getCreatedAt()));
+                        s.getPosterUrl(), s.getYear(), null, 
+                        s.getStatus() != null ? String.valueOf(s.getStatus()) : null, s.getCreatedAt()));
             }
         }
 
