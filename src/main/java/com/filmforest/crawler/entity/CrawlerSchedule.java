@@ -6,6 +6,10 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("crawler_schedule")
+/**
+ * 爬虫调度配置实体
+ * 对应 crawler_schedule 表，存储定时爬取任务的配置信息
+ */
 public class CrawlerSchedule {
 
     @TableId(type = IdType.AUTO)

@@ -1,18 +1,23 @@
 package com.filmforest.content.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.*;
 
 /**
  * 管理端内容管理 API
  * 对应 admin-ui /content 页面
+ *
+ * 提供电影、剧集、综艺、动漫、短剧的 CRUD 操作，
+ * 以及 genre 列表查询、内容统计、合并列表等辅助接口。
  */
 @RestController
 @RequestMapping("/api/content")
@@ -23,6 +28,18 @@ public class ContentController {
     @Autowired private VarietyService varietyService;
     @Autowired private AnimeService animeService;
     @Autowired private ShortDramaService shortDramaService;
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
+    /** 内容类型 → 数据库表名映射 */
+    private static final Map<String, String> CONTENT_TYPE_TABLE_MAP = Map.of(
+            "movie", "movie",
+            "drama", "drama",
+            "variety", "variety",
+            "anime", "anime",
+            "short", "short_drama"
+    );
 
     // ==================== 电影 ====================
 
@@ -206,66 +223,47 @@ public class ContentController {
 
     // ==================== Genre 列表（爬虫配置用） ====================
 
-    @Autowired
-    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
-
     /**
      * 获取指定内容类型的所有 genre 标签（去重）
      * 用于爬虫配置的 genre_filter 多选
+     *
+     * 直接从数据库中提取 genre JSON 字段，解析后去重返回。
+     * 不做白名单过滤，保留数据库中实际存在的所有类型。
      */
     @GetMapping("/genres")
-    public Result<java.util.List<String>> getGenres(@RequestParam String contentType) {
-        java.util.Set<String> genres = new java.util.TreeSet<>();
-        String table;
-        switch (contentType) {
-            case "movie": table = "movie"; break;
-            case "drama": table = "drama"; break;
-            case "variety": table = "variety"; break;
-            case "anime": table = "anime"; break;
-            case "short": table = "short_drama"; break;
-            default: return Result.ok(java.util.Collections.emptyList());
+    public Result<List<String>> getGenres(@RequestParam String contentType) {
+        String table = CONTENT_TYPE_TABLE_MAP.get(contentType);
+        if (table == null) {
+            return Result.ok(Collections.emptyList());
         }
-        // 已知剧情类型白名单
-        java.util.List<String> knownGenreList = java.util.Arrays.asList(
-            "剧情", "喜剧", "动作", "爱情", "科幻", "动画", "悬疑", "惊悚", "恐怖",
-            "犯罪", "冒险", "奇幻", "战争", "历史", "传记", "家庭", "儿童", "音乐",
-            "歌舞", "纪录片", "纪录", "短片", "真人秀", "脱口秀", "喜剧片", "动作片",
-            "爱情片", "科幻片", "恐怖片", "犯罪片", "战争片", "奇幻片", "动画片",
-            "剧情片", "悬疑片", "惊悚片", "冒险片", "传记片", "历史片", "家庭片",
-            "音乐片", "西部", "武侠", "古装", "仙侠", "都市", "校园",
-            "青春", "励志", "热血", "搞笑", "治愈", "文艺", "丧尸", "人性",
-            "美食", "运动", "女性", "其它", "国产动漫", "日韩动漫", "大陆综艺",
-            "日韩综艺", "港台综艺", "欧美动漫", "现代都市", "女频恋爱", "古装仙侠"
-        );
-        java.util.Set<String> knownGenres = new java.util.HashSet<>(knownGenreList);
+
         try {
-            java.util.List<String> genreJsons = jdbcTemplate.queryForList(
-                "SELECT genre FROM " + table + " WHERE genre IS NOT NULL AND genre != '[]'",
-                String.class
+            List<String> genreJsons = jdbcTemplate.queryForList(
+                    "SELECT genre FROM " + table + " WHERE genre IS NOT NULL AND genre != '[]'",
+                    String.class
             );
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+            Set<String> genres = new TreeSet<>();
             for (String json : genreJsons) {
                 try {
-                    java.util.List<String> arr = mapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.List<String>>() {});
-                    for (String g : arr) {
-                        // 只保留已知剧情类型
-                        if (knownGenres.contains(g)) {
-                            genres.add(g);
-                        }
-                    }
-                } catch (Exception ignored) {}
+                    List<String> arr = JSON_MAPPER.readValue(json, new TypeReference<>() {});
+                    genres.addAll(arr);
+                } catch (Exception ignored) {
+                    // 跳过无法解析的 JSON
+                }
             }
+            return Result.ok(new ArrayList<>(genres));
         } catch (Exception e) {
             return Result.fail("获取 genre 失败: " + e.getMessage());
         }
-        return Result.ok(new java.util.ArrayList<>(genres));
     }
 
     // ==================== 统计 ====================
 
+    /** 获取各类型内容的数量统计 */
     @GetMapping("/stats")
-    public Result<java.util.Map<String, Object>> getStats() {
-        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+    public Result<Map<String, Object>> getStats() {
+        Map<String, Object> stats = new HashMap<>();
         stats.put("movies", movieService.count());
         stats.put("dramas", dramaService.count());
         stats.put("varieties", varietyService.count());
@@ -276,87 +274,85 @@ public class ContentController {
 
     // ==================== 合并列表（支持类型筛选） ====================
 
+    /**
+     * 获取所有类型内容的合并列表（支持按类型筛选）
+     * 返回精简的摘要信息，用于管理端列表展示
+     */
     @GetMapping("/all")
-    public Result<java.util.List<java.util.Map<String, Object>>> listAll(
+    public Result<List<Map<String, Object>>> listAll(
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-        java.util.List<java.util.Map<String, Object>> results = new java.util.ArrayList<>();
-        // 分类型查询
-        if (type == null || type.equals("movie")) {
-            IPage<Movie> mp = movieService.pageList(page, size, null, null, null);
-            for (Movie m : mp.getRecords()) {
-                java.util.Map<String, Object> item = new java.util.HashMap<>();
-                item.put("id", m.getId());
-                item.put("title", m.getTitle());
-                item.put("type", "movie");
-                item.put("posterUrl", m.getPosterUrl());
-                item.put("year", m.getYear());
-                item.put("scoreDouban", m.getScoreDouban());
-                item.put("status", m.getStatus());
-                item.put("createdAt", m.getCreatedAt());
-                results.add(item);
+
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        if (type == null || "movie".equals(type)) {
+            IPage<Movie> p = movieService.pageList(page, size, null, null, null);
+            for (Movie m : p.getRecords()) {
+                results.add(toSummaryMap(m.getId(), "movie", m.getTitle(),
+                        m.getPosterUrl(), m.getYear(), m.getScoreDouban(), m.getStatus(), m.getCreatedAt()));
             }
         }
-        if (type == null || type.equals("drama")) {
-            IPage<Drama> dp = dramaService.pageList(page, size, null, null, null);
-            for (Drama d : dp.getRecords()) {
-                java.util.Map<String, Object> item = new java.util.HashMap<>();
-                item.put("id", d.getId());
-                item.put("title", d.getTitle());
-                item.put("type", "drama");
-                item.put("posterUrl", d.getPosterUrl());
-                item.put("year", d.getYear());
-                item.put("scoreDouban", d.getScoreDouban());
-                item.put("status", d.getStatus());
-                item.put("createdAt", d.getCreatedAt());
-                results.add(item);
+        if (type == null || "drama".equals(type)) {
+            IPage<Drama> p = dramaService.pageList(page, size, null, null, null);
+            for (Drama d : p.getRecords()) {
+                results.add(toSummaryMap(d.getId(), "drama", d.getTitle(),
+                        d.getPosterUrl(), d.getYear(), d.getScoreDouban(), d.getStatus(), d.getCreatedAt()));
             }
         }
-        if (type == null || type.equals("variety")) {
-            IPage<Variety> vp = varietyService.pageList(page, size, null, null, null);
-            for (Variety v : vp.getRecords()) {
-                java.util.Map<String, Object> item = new java.util.HashMap<>();
-                item.put("id", v.getId());
-                item.put("title", v.getTitle());
-                item.put("type", "variety");
-                item.put("posterUrl", v.getPosterUrl());
-                item.put("year", v.getYear());
-                item.put("scoreDouban", v.getScoreDouban());
-                item.put("status", v.getStatus());
-                item.put("createdAt", v.getCreatedAt());
-                results.add(item);
+        if (type == null || "variety".equals(type)) {
+            IPage<Variety> p = varietyService.pageList(page, size, null, null, null);
+            for (Variety v : p.getRecords()) {
+                results.add(toSummaryMap(v.getId(), "variety", v.getTitle(),
+                        v.getPosterUrl(), v.getYear(), v.getScoreDouban(), v.getStatus(), v.getCreatedAt()));
             }
         }
-        if (type == null || type.equals("anime")) {
-            IPage<Anime> ap = animeService.pageList(page, size, null, null, null);
-            for (Anime a : ap.getRecords()) {
-                java.util.Map<String, Object> item = new java.util.HashMap<>();
-                item.put("id", a.getId());
-                item.put("title", a.getTitle());
-                item.put("type", "anime");
-                item.put("posterUrl", a.getPosterUrl());
-                item.put("year", a.getYear());
-                item.put("scoreDouban", a.getScoreDouban());
-                item.put("status", a.getStatus());
-                item.put("createdAt", a.getCreatedAt());
-                results.add(item);
+        if (type == null || "anime".equals(type)) {
+            IPage<Anime> p = animeService.pageList(page, size, null, null, null);
+            for (Anime a : p.getRecords()) {
+                results.add(toSummaryMap(a.getId(), "anime", a.getTitle(),
+                        a.getPosterUrl(), a.getYear(), a.getScoreDouban(), a.getStatus(), a.getCreatedAt()));
             }
         }
-        if (type == null || type.equals("short_drama") || type.equals("short")) {
-            IPage<ShortDrama> sp = shortDramaService.pageList(page, size, null, null, null);
-            for (ShortDrama s : sp.getRecords()) {
-                java.util.Map<String, Object> item = new java.util.HashMap<>();
-                item.put("id", s.getId());
-                item.put("title", s.getTitle());
-                item.put("type", "short_drama");
-                item.put("posterUrl", s.getPosterUrl());
-                item.put("year", s.getYear());
-                item.put("status", s.getStatus());
-                item.put("createdAt", s.getCreatedAt());
-                results.add(item);
+        if (type == null || "short_drama".equals(type) || "short".equals(type)) {
+            IPage<ShortDrama> p = shortDramaService.pageList(page, size, null, null, null);
+            for (ShortDrama s : p.getRecords()) {
+                results.add(toSummaryMap(s.getId(), "short_drama", s.getTitle(),
+                        s.getPosterUrl(), s.getYear(), null, s.getStatus(), s.getCreatedAt()));
             }
         }
+
         return Result.ok(results);
+    }
+
+    // ==================== 内部工具方法 ====================
+
+    /**
+     * 将内容记录转换为摘要 Map（用于合并列表接口）
+     *
+     * @param id        内容 ID
+     * @param type      内容类型标识
+     * @param title     标题
+     * @param posterUrl 海报 URL
+     * @param year      年份
+     * @param scoreDouban 豆瓣评分（可为 null）
+     * @param status    状态
+     * @param createdAt 创建时间
+     * @return 摘要 Map
+     */
+    private Map<String, Object> toSummaryMap(Long id, String type, String title,
+                                              String posterUrl, Integer year,
+                                              Object scoreDouban, String status,
+                                              Object createdAt) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("id", id);
+        item.put("title", title);
+        item.put("type", type);
+        item.put("posterUrl", posterUrl);
+        item.put("year", year);
+        item.put("scoreDouban", scoreDouban);
+        item.put("status", status);
+        item.put("createdAt", createdAt);
+        return item;
     }
 }

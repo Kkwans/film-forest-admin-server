@@ -7,6 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("drama")
+/**
+ * 电视剧实体类
+ * 对应数据库 drama 表，存储电视剧基本信息、评分和状态
+ */
 public class Drama {
 
     @TableId(type = IdType.AUTO)

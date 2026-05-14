@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8081
 
 spring:
   application:
@@ -37,5 +37,5 @@ mybatis-plus:
 
 logging:
   level:
-    com.filmforest: debug
-    com.filmforest.mapper: debug
+    com.filmforest: info
+    com.filmforest.mapper: warn

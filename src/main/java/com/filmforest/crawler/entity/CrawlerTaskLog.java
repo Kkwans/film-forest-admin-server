@@ -4,6 +4,10 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
+/**
+ * 爬虫任务日志实体
+ * 记录每次爬取任务的执行状态、抓取数量和耗时
+ */
 public class CrawlerTaskLog {
 
     private Long id;

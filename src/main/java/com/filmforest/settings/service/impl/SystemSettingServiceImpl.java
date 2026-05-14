@@ -13,6 +13,10 @@ import java.util.List;
 import java.util.Map;
 
 @Service
+/**
+ * 系统设置服务实现
+ * 提供设置项的 CRUD 和批量操作
+ */
 public class SystemSettingServiceImpl extends ServiceImpl<SystemSettingMapper, SystemSetting>
         implements SystemSettingService {
 

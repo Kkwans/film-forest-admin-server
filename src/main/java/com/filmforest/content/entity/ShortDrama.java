@@ -7,6 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("short_drama")
+/**
+ * 短剧实体类
+ * 对应数据库 short_drama 表，存储短剧基本信息、评分和状态
+ */
 public class ShortDrama {
 
     @TableId(type = IdType.AUTO)

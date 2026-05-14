@@ -11,6 +11,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 综艺服务实现
+ */
 public class VarietyServiceImpl extends ServiceImpl<VarietyMapper, Variety> implements VarietyService {
 
     @Override

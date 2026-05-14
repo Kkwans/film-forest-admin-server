@@ -7,6 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("anime")
+/**
+ * 动漫实体类
+ * 对应数据库 anime 表，存储动漫基本信息、评分和状态
+ */
 public class Anime {
 
     @TableId(type = IdType.AUTO)

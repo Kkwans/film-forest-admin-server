@@ -7,6 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @TableName("variety")
+/**
+ * 综艺实体类
+ * 对应数据库 variety 表，存储综艺节目基本信息、评分和状态
+ */
 public class Variety {
 
     @TableId(type = IdType.AUTO)

@@ -11,6 +11,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * 电影服务实现
+ */
 public class MovieServiceImpl extends ServiceImpl<MovieMapper, Movie> implements MovieService {
 
     @Override
