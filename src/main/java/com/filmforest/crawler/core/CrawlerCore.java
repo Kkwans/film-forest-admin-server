@@ -238,7 +238,7 @@ public class CrawlerCore {
                 log.debug("Skipping {} due to genre filter", detailUrl);
                 return new int[]{0, 0, 0};
             }
-            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            String region = toJsonArray(extractRegionFromTags(doc));
 
             // 评分: 优先从豆瓣链接提取，fallback 到 meta description
             BigDecimal score = extractScore(doc);
@@ -265,7 +265,7 @@ public class CrawlerCore {
             movie.setDirector(toJsonArray(director));
             movie.setWriter(toJsonArray(writer));
             movie.setGenre(toJsonArray(genre));
-            movie.setRegion(toJsonArray(region));
+            movie.setRegion(region);
             movie.setLanguage(language);
             movie.setDuration(duration);
             movie.setReleaseDate(releaseDate);
@@ -342,7 +342,7 @@ public class CrawlerCore {
             String actor = extractTextByLabel(doc, "主演");
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
-            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            String region = toJsonArray(extractRegionFromTags(doc));
             // 类型筛选：如果配置了 genreFilter 且当前内容的类型不在过滤列表中，跳过
             if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
                 log.debug("Skipping {} due to genre filter", detailUrl);
@@ -371,7 +371,7 @@ public class CrawlerCore {
             drama.setDirector(toJsonArray(director));
             drama.setWriter(toJsonArray(writer));
             drama.setGenre(toJsonArray(genre));
-            drama.setRegion(toJsonArray(region));
+            drama.setRegion(region);
             drama.setLanguage(language);
             drama.setDuration(duration);
             drama.setReleaseDate(releaseDate);
@@ -514,7 +514,7 @@ public class CrawlerCore {
             String actor = extractTextByLabel(doc, "主演");
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
-            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            String region = toJsonArray(extractRegionFromTags(doc));
             if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
                 log.debug("Skipping {} due to genre filter", detailUrl);
                 return new int[]{0, 0, 0};
@@ -542,7 +542,7 @@ public class CrawlerCore {
             variety.setDirector(toJsonArray(director));
             variety.setWriter(toJsonArray(writer));
             variety.setGenre(toJsonArray(genre));
-            variety.setRegion(toJsonArray(region));
+            variety.setRegion(region);
             variety.setLanguage(language);
             variety.setDuration(duration);
             variety.setReleaseDate(releaseDate);
@@ -583,7 +583,7 @@ public class CrawlerCore {
             String actor = extractTextByLabel(doc, "主演");
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
-            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            String region = toJsonArray(extractRegionFromTags(doc));
             if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
                 log.debug("Skipping {} due to genre filter", detailUrl);
                 return new int[]{0, 0, 0};
@@ -610,7 +610,7 @@ public class CrawlerCore {
             anime.setDirector(toJsonArray(director));
             anime.setWriter(toJsonArray(writer));
             anime.setGenre(toJsonArray(genre));
-            anime.setRegion(toJsonArray(region));
+            anime.setRegion(region);
             anime.setLanguage(language);
             anime.setDuration(duration);
             anime.setReleaseDate(releaseDate);
@@ -648,7 +648,7 @@ public class CrawlerCore {
             String actor = extractTextByLabel(doc, "主演");
             String director = extractTextByLabel(doc, "导演");
             String genre = extractGenresFromTags(doc);
-            List<String> regionList = extractRegionFromTags(doc); String region = "[]"; try { region = objectMapper.writeValueAsString(regionList); } catch (Exception ignored) {}
+            String region = toJsonArray(extractRegionFromTags(doc));
             if (genreFilter != null && !genreFilter.isEmpty() && !matchesGenreFilter(genre, genreFilter)) {
                 log.debug("Skipping {} due to genre filter", detailUrl);
                 return new int[]{0, 0, 0};
@@ -674,7 +674,7 @@ public class CrawlerCore {
             shortDrama.setActor(toJsonArray(actor));
             shortDrama.setDirector(toJsonArray(director));
             shortDrama.setGenre(toJsonArray(genre));
-            shortDrama.setRegion(toJsonArray(region));
+            shortDrama.setRegion(region);
             shortDrama.setLanguage(language);
             shortDrama.setDuration(duration);
             shortDrama.setReleaseDate(releaseDate);
@@ -890,7 +890,7 @@ public class CrawlerCore {
     private Document fetchWithRetry(String url) {
         // 速率限制：请求间延迟
         if (rateLimitMs > 0) {
-            try { Thread.sleep(rateLimitMs); } catch (InterruptedException ignored) {}
+            try { Thread.sleep(rateLimitMs); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
         for (int i = 0; i < RETRY_TIMES; i++) {
             try {
@@ -915,7 +915,7 @@ public class CrawlerCore {
                 }
             } catch (Exception e) {
                 log.warn("[HTTP-FETCH] FAIL {} ({}/{}): {} — retry in 2s", url, i + 1, RETRY_TIMES, e.getMessage());
-                try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+                try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
         log.error("[HTTP-FETCH] GAVE UP after {} retries: {}", RETRY_TIMES, url);
@@ -1131,6 +1131,11 @@ public class CrawlerCore {
     }
 
     /** 从页面 tag 判断地区 */
+    /** 将 List 序列化为 JSON 数组字符串，失败返回 "[]" */
+    private String toJsonArray(List<String> list) {
+        try { return objectMapper.writeValueAsString(list); } catch (Exception e) { return "[]"; }
+    }
+
     private List<String> extractRegionFromTags(Document doc) {
         // pkmp4.xyz: 地区字段结构与主演相同，使用 extractTextByLabel 逻辑
         String regionJson = extractTextByLabel(doc, "地区");
