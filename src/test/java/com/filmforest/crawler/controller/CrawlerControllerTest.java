@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -205,6 +206,180 @@ class CrawlerControllerTest {
                     .andExpect(jsonPath("$.data.total").value(2))
                     .andExpect(jsonPath("$.data.running").value(1))
                     .andExpect(jsonPath("$.data.idle").value(1));
+        }
+    }
+
+    // ========== TC-001~004: 基础配置 CRUD 详细验证 ==========
+
+    @Nested
+    @DisplayName("TC-001~004: 基础配置 CRUD API 详细验证")
+    class DetailedCrudTest {
+
+        @Test
+        @DisplayName("TC-001: 创建电影配置 - 返回 idle 状态 + batchSize=10")
+        void saveSchedule_newMovieConfig_shouldReturnIdleStatus() throws Exception {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setName("电影爬虫");
+            schedule.setContentType("movie");
+            schedule.setSourceSite("pkmp4.xyz");
+            schedule.setBatchSize(10);
+            schedule.setCronExpression("0 2 * * *");
+
+            when(scheduleService.saveSchedule(any())).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(schedule)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            // 验证 service 被调用且传入正确的参数
+            verify(scheduleService).saveSchedule(argThat(s ->
+                    s.getName().equals("电影爬虫") &&
+                    s.getContentType().equals("movie") &&
+                    s.getBatchSize() == 10
+            ));
+        }
+
+        @Test
+        @DisplayName("TC-002: 创建剧集配置 - cron=0 2 * * *")
+        void saveSchedule_newDramaConfig_shouldSaveWithCron() throws Exception {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setName("剧集爬虫");
+            schedule.setContentType("drama");
+            schedule.setSourceSite("pkmp4.xyz");
+            schedule.setCronExpression("0 2 * * *");
+
+            when(scheduleService.saveSchedule(any())).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(schedule)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
+
+            verify(scheduleService).saveSchedule(argThat(s ->
+                    s.getContentType().equals("drama") &&
+                    "0 2 * * *".equals(s.getCronExpression())
+            ));
+        }
+
+        @Test
+        @DisplayName("TC-003: 编辑已有配置 - id 存在时走 update 路径")
+        void saveSchedule_updateExisting_shouldCallSaveWithId() throws Exception {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setId(1L);
+            schedule.setName("电影爬虫-v2");
+            schedule.setContentType("movie");
+            schedule.setSourceSite("pkmp4.xyz");
+            schedule.setBatchSize(50);
+
+            when(scheduleService.saveSchedule(any())).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(schedule)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
+
+            verify(scheduleService).saveSchedule(argThat(s ->
+                    s.getId() != null && s.getId() == 1L &&
+                    s.getBatchSize() == 50
+            ));
+        }
+
+        @Test
+        @DisplayName("TC-004: 删除已有配置 - 配置删除成功")
+        void deleteSchedule_shouldCallServiceDelete() throws Exception {
+            when(scheduleService.deleteSchedule(1L)).thenReturn(true);
+
+            mockMvc.perform(delete("/api/crawler/schedule/1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            verify(scheduleService).deleteSchedule(1L);
+        }
+
+        @Test
+        @DisplayName("TC-004 补充: 删除不存在的配置 - 返回 false")
+        void deleteSchedule_notFound_shouldReturnFalse() throws Exception {
+            when(scheduleService.deleteSchedule(999L)).thenReturn(false);
+
+            mockMvc.perform(delete("/api/crawler/schedule/999"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(false));
+        }
+
+        @Test
+        @DisplayName("TC-001 补充: 创建配置缺少必填字段 - @Valid 校验失败")
+        void saveSchedule_missingRequiredFields_shouldReturn400() throws Exception {
+            // name 为空
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setContentType("movie");
+            schedule.setSourceSite("pkmp4.xyz");
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(schedule)))
+                    .andExpect(status().isOk()) // GlobalExceptionHandler 捕获后返回 200 + code=400
+                    .andExpect(jsonPath("$.code").value(400));
+
+            // 不应调用 service
+            verify(scheduleService, never()).saveSchedule(any());
+        }
+
+        @Test
+        @DisplayName("TC-040~041 API: 切换启用状态")
+        void toggleEnabled_shouldCallService() throws Exception {
+            when(scheduleService.toggleEnabled(1L, false)).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/toggle/1")
+                    .param("enabled", "false"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            verify(scheduleService).toggleEnabled(1L, false);
+        }
+
+        @Test
+        @DisplayName("TC-050 API: 启动爬虫")
+        void startCrawler_shouldCallService() throws Exception {
+            when(scheduleService.startCrawler(1L)).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/start/1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            verify(scheduleService).startCrawler(1L);
+        }
+
+        @Test
+        @DisplayName("TC-051 API: 启动不存在的爬虫 - 返回 false")
+        void startCrawler_notFound_shouldReturnFalse() throws Exception {
+            when(scheduleService.startCrawler(999L)).thenReturn(false);
+
+            mockMvc.perform(post("/api/crawler/start/999"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(false));
+        }
+
+        @Test
+        @DisplayName("TC-052 API: 停止爬虫")
+        void stopCrawler_shouldCallService() throws Exception {
+            when(scheduleService.stopCrawler(1L)).thenReturn(true);
+
+            mockMvc.perform(post("/api/crawler/stop/1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200))
+                    .andExpect(jsonPath("$.data").value(true));
+
+            verify(scheduleService).stopCrawler(1L);
         }
     }
 

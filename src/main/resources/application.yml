@@ -23,7 +23,7 @@ spring:
       test-on-borrow: false
       test-on-return: false
       keep-alive: true
-      keep-alive-between-time-millis: 60000
+      keep-alive-between-time-millis: 90000
       remove-abandoned: true
       remove-abandoned-timeout-millis: 300000
       log-abandoned: true

@@ -915,7 +915,7 @@ public class CrawlerCore {
                 }
             } catch (Exception e) {
                 log.warn("[HTTP-FETCH] FAIL {} ({}/{}): {} — retry in 2s", url, i + 1, RETRY_TIMES, e.getMessage());
-                try { Thread.sleep(2000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                try { Thread.sleep(2000); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
             }
         }
         log.error("[HTTP-FETCH] GAVE UP after {} retries: {}", RETRY_TIMES, url);
