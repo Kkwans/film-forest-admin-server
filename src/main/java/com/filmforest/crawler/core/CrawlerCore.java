@@ -1011,10 +1011,19 @@ public class CrawlerCore {
     }
 
     private Integer extractEpisodeCount(Document doc) {
+        // 优先从 .otherbox 提取 "XX集全" 格式
+        Element otherbox = doc.selectFirst(".otherbox");
+        if (otherbox != null) {
+            Matcher m = Pattern.compile("(\\d+)集[全更新完结]").matcher(otherbox.text());
+            if (m.find()) return Integer.parseInt(m.group(1));
+        }
+        // Fallback: 从 .total, .episode 提取
         Element el = doc.selectFirst(".total, .episode, [class*=episode]");
-        if (el == null) return null;
-        Matcher m = Pattern.compile("(\\d+)").matcher(el.text());
-        return m.find() ? Integer.parseInt(m.group(1)) : null;
+        if (el != null) {
+            Matcher m = Pattern.compile("(\\d+)").matcher(el.text());
+            if (m.find()) return Integer.parseInt(m.group(1));
+        }
+        return null;
     }
 
     private String extractResolution(String text) {
