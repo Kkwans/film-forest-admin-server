@@ -777,21 +777,25 @@ public class CrawlerCore {
         int onlineSort = 0;
         int cloudSort = 0;
 
-        // Magnet links
-        Elements magnetLinks = doc.select("a[href^=magnet:]");
+        // Magnet links — 只选 .down-list3 内的链接（有 title 属性和详细文本），跳过 span 内的 "磁力下载" 通用链接
+        Elements magnetLinks = doc.select("p.down-list3 > a[href^=magnet:]");
         for (Element el : magnetLinks) {
             String url = el.attr("href");
             if (!url.startsWith("magnet:")) continue;
-            String text = el.text();
+            // 优先用 title 属性（含完整资源名+大小），fallback 到文本
+            String titleAttr = el.attr("title").trim();
+            String text = el.text().trim();
+            String displayTitle = !titleAttr.isEmpty() ? titleAttr : text;
+            if (displayTitle.isEmpty() || displayTitle.equals("磁力下载")) continue;
 
             ResourceMagnet magnet = new ResourceMagnet();
             magnet.setContentType(contentType);
             magnet.setContentId(contentId);
-            magnet.setTitle(text);
+            magnet.setTitle(displayTitle);
             magnet.setMagnetUrl(url);
-            magnet.setResolution(extractResolution(text));
-            magnet.setHasSubtitle(text.contains("sub") || text.contains("zh") ? Boolean.TRUE : Boolean.FALSE);
-            magnet.setIsSpecialSub(text.contains("special") || text.contains("特效") ? Boolean.TRUE : Boolean.FALSE);
+            magnet.setResolution(extractResolution(displayTitle));
+            magnet.setHasSubtitle(displayTitle.contains("sub") || displayTitle.contains("字幕") || displayTitle.contains("zh") ? Boolean.TRUE : Boolean.FALSE);
+            magnet.setIsSpecialSub(displayTitle.contains("special") || displayTitle.contains("特效") ? Boolean.TRUE : Boolean.FALSE);
             magnet.setSort(magnetSort++);
             magnetMapper.insert(magnet);
         }
@@ -819,17 +823,22 @@ public class CrawlerCore {
         }
 
         // Cloud disk links (百度/夸克/迅雷/UC/阿里/123/蓝奏)
-        Elements cloudLinks = doc.select("a[href*=pan.baidu], a[href*=quark], a[href*=lanzou], a[href*=xunlei], a[href*=uc.cn], a[href*=alipan], a[href*=aliyundrive], a[href*=123pan], a[href*=123.com]");
+        // 只选 .down-list3 内的链接（有 title 属性和详细文本），跳过 span 内的 "网盘下载" 通用链接
+        Elements cloudLinks = doc.select("p.down-list3 > a[href*=pan.baidu], p.down-list3 > a[href*=quark], p.down-list3 > a[href*=lanzou], p.down-list3 > a[href*=xunlei], p.down-list3 > a[href*=uc.cn], p.down-list3 > a[href*=alipan], p.down-list3 > a[href*=aliyundrive], p.down-list3 > a[href*=123pan], p.down-list3 > a[href*=123.com]");
         for (Element el : cloudLinks) {
             String href = el.attr("href");
             if (href.isEmpty() || href.startsWith("javascript")) continue;
-            String text = el.text();
+            // 优先用 title 属性，fallback 到文本
+            String titleAttr = el.attr("title").trim();
+            String text = el.text().trim();
+            String displayTitle = !titleAttr.isEmpty() ? titleAttr : text;
+            if (displayTitle.isEmpty() || displayTitle.equals("网盘下载")) continue;
 
             ResourceCloud cloud = new ResourceCloud();
             cloud.setContentType(contentType);
             cloud.setContentId(contentId);
             cloud.setDiskType(detectDiskType(href));
-            cloud.setTitle(text);
+            cloud.setTitle(displayTitle);
             cloud.setUrl(href);
             cloud.setSort(cloudSort++);
             cloudMapper.insert(cloud);
