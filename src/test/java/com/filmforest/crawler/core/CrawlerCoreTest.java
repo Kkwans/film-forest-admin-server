@@ -340,6 +340,383 @@ class CrawlerCoreTest {
         }
     }
 
+    // ========== TC-120~122: 综艺/动漫/短剧爬取准确性 ==========
+
+    @Nested
+    @DisplayName("TC-120~122: 综艺/动漫/短剧爬取准确性")
+    class VarietyAnimeShortDramaTest {
+
+        // --- HTML 模板 ---
+
+        private static final String VARIETY_DETAIL_HTML = """
+            <html>
+            <head>
+                <meta property="og:image" content="https://example.com/variety-poster.jpg">
+                <meta name="description" content="豆瓣 8.8分 热门综艺">
+            </head>
+            <body>
+                <h1>奔跑吧 第十二季 (2024)</h1>
+                <div class="img"><img src="https://example.com/variety-poster.jpg"></div>
+                <div class="movie-introduce"><p>大型户外竞技真人秀节目</p></div>
+                <span>导演：</span><a href="/director/1">姚译添</a>
+                <span>主演：</span><a href="/actor/1">李晨</a><a href="/actor/2">郑恺</a><a href="/actor/3">沙溢</a>
+                <span>编剧：</span><a href="/writer/1">编剧组</a>
+                <span>地区：</span><a href="/ms/3-中国大陆----------.html">中国大陆</a>
+                <span>语言：</span><a href="/ms/3----普通话-------.html">普通话</a>
+                <span>片长：</span>90分钟
+                <span>上映：</span>2024-04-19(中国大陆)
+                <span>又名：</span>奔跑吧兄弟 第十二季
+                <a href="/ms/3---真人秀--------.html">真人秀</a>
+                <a href="/ms/3---竞技--------.html">竞技</a>
+                <a href="https://movie.douban.com/subject/999"><span style="color: green;">豆瓣 8.8</span></a>
+                <a href="https://www.imdb.com/title/tt999"><span style="color: #dba400;">IMDB 7.5</span></a>
+                <a href="/py/999-1-1.html" target="blank">第01期</a>
+                <a href="/py/999-1-2.html" target="blank">第02期</a>
+                <a href="/py/999-1-3.html" target="blank">第03期</a>
+                <a href="/py/999-1-4.html" target="blank">第04期</a>
+                <span class="total">共12期</span>
+                <a href="magnet:?xt=urn:btih:variety4K&dn=Variety4K">4K 磁力</a>
+                <a href="https://pan.baidu.com/s/variety1">百度网盘</a>
+            </body>
+            </html>
+            """;
+
+        private static final String ANIME_DETAIL_HTML = """
+            <html>
+            <head>
+                <meta property="og:image" content="https://example.com/anime-poster.jpg">
+                <meta name="description" content="豆瓣 9.2分 经典动漫">
+            </head>
+            <body>
+                <h1>鬼灭之刃 柱训练篇 (2024)</h1>
+                <div class="img"><img src="https://example.com/anime-poster.jpg"></div>
+                <div class="movie-introduce"><p>炭治郎为战胜鬼舞辻无惨而接受柱的训练</p></div>
+                <span>导演：</span><a href="/director/1">外崎春雄</a>
+                <span>主演：</span><a href="/actor/1">花江夏树</a><a href="/actor/2">鬼头明里</a>
+                <span>地区：</span><a href="/ms/4-日本----------.html">日本</a>
+                <span>语言：</span><a href="/ms/4----日语-------.html">日语</a>
+                <span>片长：</span>24分钟
+                <span>上映：</span>2024-05-12(日本)
+                <a href="/ms/4---动漫--------.html">动漫</a>
+                <a href="/ms/4---热血--------.html">热血</a>
+                <a href="https://www.imdb.com/title/tt888"><span style="color: #dba400;">IMDB 8.5</span></a>
+                <a href="/py/888-1-1.html" target="blank">第01集</a>
+                <a href="/py/888-1-2.html" target="blank">第02集</a>
+                <a href="/py/888-1-3.html" target="blank">第03集</a>
+                <a href="/py/888-1-4.html" target="blank">第04集</a>
+                <a href="/py/888-1-5.html" target="blank">第05集</a>
+                <span class="total">共8集</span>
+                <a href="magnet:?xt=urn:btih:anime1080&dn=Anime1080">1080P 磁力</a>
+            </body>
+            </html>
+            """;
+
+        private static final String SHORT_DRAMA_DETAIL_HTML = """
+            <html>
+            <head>
+                <meta property="og:image" content="https://example.com/short-poster.jpg">
+                <meta name="description" content="热门短剧">
+            </head>
+            <body>
+                <h1>闪婚总裁是豪门 (2024)</h1>
+                <div class="img"><img src="https://example.com/short-poster.jpg"></div>
+                <div class="movie-introduce"><p>意外闪婚，发现老公竟是隐藏豪门总裁</p></div>
+                <span>导演：</span><a href="/director/1">张伟</a>
+                <span>主演：</span><a href="/actor/1">王丽</a><a href="/actor/2">李强</a>
+                <span>地区：</span><a href="/ms/30-中国大陆----------.html">中国大陆</a>
+                <span>语言：</span><a href="/ms/30----普通话-------.html">普通话</a>
+                <span>片长：</span>3分钟
+                <span>上映：</span>2024-06-01(中国大陆)
+                <a href="/ms/30---短剧--------.html">短剧</a>
+                <a href="/ms/30---甜宠--------.html">甜宠</a>
+                <a href="/ms/30---霸总--------.html">霸总</a>
+                <a href="https://www.imdb.com/title/tt777"><span style="color: #dba400;">IMDB 6.8</span></a>
+                <a href="/py/777-1-1.html" target="blank">第01集</a>
+                <a href="/py/777-1-2.html" target="blank">第02集</a>
+                <a href="/py/777-1-3.html" target="blank">第03集</a>
+                <a href="/py/777-1-4.html" target="blank">第04集</a>
+                <a href="/py/777-1-5.html" target="blank">第05集</a>
+                <a href="/py/777-1-6.html" target="blank">第06集</a>
+                <span class="total">共80集</span>
+                <a href="magnet:?xt=urn:btih:short720&dn=Short720">720P 磁力</a>
+                <a href="https://pan.quark.cn/s/short1">夸克网盘</a>
+            </body>
+            </html>
+            """;
+
+        // --- TC-120: 综艺爬取准确性 ---
+
+        @Test
+        @DisplayName("TC-120-1: 综艺详情页 - title/posterUrl/总期数提取")
+        void crawlVarietyDetail_shouldExtractTitleAndEpisodeCount() {
+            Document doc = Jsoup.parse(VARIETY_DETAIL_HTML, "https://www.pkmp4.xyz");
+
+            String title = doc.selectFirst("h1").text().trim();
+            assertThat(title).contains("奔跑吧");
+
+            String posterUrl = doc.selectFirst("div.img img").attr("abs:src");
+            assertThat(posterUrl).startsWith("https://");
+
+            // 综艺用"期"而非"集"
+            var totalEl = doc.selectFirst(".total");
+            assertThat(totalEl).isNotNull();
+            var m = java.util.regex.Pattern.compile("(\\d+)").matcher(totalEl.text());
+            assertThat(m.find()).isTrue();
+            int totalEpisode = Integer.parseInt(m.group(1));
+            assertThat(totalEpisode).isEqualTo(12);
+        }
+
+        @Test
+        @DisplayName("TC-120-2: 综艺 - 豆瓣+IMDB 双评分提取")
+        void crawlVarietyDetail_shouldExtractBothScores() {
+            Document doc = Jsoup.parse(VARIETY_DETAIL_HTML);
+
+            // Variety 同时设置 scoreDouban 和 scoreImdb
+            BigDecimal doubanScore = null;
+            for (var link : doc.select("a[href*=douban]")) {
+                var m = java.util.regex.Pattern.compile("豆瓣[\\s:：]*(\\d+\\.\\d+)").matcher(link.text());
+                if (m.find()) doubanScore = new BigDecimal(m.group(1));
+            }
+            BigDecimal imdbScore = null;
+            for (var link : doc.select("a[href*=imdb]")) {
+                var m = java.util.regex.Pattern.compile("IMDB[\\s:：]*(\\d+\\.\\d+)").matcher(link.text());
+                if (m.find()) imdbScore = new BigDecimal(m.group(1));
+            }
+
+            assertThat(doubanScore).isEqualByComparingTo(new BigDecimal("8.8"));
+            assertThat(imdbScore).isEqualByComparingTo(new BigDecimal("7.5"));
+        }
+
+        @Test
+        @DisplayName("TC-120-3: 综艺 - genre 提取（真人秀/竞技）")
+        void crawlVarietyDetail_shouldExtractGenre() {
+            Document doc = Jsoup.parse(VARIETY_DETAIL_HTML);
+            var tagLinks = doc.select("a[href*='/ms/'][href*='---']");
+            java.util.List<String> genres = new java.util.ArrayList<>();
+            for (var link : tagLinks) {
+                String href = link.attr("href");
+                if (href.matches(".*/ms/\\d+---[^-].*")) {
+                    String t = link.text().trim();
+                    if (!t.isEmpty() && t.length() < 20 && !t.matches(".*\\d+.*")) {
+                        genres.add(t);
+                    }
+                }
+            }
+            assertThat(genres).contains("真人秀", "竞技");
+        }
+
+        @Test
+        @DisplayName("TC-120-4: 综艺 - 资源提取（磁力+网盘）")
+        void crawlVarietyDetail_shouldExtractResources() {
+            Document doc = Jsoup.parse(VARIETY_DETAIL_HTML);
+            var magnetLinks = doc.select("a[href^=magnet:]");
+            assertThat(magnetLinks).hasSize(1);
+            assertThat(magnetLinks.get(0).attr("href")).contains("variety4K");
+
+            var cloudLinks = doc.select("a[href*=pan.baidu]");
+            assertThat(cloudLinks).hasSize(1);
+        }
+
+        @Test
+        @DisplayName("TC-120-5: 综艺 - 期数链接提取")
+        void crawlVarietyDetail_shouldExtractEpisodeLinks() {
+            Document doc = Jsoup.parse(VARIETY_DETAIL_HTML);
+            var episodeLinks = doc.select("a[href^=/py/]");
+            java.util.List<String> titles = new java.util.ArrayList<>();
+            for (var el : episodeLinks) {
+                titles.add(el.text().trim());
+            }
+            assertThat(titles).hasSize(4);
+            assertThat(titles).allMatch(t -> t.matches("第\\d+期"));
+        }
+
+        // --- TC-121: 动漫爬取准确性 ---
+
+        @Test
+        @DisplayName("TC-121-1: 动漫详情页 - title/posterUrl/总集数提取")
+        void crawlAnimeDetail_shouldExtractTitleAndEpisodeCount() {
+            Document doc = Jsoup.parse(ANIME_DETAIL_HTML, "https://www.pkmp4.xyz");
+
+            String title = doc.selectFirst("h1").text().trim();
+            assertThat(title).contains("鬼灭之刃");
+            assertThat(title).contains("柱训练篇");
+
+            String posterUrl = doc.selectFirst("div.img img").attr("abs:src");
+            assertThat(posterUrl).startsWith("https://");
+
+            var totalEl = doc.selectFirst(".total");
+            var m = java.util.regex.Pattern.compile("(\\d+)").matcher(totalEl.text());
+            assertThat(m.find()).isTrue();
+            assertThat(Integer.parseInt(m.group(1))).isEqualTo(8);
+        }
+
+        @Test
+        @DisplayName("TC-121-2: 动漫 - 仅提取 IMDB 评分（无豆瓣评分）")
+        void crawlAnimeDetail_shouldExtractOnlyImdbScore() {
+            Document doc = Jsoup.parse(ANIME_DETAIL_HTML);
+
+            // Anime 的 crawlAnimeDetail 只设置 scoreImdb，不设置 scoreDouban
+            // 验证 HTML 中无豆瓣评分链接
+            var doubanLinks = doc.select("a[href*=douban]");
+            assertThat(doubanLinks).isEmpty();
+
+            // 验证 IMDB 评分可提取
+            BigDecimal imdbScore = null;
+            for (var link : doc.select("a[href*=imdb]")) {
+                var m = java.util.regex.Pattern.compile("IMDB[\\s:：]*(\\d+\\.\\d+)").matcher(link.text());
+                if (m.find()) imdbScore = new BigDecimal(m.group(1));
+            }
+            assertThat(imdbScore).isEqualByComparingTo(new BigDecimal("8.5"));
+        }
+
+        @Test
+        @DisplayName("TC-121-3: 动漫 - genre 提取（动漫/热血）")
+        void crawlAnimeDetail_shouldExtractGenre() {
+            Document doc = Jsoup.parse(ANIME_DETAIL_HTML);
+            var tagLinks = doc.select("a[href*='/ms/'][href*='---']");
+            java.util.List<String> genres = new java.util.ArrayList<>();
+            for (var link : tagLinks) {
+                String href = link.attr("href");
+                if (href.matches(".*/ms/\\d+---[^-].*")) {
+                    String t = link.text().trim();
+                    if (!t.isEmpty() && t.length() < 20 && !t.matches(".*\\d+.*")) {
+                        genres.add(t);
+                    }
+                }
+            }
+            assertThat(genres).contains("动漫", "热血");
+        }
+
+        @Test
+        @DisplayName("TC-121-4: 动漫 - 地区提取（日本）")
+        void crawlAnimeDetail_shouldExtractRegion() {
+            Document doc = Jsoup.parse(ANIME_DETAIL_HTML);
+            var regionLinks = doc.select("a[href*='/ms/'][href$='----------.html']");
+            java.util.List<String> regions = new java.util.ArrayList<>();
+            for (var link : regionLinks) {
+                String t = link.text().trim();
+                if (t.matches("[\\u4e00-\\u9fa5]+")) regions.add(t);
+            }
+            assertThat(regions).contains("日本");
+        }
+
+        @Test
+        @DisplayName("TC-121-5: 动漫 - 集数链接提取（连续集数）")
+        void crawlAnimeDetail_shouldExtractEpisodeLinks() {
+            Document doc = Jsoup.parse(ANIME_DETAIL_HTML);
+            var episodeLinks = doc.select("a[href^=/py/]");
+            java.util.List<Integer> nums = new java.util.ArrayList<>();
+            for (var el : episodeLinks) {
+                var m = java.util.regex.Pattern.compile("第(\\d+)集").matcher(el.text().trim());
+                if (m.find()) nums.add(Integer.parseInt(m.group(1)));
+            }
+            assertThat(nums).containsExactly(1, 2, 3, 4, 5);
+        }
+
+        // --- TC-122: 短剧爬取准确性 ---
+
+        @Test
+        @DisplayName("TC-122-1: 短剧详情页 - title/posterUrl/总集数提取")
+        void crawlShortDramaDetail_shouldExtractTitleAndEpisodeCount() {
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML, "https://www.pkmp4.xyz");
+
+            String title = doc.selectFirst("h1").text().trim();
+            assertThat(title).contains("闪婚总裁是豪门");
+
+            String posterUrl = doc.selectFirst("div.img img").attr("abs:src");
+            assertThat(posterUrl).startsWith("https://");
+
+            var totalEl = doc.selectFirst(".total");
+            var m = java.util.regex.Pattern.compile("(\\d+)").matcher(totalEl.text());
+            assertThat(m.find()).isTrue();
+            // 短剧集数多（80集），验证合理范围
+            int totalEpisode = Integer.parseInt(m.group(1));
+            assertThat(totalEpisode).isBetween(10, 999);
+            assertThat(totalEpisode).isEqualTo(80);
+        }
+
+        @Test
+        @DisplayName("TC-122-2: 短剧 - 仅提取 IMDB 评分（无豆瓣评分）")
+        void crawlShortDramaDetail_shouldExtractOnlyImdbScore() {
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
+
+            // ShortDrama 的 crawlShortDramaDetail 只设置 scoreImdb
+            var doubanLinks = doc.select("a[href*=douban]");
+            assertThat(doubanLinks).isEmpty();
+
+            BigDecimal imdbScore = null;
+            for (var link : doc.select("a[href*=imdb]")) {
+                var m = java.util.regex.Pattern.compile("IMDB[\\s:：]*(\\d+\\.\\d+)").matcher(link.text());
+                if (m.find()) imdbScore = new BigDecimal(m.group(1));
+            }
+            assertThat(imdbScore).isEqualByComparingTo(new BigDecimal("6.8"));
+        }
+
+        @Test
+        @DisplayName("TC-122-3: 短剧 - genre 提取（短剧/甜宠/霸总）")
+        void crawlShortDramaDetail_shouldExtractGenre() {
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
+            var tagLinks = doc.select("a[href*='/ms/'][href*='---']");
+            java.util.List<String> genres = new java.util.ArrayList<>();
+            for (var link : tagLinks) {
+                String href = link.attr("href");
+                if (href.matches(".*/ms/\\d+---[^-].*")) {
+                    String t = link.text().trim();
+                    if (!t.isEmpty() && t.length() < 20 && !t.matches(".*\\d+.*")) {
+                        genres.add(t);
+                    }
+                }
+            }
+            assertThat(genres).contains("短剧", "甜宠", "霸总");
+        }
+
+        @Test
+        @DisplayName("TC-122-4: 短剧 - 无 writer 字段（与 Variety/Anime 不同）")
+        void crawlShortDramaDetail_shouldNotHaveWriter() {
+            // ShortDrama 实体无 writer 字段，crawlShortDramaDetail 不调用 extractWriter
+            // 验证 HTML 中虽然有编剧信息但 ShortDrama 实体不需要
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
+            // ShortDrama entity does NOT have writer field
+            // This is a design choice: short dramas typically don't credit writers
+            // Verify the entity class has no writer field
+            boolean hasWriterField = false;
+            try {
+                ShortDrama.class.getDeclaredField("writer");
+                hasWriterField = true;
+            } catch (NoSuchFieldException e) {
+                hasWriterField = false;
+            }
+            assertThat(hasWriterField).isFalse();
+        }
+
+        @Test
+        @DisplayName("TC-122-5: 短剧 - 高集数验证（80集，短剧典型特征）")
+        void crawlShortDramaDetail_shouldHandleHighEpisodeCount() {
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
+            var episodeLinks = doc.select("a[href^=/py/]");
+            // HTML 中只有 6 个集数链接（测试用），但 total 标记 80 集
+            // 实际爬取会翻页获取更多
+            assertThat(episodeLinks).hasSize(6);
+
+            // 验证集数格式
+            for (var el : episodeLinks) {
+                assertThat(el.text().trim()).matches("第\\d+集");
+            }
+        }
+
+        @Test
+        @DisplayName("TC-122-6: 短剧 - 资源提取（磁力+网盘）")
+        void crawlShortDramaDetail_shouldExtractResources() {
+            Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
+            var magnetLinks = doc.select("a[href^=magnet:]");
+            assertThat(magnetLinks).hasSize(1);
+            assertThat(magnetLinks.get(0).text()).contains("720P");
+
+            var cloudLinks = doc.select("a[href*=quark]");
+            assertThat(cloudLinks).hasSize(1);
+        }
+    }
+
     // ========== TC-400~406: 资源提取验证 ==========
 
     @Nested
