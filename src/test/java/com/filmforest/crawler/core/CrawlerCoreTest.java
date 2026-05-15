@@ -78,9 +78,11 @@ class CrawlerCoreTest {
             <a href="/ms/1---剧情--------.html">剧情</a>
             <a href="https://movie.douban.com/subject/12345"><span style="color: green;">豆瓣 8.6</span></a>
             <a href="https://www.imdb.com/title/tt12345"><span style="color: #dba400;">IMDB 8.7</span></a>
-            <a href="magnet:?xt=urn:btih:abc123&dn=Interstellar">磁力下载 4K</a>
-            <a href="https://pan.baidu.com/s/12345">百度网盘</a>
-            <a href="https://pan.quark.cn/s/67890">夸克网盘</a>
+            <p class="down-list3">
+                <a href="magnet:?xt=urn:btih:abc123&dn=Interstellar" title="星际穿越.4K.BluRay.内嵌中字">磁力下载 4K</a>
+                <a href="https://pan.baidu.com/s/12345" title="百度网盘 提取码:abcd">百度网盘</a>
+                <a href="https://pan.quark.cn/s/67890" title="夸克网盘">夸克网盘</a>
+            </p>
         </body>
         </html>
         """;
@@ -109,15 +111,21 @@ class CrawlerCoreTest {
     private static final String MAGNET_RESOURCE_HTML = """
         <html><body>
             <h1>测试电影</h1>
-            <a href="magnet:?xt=urn:btih:aaa111&dn=Movie4K">4K 蓝光 磁力</a>
-            <a href="magnet:?xt=urn:btih:bbb222&dn=Movie1080">1080P 磁力</a>
-            <a href="magnet:?xt=urn:btih:ccc333&dn=Movie720">720P 磁力</a>
-            <a href="https://pan.baidu.com/s/test1">百度网盘 提取码:abc1</a>
-            <a href="https://pan.quark.cn/s/test2">夸克网盘</a>
-            <a href="https://www.aliyundrive.com/s/test3">阿里云盘</a>
-            <a href="https://drive.uc.cn/s/test4">UC网盘</a>
-            <a href="https://www.123pan.com/s/test5">123网盘</a>
-            <a href="https://lanzou.com/s/test6">蓝奏云</a>
+            <!-- 通用标题链接（应被过滤） -->
+            <span><a href="magnet:?xt=urn:btih:generic1&dn=Generic">磁力下载</a></span>
+            <span><a href="https://pan.baidu.com/s/generic">网盘下载</a></span>
+            <!-- 有效资源链接（.down-list3 内） -->
+            <p class="down-list3">
+                <a href="magnet:?xt=urn:btih:aaa111&dn=Movie4K" title="测试电影.4K.BluRay.REMUX">4K 蓝光 磁力</a>
+                <a href="magnet:?xt=urn:btih:bbb222&dn=Movie1080" title="测试电影.1080P.BluRay">1080P 磁力</a>
+                <a href="magnet:?xt=urn:btih:ccc333&dn=Movie720" title="测试电影.720P.HDTV">720P 磁力</a>
+                <a href="https://pan.baidu.com/s/test1" title="百度网盘 提取码:abc1">百度网盘 提取码:abc1</a>
+                <a href="https://pan.quark.cn/s/test2" title="夸克网盘">夸克网盘</a>
+                <a href="https://www.aliyundrive.com/s/test3" title="阿里云盘">阿里云盘</a>
+                <a href="https://drive.uc.cn/s/test4" title="UC网盘">UC网盘</a>
+                <a href="https://www.123pan.com/s/test5" title="123网盘">123网盘</a>
+                <a href="https://lanzou.com/s/test6" title="蓝奏云">蓝奏云</a>
+            </p>
         </body></html>
         """;
 
@@ -251,9 +259,10 @@ class CrawlerCoreTest {
         @DisplayName("TC-107: 磁力链接提取 - magnetUrl 以 magnet: 开头")
         void extractMagnet_shouldStartWithMagnet() {
             Document doc = Jsoup.parse(MAGNET_RESOURCE_HTML);
-            var magnetLinks = doc.select("a[href^=magnet:]");
+            // 使用与生产代码一致的选择器：p.down-list3 > a[href^=magnet:]
+            var magnetLinks = doc.select("p.down-list3 > a[href^=magnet:]");
 
-            assertThat(magnetLinks).isNotEmpty();
+            assertThat(magnetLinks).hasSize(3);
             for (var link : magnetLinks) {
                 String url = link.attr("href");
                 assertThat(url).startsWith("magnet:");
@@ -262,15 +271,29 @@ class CrawlerCoreTest {
         }
 
         @Test
+        @DisplayName("TC-107b: 磁力链接过滤 - 通用标题'磁力下载'被跳过")
+        void extractMagnet_shouldSkipGenericTitle() {
+            Document doc = Jsoup.parse(MAGNET_RESOURCE_HTML);
+            var allMagnetLinks = doc.select("a[href^=magnet:]");
+            var filteredLinks = doc.select("p.down-list3 > a[href^=magnet:]");
+
+            // 全局有 4 个 magnet 链接（含 1 个通用标题），过滤后只有 3 个
+            assertThat(allMagnetLinks).hasSize(4);
+            assertThat(filteredLinks).hasSize(3);
+            assertThat(filteredLinks).noneMatch(el -> el.text().trim().equals("磁力下载"));
+        }
+
+        @Test
         @DisplayName("TC-108: 网盘链接提取 - diskType 识别正确")
         void extractCloud_shouldDetectDiskTypes() {
             Document doc = Jsoup.parse(MAGNET_RESOURCE_HTML);
-            // 验证各种网盘类型识别
-            var allLinks = doc.select("a[href]");
+            // 使用与生产代码一致的选择器
+            var cloudLinks = doc.select("p.down-list3 > a[href]");
 
             java.util.Map<String, String> diskTypes = new java.util.LinkedHashMap<>();
-            for (var link : allLinks) {
+            for (var link : cloudLinks) {
                 String href = link.attr("href");
+                if (href.contains("magnet")) continue; // 跳过磁力链接
                 if (href.contains("pan.baidu")) diskTypes.put(href, "baidu");
                 else if (href.contains("quark")) diskTypes.put(href, "quark");
                 else if (href.contains("aliyundrive")) diskTypes.put(href, "ali");
@@ -279,8 +302,21 @@ class CrawlerCoreTest {
                 else if (href.contains("lanzou")) diskTypes.put(href, "lanzou");
             }
 
-            assertThat(diskTypes).hasSizeGreaterThanOrEqualTo(5);
+            assertThat(diskTypes).hasSize(6);
             assertThat(diskTypes.values()).contains("baidu", "quark", "ali", "uc", "123", "lanzou");
+        }
+
+        @Test
+        @DisplayName("TC-108b: 网盘链接过滤 - 通用标题'网盘下载'被跳过")
+        void extractCloud_shouldSkipGenericTitle() {
+            Document doc = Jsoup.parse(MAGNET_RESOURCE_HTML);
+            var allCloudLinks = doc.select("a[href*=pan.baidu]");
+            var filteredLinks = doc.select("p.down-list3 > a[href*=pan.baidu]");
+
+            // 全局有 2 个百度网盘链接（含 1 个通用标题），过滤后只有 1 个
+            assertThat(allCloudLinks).hasSize(2);
+            assertThat(filteredLinks).hasSize(1);
+            assertThat(filteredLinks.get(0).attr("title")).contains("提取码");
         }
     }
 
@@ -375,8 +411,10 @@ class CrawlerCoreTest {
                 <a href="/py/999-1-3.html" target="blank">第03期</a>
                 <a href="/py/999-1-4.html" target="blank">第04期</a>
                 <span class="total">共12期</span>
-                <a href="magnet:?xt=urn:btih:variety4K&dn=Variety4K">4K 磁力</a>
-                <a href="https://pan.baidu.com/s/variety1">百度网盘</a>
+                <p class="down-list3">
+                    <a href="magnet:?xt=urn:btih:variety4K&dn=Variety4K" title="奔跑吧.4K.HDTV">4K 磁力</a>
+                    <a href="https://pan.baidu.com/s/variety1" title="百度网盘">百度网盘</a>
+                </p>
             </body>
             </html>
             """;
@@ -406,7 +444,9 @@ class CrawlerCoreTest {
                 <a href="/py/888-1-4.html" target="blank">第04集</a>
                 <a href="/py/888-1-5.html" target="blank">第05集</a>
                 <span class="total">共8集</span>
-                <a href="magnet:?xt=urn:btih:anime1080&dn=Anime1080">1080P 磁力</a>
+                <p class="down-list3">
+                    <a href="magnet:?xt=urn:btih:anime1080&dn=Anime1080" title="鬼灭之刃.1080P.BluRay.字幕">1080P 磁力</a>
+                </p>
             </body>
             </html>
             """;
@@ -438,8 +478,10 @@ class CrawlerCoreTest {
                 <a href="/py/777-1-5.html" target="blank">第05集</a>
                 <a href="/py/777-1-6.html" target="blank">第06集</a>
                 <span class="total">共80集</span>
-                <a href="magnet:?xt=urn:btih:short720&dn=Short720">720P 磁力</a>
-                <a href="https://pan.quark.cn/s/short1">夸克网盘</a>
+                <p class="down-list3">
+                    <a href="magnet:?xt=urn:btih:short720&dn=Short720" title="闪婚总裁是豪门.720P.HDTV">720P 磁力</a>
+                    <a href="https://pan.quark.cn/s/short1" title="夸克网盘">夸克网盘</a>
+                </p>
             </body>
             </html>
             """;
@@ -506,14 +548,15 @@ class CrawlerCoreTest {
         }
 
         @Test
-        @DisplayName("TC-120-4: 综艺 - 资源提取（磁力+网盘）")
+        @DisplayName("TC-120-4: 综艺 - 资源提取（磁力+网盘，.down-list3 范围内）")
         void crawlVarietyDetail_shouldExtractResources() {
             Document doc = Jsoup.parse(VARIETY_DETAIL_HTML);
-            var magnetLinks = doc.select("a[href^=magnet:]");
+            var magnetLinks = doc.select("p.down-list3 > a[href^=magnet:]");
             assertThat(magnetLinks).hasSize(1);
             assertThat(magnetLinks.get(0).attr("href")).contains("variety4K");
+            assertThat(magnetLinks.get(0).attr("title")).contains("4K");
 
-            var cloudLinks = doc.select("a[href*=pan.baidu]");
+            var cloudLinks = doc.select("p.down-list3 > a[href*=pan.baidu]");
             assertThat(cloudLinks).hasSize(1);
         }
 
@@ -705,14 +748,14 @@ class CrawlerCoreTest {
         }
 
         @Test
-        @DisplayName("TC-122-6: 短剧 - 资源提取（磁力+网盘）")
+        @DisplayName("TC-122-6: 短剧 - 资源提取（磁力+网盘，.down-list3 范围内）")
         void crawlShortDramaDetail_shouldExtractResources() {
             Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
-            var magnetLinks = doc.select("a[href^=magnet:]");
+            var magnetLinks = doc.select("p.down-list3 > a[href^=magnet:]");
             assertThat(magnetLinks).hasSize(1);
-            assertThat(magnetLinks.get(0).text()).contains("720P");
+            assertThat(magnetLinks.get(0).attr("title")).contains("720P");
 
-            var cloudLinks = doc.select("a[href*=quark]");
+            var cloudLinks = doc.select("p.down-list3 > a[href*=quark]");
             assertThat(cloudLinks).hasSize(1);
         }
     }
@@ -746,6 +789,43 @@ class CrawlerCoreTest {
             assertThat(detectDiskType("https://www.123pan.com/s/345")).isEqualTo("123");
             assertThat(detectDiskType("https://lanzou.com/s/678")).isEqualTo("lanzou");
             assertThat(detectDiskType("https://xunlei.com/s/901")).isEqualTo("xunlei");
+        }
+
+        @Test
+        @DisplayName("TC-407: title 属性优先于文本内容")
+        void extractResource_shouldPreferTitleAttribute() {
+            Document doc = Jsoup.parse(MAGNET_RESOURCE_HTML);
+            var link = doc.select("p.down-list3 > a[href^=magnet:]").first();
+            assertThat(link).isNotNull();
+
+            String titleAttr = link.attr("title").trim();
+            String text = link.text().trim();
+            // title 属性有值时应优先使用
+            assertThat(titleAttr).isNotEmpty();
+            assertThat(titleAttr).contains("4K");
+            // title 和 text 都有值，但 title 更详细
+            assertThat(titleAttr.length()).isGreaterThanOrEqualTo(text.length());
+        }
+
+        @Test
+        @DisplayName("TC-408: title 属性为空时 fallback 到文本")
+        void extractResource_shouldFallbackToTextWhenTitleEmpty() {
+            String html = """
+                <html><body>
+                <p class="down-list3">
+                    <a href="magnet:?xt=urn:btih:fallback&dn=Test">4K 蓝光资源</a>
+                </p>
+                </body></html>
+            """;
+            Document doc = Jsoup.parse(html);
+            var link = doc.select("p.down-list3 > a[href^=magnet:]").first();
+            assertThat(link).isNotNull();
+
+            String titleAttr = link.attr("title").trim();
+            String text = link.text().trim();
+            // title 属性为空，应 fallback 到文本
+            assertThat(titleAttr).isEmpty();
+            assertThat(text).isEqualTo("4K 蓝光资源");
         }
     }
 
