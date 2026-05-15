@@ -1001,7 +1001,7 @@ public class CrawlerCore {
             if (pm.find()) {
                 try {
                     int pct = Integer.parseInt(pm.group(1));
-                    return new BigDecimal(pct).divide(new BigDecimal("10"), 1, BigDecimal.ROUND_HALF_UP);
+                    return new BigDecimal(pct).divide(new BigDecimal("10"), 1, java.math.RoundingMode.HALF_UP);
                 } catch (Exception ignored) {}
             }
         }
