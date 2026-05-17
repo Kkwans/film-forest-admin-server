@@ -2,6 +2,7 @@ package com.filmforest.crawler.controller;
 
 import com.filmforest.common.dto.Result;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
@@ -82,13 +83,18 @@ public class CrawlerController {
         return Result.ok(scheduleService.toggleEnabled(id, enabled));
     }
 
-    /** 获取任务日志 */
+    /** 获取任务日志（支持状态筛选） */
     @GetMapping("/logs")
-    public Result<List<CrawlerTaskLog>> listLogs(@RequestParam(required = false) Long scheduleId) {
+    public Result<List<CrawlerTaskLog>> listLogs(
+            @RequestParam(required = false) Long scheduleId,
+            @RequestParam(required = false) String status) {
         LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.orderByDesc(CrawlerTaskLog::getStartedAt).last("LIMIT 50");
+        wrapper.orderByDesc(CrawlerTaskLog::getStartedAt).last("LIMIT 100");
         if (scheduleId != null) {
             wrapper.eq(CrawlerTaskLog::getScheduleId, scheduleId);
+        }
+        if (status != null && !status.isEmpty() && !"all".equals(status)) {
+            wrapper.eq(CrawlerTaskLog::getStatus, status);
         }
         return Result.ok(taskLogMapper.selectList(wrapper));
     }
@@ -137,6 +143,96 @@ public class CrawlerController {
             entry.put("updated", dayLogs.stream().mapToInt(l -> l.getItemsUpdated() != null ? l.getItemsUpdated() : 0).sum());
             result.add(entry);
         }
+        return Result.ok(result);
+    }
+
+    /** 重试失败/停止的任务 */
+    @PostMapping("/retry/{logId}")
+    public Result<String> retryTask(@PathVariable Long logId) {
+        CrawlerTaskLog taskLog = taskLogMapper.selectById(logId);
+        if (taskLog == null) {
+            return Result.fail("任务日志不存在");
+        }
+        CrawlerStatus status = CrawlerStatus.fromCode(taskLog.getStatus());
+        if (status == null || !status.isRetryable()) {
+            return Result.fail("当前状态不支持重试: " + taskLog.getStatus());
+        }
+        Long scheduleId = taskLog.getScheduleId();
+        CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
+        if (schedule == null) {
+            return Result.fail("关联的爬虫配置已不存在");
+        }
+        if ("running".equals(schedule.getStatus())) {
+            return Result.fail("该爬虫正在运行中，请等待完成后再重试");
+        }
+        log.info("重试爬虫任务: logId={}, scheduleId={}, scheduleName={}", logId, scheduleId, schedule.getName());
+        boolean started = scheduleService.startCrawler(scheduleId);
+        if (started) {
+            return Result.ok("重试任务已启动");
+        } else {
+            return Result.fail("重试启动失败");
+        }
+    }
+
+    /** 批量重试所有失败任务 */
+    @PostMapping("/retry-all")
+    public Result<Map<String, Object>> retryAllFailed() {
+        LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CrawlerTaskLog::getStatus, CrawlerStatus.FAILED.getCode())
+               .or()
+               .eq(CrawlerTaskLog::getStatus, CrawlerStatus.STOPPED.getCode());
+        List<CrawlerTaskLog> failedLogs = taskLogMapper.selectList(wrapper);
+
+        if (failedLogs.isEmpty()) {
+            return Result.ok(Map.of("total", 0, "started", 0, "skipped", 0, "message", "没有需要重试的任务"));
+        }
+
+        // 按 scheduleId 去重（同一个配置只重试一次）
+        Set<Long> scheduleIds = failedLogs.stream()
+                .map(CrawlerTaskLog::getScheduleId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        int started = 0;
+        int skipped = 0;
+        for (Long scheduleId : scheduleIds) {
+            CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
+            if (schedule == null || "running".equals(schedule.getStatus())) {
+                skipped++;
+                continue;
+            }
+            boolean ok = scheduleService.startCrawler(scheduleId);
+            if (ok) started++;
+            else skipped++;
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", failedLogs.size());
+        result.put("schedules", scheduleIds.size());
+        result.put("started", started);
+        result.put("skipped", skipped);
+        return Result.ok(result);
+    }
+
+    /** 获取任务日志统计（各状态数量） */
+    @GetMapping("/logs/stats")
+    public Result<Map<String, Object>> getLogStats() {
+        List<CrawlerTaskLog> allLogs = taskLogMapper.selectList(
+            new LambdaQueryWrapper<CrawlerTaskLog>()
+                .ge(CrawlerTaskLog::getStartedAt, LocalDateTime.now().minusDays(30))
+        );
+        Map<String, Long> statusCounts = allLogs.stream()
+                .collect(Collectors.groupingBy(
+                        l -> l.getStatus() != null ? l.getStatus() : "unknown",
+                        Collectors.counting()
+                ));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("total", allLogs.size());
+        result.put("byStatus", statusCounts);
+        result.put("recentFailed", allLogs.stream()
+                .filter(l -> "failed".equals(l.getStatus()))
+                .limit(5)
+                .collect(Collectors.toList()));
         return Result.ok(result);
     }
 

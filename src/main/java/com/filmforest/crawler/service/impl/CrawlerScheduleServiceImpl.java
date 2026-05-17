@@ -3,6 +3,7 @@ package com.filmforest.crawler.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.crawler.core.CrawlerCore;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
@@ -52,7 +53,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         schedule.setGenreFilter(normalizeGenreFilter(schedule.getGenreFilter()));
 
         if (schedule.getId() == null) {
-            schedule.setStatus("idle");
+            schedule.setStatus(CrawlerStatus.IDLE.getCode());
             schedule.setTotalRuns(0);
             schedule.setTotalItems(0);
             return scheduleMapper.insert(schedule) > 0;
@@ -114,7 +115,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         if (schedule == null) return false;
 
         // 标记为运行中
-        schedule.setStatus("running");
+        schedule.setStatus(CrawlerStatus.RUNNING.getCode());
         schedule.setLastRunTime(LocalDateTime.now());
         scheduleMapper.updateById(schedule);
 
@@ -123,7 +124,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         log.setScheduleId(id);
         log.setScheduleName(schedule.getName());
         log.setContentType(schedule.getContentType());
-        log.setStatus("running");
+        log.setStatus(CrawlerStatus.RUNNING.getCode());
         log.setStartedAt(LocalDateTime.now());
         taskLogMapper.insert(log);
 
@@ -145,7 +146,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         }
         CrawlerSchedule schedule = scheduleMapper.selectById(id);
         if (schedule != null) {
-            schedule.setStatus("idle");
+            schedule.setStatus(CrawlerStatus.IDLE.getCode());
             scheduleMapper.updateById(schedule);
         }
         return true;

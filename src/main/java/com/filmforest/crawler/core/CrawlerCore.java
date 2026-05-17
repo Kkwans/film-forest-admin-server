@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
@@ -83,11 +84,11 @@ public class CrawlerCore {
 
             if (stopFlag != null && stopFlag.get()) {
                 log.info("[CrawlerCore] Stop requested for schedule {}", scheduleId);
-                taskLog.setStatus("stopped");
+                taskLog.setStatus(CrawlerStatus.STOPPED.getCode());
                 taskLog.setFinishedAt(LocalDateTime.now());
                 taskLogMapper.updateById(taskLog);
                 CrawlerSchedule s2 = scheduleService.getSchedule(scheduleId);
-                if (s2 != null) { s2.setStatus("idle"); scheduleService.saveSchedule(s2); }
+                if (s2 != null) { s2.setStatus(CrawlerStatus.IDLE.getCode()); scheduleService.saveSchedule(s2); }
                 return;
             }
 
@@ -120,12 +121,12 @@ public class CrawlerCore {
             taskLog.setItemsCrawled(total);
             taskLog.setItemsAdded(added);
             taskLog.setItemsUpdated(updated);
-            taskLog.setStatus("success");
+            taskLog.setStatus(CrawlerStatus.SUCCESS.getCode());
             taskLog.setDurationMs((int) java.time.Duration.between(taskLog.getStartedAt(), LocalDateTime.now()).toMillis());
             taskLog.setFinishedAt(LocalDateTime.now());
             taskLogMapper.updateById(taskLog);
 
-            schedule.setStatus("idle");
+            schedule.setStatus(CrawlerStatus.IDLE.getCode());
             schedule.setLastRunTime(LocalDateTime.now());
             schedule.setTotalRuns(schedule.getTotalRuns() + 1);
             schedule.setTotalItems(schedule.getTotalItems() + total);
@@ -135,14 +136,14 @@ public class CrawlerCore {
 
         } catch (Exception e) {
             log.error("Crawl error scheduleId={}", scheduleId, e);
-            taskLog.setStatus("failed");
+            taskLog.setStatus(CrawlerStatus.FAILED.getCode());
             taskLog.setErrorMessage(e.getMessage());
             taskLog.setFinishedAt(LocalDateTime.now());
             taskLogMapper.updateById(taskLog);
 
             CrawlerSchedule s2 = scheduleService.getSchedule(scheduleId);
             if (s2 != null) {
-                s2.setStatus("idle");
+                s2.setStatus(CrawlerStatus.IDLE.getCode());
                 scheduleService.saveSchedule(s2);
             }
         } finally {
