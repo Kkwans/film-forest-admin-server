@@ -7,6 +7,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.SQLException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -20,6 +25,9 @@ public class SettingsController {
 
     @Autowired
     private SystemSettingService settingService;
+
+    @Autowired
+    private DataSource dataSource;
 
     /** 获取所有设置 */
     @GetMapping
@@ -41,5 +49,23 @@ public class SettingsController {
                                      @RequestParam(required = false) String defaultValue) {
         String value = settingService.getValue(key, defaultValue);
         return value != null ? Result.ok(value) : Result.fail("设置不存在");
+    }
+
+    /** 获取数据库元信息（不含敏感凭据） */
+    @GetMapping("/db-info")
+    public Result<Map<String, String>> getDbInfo() {
+        Map<String, String> info = new LinkedHashMap<>();
+        try (Connection conn = dataSource.getConnection()) {
+            DatabaseMetaData meta = conn.getMetaData();
+            info.put("url", meta.getURL());
+            info.put("productName", meta.getDatabaseProductName());
+            info.put("productVersion", meta.getDatabaseProductVersion());
+            info.put("driverName", meta.getDriverName());
+            info.put("driverVersion", meta.getDriverVersion());
+        } catch (SQLException e) {
+            log.warn("获取数据库元信息失败", e);
+            info.put("error", "无法获取数据库信息");
+        }
+        return Result.ok(info);
     }
 }
