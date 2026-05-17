@@ -33,6 +33,8 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.filmforest.common.util.StorylineCleaner;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -221,11 +223,7 @@ public class CrawlerCore {
                 Matcher ym = YEAR_PATTERN.matcher(h1Text);
                 if (ym.find()) year = Integer.parseInt(ym.group(1));
             }
-            Element storylineEl = doc.selectFirst(".movie-introduce p, .zkjj_a, .con");
-            if (storylineEl != null) {
-                storyline = storylineEl.text().trim();
-                storyline = storyline.replaceAll("展开全部", "").replaceAll("收起部分", "").trim();
-            }
+            storyline = extractStoryline(doc);
 
             // 主演/导演: 从 .text-overflow 区域提取
             String actor = extractTextByLabel(doc, "主演");
@@ -967,12 +965,16 @@ public class CrawlerCore {
 
     private String extractStoryline(Document doc) {
         Element el = doc.selectFirst(".movie-introduce, .introduce, .desc, .summary");
+        String text = null;
         if (el != null) {
-            String text = el.text().trim();
-            if (!text.isEmpty()) return text;
+            text = el.text().trim();
         }
-        Element metaDesc = doc.selectFirst("meta[name=description]");
-        return (metaDesc != null) ? metaDesc.attr("content").trim() : "";
+        if (text == null || text.isEmpty()) {
+            Element metaDesc = doc.selectFirst("meta[name=description]");
+            text = (metaDesc != null) ? metaDesc.attr("content").trim() : "";
+        }
+        // 使用 StorylineCleaner 统一清理 UI 残留文本
+        return StorylineCleaner.clean(text);
     }
 
     private Integer extractYear(Document doc) {

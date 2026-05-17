@@ -37,6 +37,14 @@ public class ContentController {
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
+    /** 语言类关键词（从 genre 中排除） */
+    private static final Set<String> LANGUAGE_KEYWORDS = Set.of(
+            "国语", "粤语", "英语", "日语", "韩语", "法语", "德语",
+            "西班牙语", "意大利语", "俄语", "泰语", "印度语",
+            "普通话", "原声", "配音", "中字", "英字", "日字",
+            "双语", "多语言", "外语", "国语配音", "日语配音"
+    );
+
     /** 内容类型 → 数据库表名映射 */
     private static final Map<String, String> CONTENT_TYPE_TABLE_MAP = Map.of(
             "movie", "movie",
@@ -267,7 +275,12 @@ public class ContentController {
             for (String json : genreJsons) {
                 try {
                     List<String> arr = JSON_MAPPER.readValue(json, new TypeReference<>() {});
-                    genres.addAll(arr);
+                    for (String g : arr) {
+                        // 过滤掉语言类关键词
+                        if (!LANGUAGE_KEYWORDS.contains(g.trim())) {
+                            genres.add(g);
+                        }
+                    }
                 } catch (Exception ignored) {
                     // 跳过无法解析的 JSON
                 }

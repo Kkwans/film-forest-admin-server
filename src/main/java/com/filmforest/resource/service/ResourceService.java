@@ -20,12 +20,14 @@ public interface ResourceService {
     ResourceMagnet saveMagnetResource(ResourceMagnet resource);
     boolean deleteMagnetResource(Long id);
     List<ResourceMagnet> listMagnetByContentType(String contentType);
+    com.baomidou.mybatisplus.core.metadata.IPage<ResourceMagnet> pageMagnet(int pageNum, int pageSize, String contentType, Long contentId, String keyword);
 
     // ===== 网盘资源 =====
     List<ResourceCloud> listCloudResources(String contentType, Long contentId);
     ResourceCloud saveCloudResource(ResourceCloud resource);
     boolean deleteCloudResource(Long id);
     List<ResourceCloud> listCloudByContentType(String contentType);
+    com.baomidou.mybatisplus.core.metadata.IPage<ResourceCloud> pageCloud(int pageNum, int pageSize, String contentType, Long contentId, String keyword);
 
     // ===== 资源来源 =====
     List<ResourceSource> listSources();

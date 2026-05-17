@@ -10,7 +10,10 @@ import com.filmforest.resource.mapper.ResourceCloudMapper;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.filmforest.resource.service.ResourceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
@@ -97,6 +100,17 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         return magnetMapper.deleteById(id) > 0;
     }
 
+    @Override
+    public IPage<ResourceMagnet> pageMagnet(int pageNum, int pageSize, String contentType, Long contentId, String keyword) {
+        Page<ResourceMagnet> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<ResourceMagnet> wrapper = new LambdaQueryWrapper<ResourceMagnet>()
+                .eq(contentType != null, ResourceMagnet::getContentType, contentType)
+                .eq(contentId != null, ResourceMagnet::getContentId, contentId)
+                .like(StringUtils.isNotBlank(keyword), ResourceMagnet::getTitle, keyword)
+                .orderByDesc(ResourceMagnet::getCreatedAt);
+        return magnetMapper.selectPage(page, wrapper);
+    }
+
     // ===== 网盘资源 =====
     @Override
     public List<ResourceCloud> listCloudResources(String contentType, Long contentId) {
@@ -128,6 +142,17 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     @Override
     public boolean deleteCloudResource(Long id) {
         return cloudMapper.deleteById(id) > 0;
+    }
+
+    @Override
+    public IPage<ResourceCloud> pageCloud(int pageNum, int pageSize, String contentType, Long contentId, String keyword) {
+        Page<ResourceCloud> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<ResourceCloud> wrapper = new LambdaQueryWrapper<ResourceCloud>()
+                .eq(contentType != null, ResourceCloud::getContentType, contentType)
+                .eq(contentId != null, ResourceCloud::getContentId, contentId)
+                .like(StringUtils.isNotBlank(keyword), ResourceCloud::getTitle, keyword)
+                .orderByDesc(ResourceCloud::getCreatedAt);
+        return cloudMapper.selectPage(page, wrapper);
     }
 
     // ===== 资源来源 =====

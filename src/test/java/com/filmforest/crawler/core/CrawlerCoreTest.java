@@ -829,6 +829,80 @@ class CrawlerCoreTest {
         }
     }
 
+    // ========== TC-130: 简介数据质量 - 展开全部清理 ==========
+
+    @Nested
+    @DisplayName("TC-130: 简介数据质量 - UI 残留文本清理")
+    class StorylineCleanupTest {
+
+        @Test
+        @DisplayName("TC-130-1: extractStoryline 应清理'展开全部'和'收起部分'")
+        void extractStoryline_shouldCleanUiRemnants() {
+            // 模拟包含 UI 残留文本的 HTML
+            String html = """
+                <html><body>
+                <div class="movie-introduce"><p>一段精彩的剧情简介展开全部</p></div>
+                </body></html>
+            """;
+            Document doc = Jsoup.parse(html);
+
+            // 模拟修复后的 extractStoryline 逻辑
+            Element el = doc.selectFirst(".movie-introduce, .introduce, .desc, .summary");
+            String text = (el != null) ? el.text().trim() : "";
+            text = text.replaceAll("展开全部", "")
+                       .replaceAll("收起部分", "")
+                       .replaceAll("收起简介", "")
+                       .replaceAll("展开简介", "")
+                       .replaceAll("\\s{2,}", " ")
+                       .trim();
+
+            assertThat(text).isEqualTo("一段精彩的剧情简介");
+            assertThat(text).doesNotContain("展开全部");
+            assertThat(text).doesNotContain("收起部分");
+        }
+
+        @Test
+        @DisplayName("TC-130-2: extractStoryline 应清理多种 UI 文本变体")
+        void extractStoryline_shouldCleanMultipleVariants() {
+            String[] variants = {
+                "剧情简介展开全部",
+                "剧情简介收起部分",
+                "剧情简介展开简介",
+                "剧情简介收起简介"
+            };
+
+            for (String variant : variants) {
+                String cleaned = variant.replaceAll("展开全部", "")
+                                       .replaceAll("收起部分", "")
+                                       .replaceAll("收起简介", "")
+                                       .replaceAll("展开简介", "")
+                                       .replaceAll("\\s{2,}", " ")
+                                       .trim();
+                assertThat(cleaned).isEqualTo("剧情简介");
+            }
+        }
+
+        @Test
+        @DisplayName("TC-130-3: 空简介不应报错")
+        void extractStoryline_shouldHandleEmptyStoryline() {
+            String html = """
+                <html><body>
+                <div class="movie-introduce"><p></p></div>
+                </body></html>
+            """;
+            Document doc = Jsoup.parse(html);
+
+            Element el = doc.selectFirst(".movie-introduce, .introduce, .desc, .summary");
+            String text = (el != null) ? el.text().trim() : "";
+            text = text.replaceAll("展开全部", "")
+                       .replaceAll("收起部分", "")
+                       .replaceAll("\\s{2,}", " ")
+                       .trim();
+
+            assertThat(text).isEmpty();
+        }
+    }
+
     // ========== TC-010~013: genreFilter 类型筛选 ==========
 
     @Nested

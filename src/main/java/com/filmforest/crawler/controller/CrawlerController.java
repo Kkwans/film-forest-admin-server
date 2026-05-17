@@ -14,9 +14,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/crawler")
@@ -100,6 +101,43 @@ public class CrawlerController {
                 .eq(ResourceSource::getEnabled, 1)
                 .orderByAsc(ResourceSource::getSort)
         ));
+    }
+
+    /** 获取爬虫每日运行趋势（近7天） */
+    @GetMapping("/daily-stats")
+    public Result<List<Map<String, Object>>> getDailyStats() {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = today.minusDays(6); // 近7天
+
+        LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
+        wrapper.ge(CrawlerTaskLog::getStartedAt, startDate.atStartOfDay())
+               .le(CrawlerTaskLog::getStartedAt, today.plusDays(1).atStartOfDay())
+               .orderByAsc(CrawlerTaskLog::getStartedAt);
+
+        List<CrawlerTaskLog> logs = taskLogMapper.selectList(wrapper);
+
+        // 按日期分组统计
+        Map<LocalDate, List<CrawlerTaskLog>> byDate = logs.stream()
+                .collect(Collectors.groupingBy(
+                        log -> log.getStartedAt().toLocalDate(),
+                        TreeMap::new,
+                        Collectors.toList()
+                ));
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int i = 6; i >= 0; i--) {
+            LocalDate date = today.minusDays(i);
+            List<CrawlerTaskLog> dayLogs = byDate.getOrDefault(date, Collections.emptyList());
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("date", date.toString());
+            entry.put("dateLabel", date.getMonthValue() + "/" + date.getDayOfMonth());
+            entry.put("runs", dayLogs.size());
+            entry.put("items", dayLogs.stream().mapToInt(l -> l.getItemsCrawled() != null ? l.getItemsCrawled() : 0).sum());
+            entry.put("added", dayLogs.stream().mapToInt(l -> l.getItemsAdded() != null ? l.getItemsAdded() : 0).sum());
+            entry.put("updated", dayLogs.stream().mapToInt(l -> l.getItemsUpdated() != null ? l.getItemsUpdated() : 0).sum());
+            result.add(entry);
+        }
+        return Result.ok(result);
     }
 
     /** 获取爬虫状态概览 */

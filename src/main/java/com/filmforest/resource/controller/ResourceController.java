@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,10 +58,13 @@ public class ResourceController {
 
     // ===== 磁力资源 =====
     @GetMapping("/magnet")
-    public Result<List<ResourceMagnet>> listMagnet(
+    public Result<IPage<ResourceMagnet>> listMagnet(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) Long contentId) {
-        return Result.ok(resourceService.listMagnetResources(contentType, contentId));
+            @RequestParam(required = false) Long contentId,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(resourceService.pageMagnet(page, size, contentType, contentId, keyword));
     }
 
     @PostMapping("/magnet")
@@ -78,10 +82,13 @@ public class ResourceController {
 
     // ===== 网盘资源 =====
     @GetMapping("/cloud")
-    public Result<List<ResourceCloud>> listCloud(
+    public Result<IPage<ResourceCloud>> listCloud(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) Long contentId) {
-        return Result.ok(resourceService.listCloudResources(contentType, contentId));
+            @RequestParam(required = false) Long contentId,
+            @RequestParam(required = false) String keyword) {
+        return Result.ok(resourceService.pageCloud(page, size, contentType, contentId, keyword));
     }
 
     @PostMapping("/cloud")
