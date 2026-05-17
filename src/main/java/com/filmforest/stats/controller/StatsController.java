@@ -5,6 +5,7 @@ import com.filmforest.stats.service.StatsService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,5 +38,21 @@ public class StatsController {
         if (days < 1) days = 7;
         if (days > 90) days = 90;
         return Result.ok(statsService.getTrend(days));
+    }
+
+    /**
+     * 热门搜索词
+     * @param days 时间范围（天），默认 30
+     * @param limit 返回数量，默认 15
+     */
+    @GetMapping("/hot-search")
+    public Result<List<Map<String, Object>>> getHotSearch(
+            @RequestParam(defaultValue = "30") int days,
+            @RequestParam(defaultValue = "15") int limit) {
+        if (days < 1) days = 7;
+        if (days > 90) days = 90;
+        if (limit < 1) limit = 10;
+        if (limit > 50) limit = 50;
+        return Result.ok(statsService.getHotSearchKeywords(days, limit));
     }
 }

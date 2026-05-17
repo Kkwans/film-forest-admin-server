@@ -197,4 +197,41 @@ public class StatsServiceImpl implements StatsService {
         result.put("labels", TYPE_LABELS);
         return result;
     }
+
+    @Override
+    public List<Map<String, Object>> getHotSearchKeywords(int days, int limit) {
+        try {
+            // 检查 search_log 表是否存在
+            Integer tableExists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'search_log'",
+                    Integer.class);
+            if (tableExists == null || tableExists == 0) {
+                log.warn("[Stats] search_log 表不存在，跳过热门搜索统计");
+                return Collections.emptyList();
+            }
+
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT keyword, COUNT(*) AS search_count, MAX(created_at) AS last_search_at " +
+                    "FROM search_log " +
+                    "WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY) " +
+                    "GROUP BY keyword " +
+                    "ORDER BY search_count DESC " +
+                    "LIMIT ?",
+                    days, limit);
+
+            // 格式化结果
+            List<Map<String, Object>> result = new ArrayList<>();
+            for (Map<String, Object> row : rows) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("keyword", row.get("keyword"));
+                item.put("count", ((Number) row.get("search_count")).longValue());
+                item.put("lastSearchAt", row.get("last_search_at"));
+                result.add(item);
+            }
+            return result;
+        } catch (Exception e) {
+            log.error("[Stats] 查询热门搜索词失败", e);
+            return Collections.emptyList();
+        }
+    }
 }

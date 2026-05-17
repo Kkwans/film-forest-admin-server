@@ -1,5 +1,6 @@
 package com.filmforest.stats.service;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -19,4 +20,10 @@ public interface StatsService {
      * 按日期+类型聚合每日新增内容数
      */
     Map<String, Object> getTrend(int days);
+
+    /**
+     * 获取热门搜索词 Top N
+     * 按搜索次数降序，支持时间范围过滤
+     */
+    List<Map<String, Object>> getHotSearchKeywords(int days, int limit);
 }
