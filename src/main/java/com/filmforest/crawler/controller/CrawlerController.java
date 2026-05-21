@@ -83,19 +83,25 @@ public class CrawlerController {
         return Result.ok(scheduleService.toggleEnabled(id, enabled));
     }
 
-    /** 获取任务日志（支持状态筛选） */
+    /** 获取任务日志（支持状态筛选 + 分页） */
     @GetMapping("/logs")
     public Result<List<CrawlerTaskLog>> listLogs(
             @RequestParam(required = false) Long scheduleId,
-            @RequestParam(required = false) String status) {
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "50") Integer size) {
         LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.orderByDesc(CrawlerTaskLog::getStartedAt).last("LIMIT 100");
+        wrapper.orderByDesc(CrawlerTaskLog::getStartedAt);
         if (scheduleId != null) {
             wrapper.eq(CrawlerTaskLog::getScheduleId, scheduleId);
         }
         if (status != null && !status.isEmpty() && !"all".equals(status)) {
             wrapper.eq(CrawlerTaskLog::getStatus, status);
         }
+        // 分页：限制 size 最大 200
+        int safeSize = Math.min(Math.max(size, 1), 200);
+        int offset = (Math.max(page, 1) - 1) * safeSize;
+        wrapper.last("LIMIT " + safeSize + " OFFSET " + offset);
         return Result.ok(taskLogMapper.selectList(wrapper));
     }
 

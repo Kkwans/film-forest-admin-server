@@ -65,12 +65,14 @@ public class CrawlerCore {
     private final Pattern ID_PATTERN = Pattern.compile("/mv/(\\d+)");
     private final ConcurrentHashMap<Long, AtomicBoolean> runningTasks = new ConcurrentHashMap<>();
     private volatile Boolean proxyAvailable = null;
+    private volatile long proxyCheckTime = 0;
+    private static final long PROXY_CACHE_TTL_MS = 60_000; // 60秒后重新检测代理
 
-    /** 速率限制：请求间隔毫秒数（由 schedule.rateLimitMs 配置） */
-    private volatile int rateLimitMs = 0;
+
 
     // ========== Async Entry Point ==========
 
+    @Async
     public void executeCrawl(Long scheduleId, Long logId, AtomicBoolean stopFlag) {
         CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
         CrawlerTaskLog taskLog = taskLogMapper.selectById(logId);
@@ -96,25 +98,25 @@ public class CrawlerCore {
             int startPage = schedule.getLastCrawledPage() != null ? schedule.getLastCrawledPage() : 1;
             if (startPage < 1) startPage = 1;
             // 应用速率限制
-            this.rateLimitMs = schedule.getRateLimitMs() != null ? Math.max(0, schedule.getRateLimitMs()) : 0;
+            int rateLimitMs = schedule.getRateLimitMs() != null ? Math.max(0, schedule.getRateLimitMs()) : 0;
             // 解析 genreFilter（JSON 数组字符串）
             Set<String> genreFilter = parseGenreFilter(schedule.getGenreFilter());
             log.info("[CrawlerCore] Starting crawl for type={}, startPage={}, batchSize={}, rateLimitMs={}, genreFilter={}", type, startPage, batchSize, rateLimitMs, genreFilter);
 
             if ("movie".equals(type)) {
-                int[] r = crawlMovieList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
+                int[] r = crawlMovieList(startPage, batchSize, stopFlag, scheduleId, genreFilter, rateLimitMs);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("drama".equals(type)) {
-                int[] r = crawlDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
+                int[] r = crawlDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter, rateLimitMs);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("variety".equals(type)) {
-                int[] r = crawlVarietyList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
+                int[] r = crawlVarietyList(startPage, batchSize, stopFlag, scheduleId, genreFilter, rateLimitMs);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("anime".equals(type)) {
-                int[] r = crawlAnimeList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
+                int[] r = crawlAnimeList(startPage, batchSize, stopFlag, scheduleId, genreFilter, rateLimitMs);
                 added = r[0]; updated = r[1]; total = r[2];
             } else if ("short_drama".equals(type) || "short".equals(type)) {
-                int[] r = crawlShortDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter);
+                int[] r = crawlShortDramaList(startPage, batchSize, stopFlag, scheduleId, genreFilter, rateLimitMs);
                 added = r[0]; updated = r[1]; total = r[2];
             }
 
@@ -137,7 +139,12 @@ public class CrawlerCore {
         } catch (Exception e) {
             log.error("Crawl error scheduleId={}", scheduleId, e);
             taskLog.setStatus(CrawlerStatus.FAILED.getCode());
-            taskLog.setErrorMessage(e.getMessage());
+            // 保留完整的错误上下文：异常类型 + 消息 + 根因
+            String errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
+            if (e.getCause() != null) {
+                errorMsg += " | Caused by: " + e.getCause().getClass().getSimpleName() + ": " + e.getCause().getMessage();
+            }
+            taskLog.setErrorMessage(errorMsg);
             taskLog.setFinishedAt(LocalDateTime.now());
             taskLogMapper.updateById(taskLog);
 
@@ -162,14 +169,14 @@ public class CrawlerCore {
         return BASE_URL + "/vt/" + type + (page > 1 ? "-" + page : "") + ".html";
     }
 
-    public int[] crawlMovieList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
+    public int[] crawlMovieList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter, int rateLimitMs) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
         while (total < maxItems) {
             if (stopFlag != null && stopFlag.get()) break;
             String listUrl = getListUrl("1", page);
-            Document listDoc = fetchWithRetry(listUrl);
+            Document listDoc = fetchWithRetry(listUrl, rateLimitMs);
             if (listDoc == null) break;
 
             Set<String> seenUrls = new HashSet<>();
@@ -184,21 +191,21 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlMovieDetail(detailUrl, stopFlag, genreFilter);
+                int[] r = crawlMovieDetail(detailUrl, stopFlag, genreFilter, rateLimitMs);
                 log.debug("crawlMovieDetail completed for: {} -> added:{} updated:{}", detailUrl, r[0], r[1]);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
             }
             // 断点续爬：保存当前页码
-            saveCrawlProgress(scheduleId, page, 0L);
+            saveCrawlProgress(scheduleId, page);
             page++;
         }
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlMovieDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
-        Document doc = fetchWithRetry(detailUrl);
+    public int[] crawlMovieDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter, int rateLimitMs) {
+        Document doc = fetchWithRetry(detailUrl, rateLimitMs);
         if (doc == null) return new int[]{0, 0, 0};
 
         try {
@@ -291,14 +298,14 @@ public class CrawlerCore {
     // ========== Drama Crawler ==========
 
     // type=2 剧集列表: /vt/2.html, /vt/2-2.html
-    public int[] crawlDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
+    public int[] crawlDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter, int rateLimitMs) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
         while (total < maxItems) {
             if (stopFlag != null && stopFlag.get()) break;
             String listUrl = getListUrl("2", page);
-            Document listDoc = fetchWithRetry(listUrl);
+            Document listDoc = fetchWithRetry(listUrl, rateLimitMs);
             if (listDoc == null) break;
 
             Set<String> seenUrls = new HashSet<>();
@@ -313,19 +320,19 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlDramaDetail(detailUrl, stopFlag, genreFilter);
+                int[] r = crawlDramaDetail(detailUrl, stopFlag, genreFilter, rateLimitMs);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
             }
-            saveCrawlProgress(scheduleId, page, 0L);
+            saveCrawlProgress(scheduleId, page);
             page++;
         }
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
-        Document doc = fetchWithRetry(detailUrl);
+    public int[] crawlDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter, int rateLimitMs) {
+        Document doc = fetchWithRetry(detailUrl, rateLimitMs);
         if (doc == null) return new int[]{0, 0, 0};
 
         try {
@@ -397,14 +404,14 @@ public class CrawlerCore {
     // ========== Variety Crawler ==========
 
     // type=3 综艺列表
-    public int[] crawlVarietyList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
+    public int[] crawlVarietyList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter, int rateLimitMs) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
         while (total < maxItems) {
             if (stopFlag != null && stopFlag.get()) break;
             String listUrl = getListUrl("3", page);
-            Document listDoc = fetchWithRetry(listUrl);
+            Document listDoc = fetchWithRetry(listUrl, rateLimitMs);
             if (listDoc == null) break;
 
             Set<String> seenUrls = new HashSet<>();
@@ -419,26 +426,26 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlVarietyDetail(detailUrl, stopFlag, genreFilter);
+                int[] r = crawlVarietyDetail(detailUrl, stopFlag, genreFilter, rateLimitMs);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
             }
-            saveCrawlProgress(scheduleId, page, 0L);
+            saveCrawlProgress(scheduleId, page);
             page++;
         }
         return new int[]{added, updated, total};
     }
 
     // type=4 动漫列表
-    public int[] crawlAnimeList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
+    public int[] crawlAnimeList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter, int rateLimitMs) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
         while (total < maxItems) {
             if (stopFlag != null && stopFlag.get()) break;
             String listUrl = getListUrl("4", page);
-            Document listDoc = fetchWithRetry(listUrl);
+            Document listDoc = fetchWithRetry(listUrl, rateLimitMs);
             if (listDoc == null) break;
 
             Set<String> seenUrls = new HashSet<>();
@@ -453,26 +460,26 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlAnimeDetail(detailUrl, stopFlag, genreFilter);
+                int[] r = crawlAnimeDetail(detailUrl, stopFlag, genreFilter, rateLimitMs);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
             }
-            saveCrawlProgress(scheduleId, page, 0L);
+            saveCrawlProgress(scheduleId, page);
             page++;
         }
         return new int[]{added, updated, total};
     }
 
     // type=30 短剧列表
-    public int[] crawlShortDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter) {
+    public int[] crawlShortDramaList(int startPage, int maxItems, AtomicBoolean stopFlag, Long scheduleId, Set<String> genreFilter, int rateLimitMs) {
         int added = 0, updated = 0, total = 0;
         int page = startPage;
 
         while (total < maxItems) {
             if (stopFlag != null && stopFlag.get()) break;
             String listUrl = getListUrl("30", page);
-            Document listDoc = fetchWithRetry(listUrl);
+            Document listDoc = fetchWithRetry(listUrl, rateLimitMs);
             if (listDoc == null) break;
 
             Set<String> seenUrls = new HashSet<>();
@@ -487,19 +494,19 @@ public class CrawlerCore {
                 seenUrls.add(href);
                 String detailUrl = BASE_URL + href;
                 if (stopFlag != null && stopFlag.get()) break;
-                int[] r = crawlShortDramaDetail(detailUrl, stopFlag, genreFilter);
+                int[] r = crawlShortDramaDetail(detailUrl, stopFlag, genreFilter, rateLimitMs);
                 if (r[0] == 1) added++;
                 if (r[1] == 1) updated++;
                 total++;
             }
-            saveCrawlProgress(scheduleId, page, 0L);
+            saveCrawlProgress(scheduleId, page);
             page++;
         }
         return new int[]{added, updated, total};
     }
 
-    public int[] crawlVarietyDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
-        Document doc = fetchWithRetry(detailUrl);
+    public int[] crawlVarietyDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter, int rateLimitMs) {
+        Document doc = fetchWithRetry(detailUrl, rateLimitMs);
         if (doc == null) return new int[]{0, 0, 0};
 
         try {
@@ -567,8 +574,8 @@ public class CrawlerCore {
 
     // ========== Resource Extraction ==========
 
-    public int[] crawlAnimeDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
-        Document doc = fetchWithRetry(detailUrl);
+    public int[] crawlAnimeDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter, int rateLimitMs) {
+        Document doc = fetchWithRetry(detailUrl, rateLimitMs);
         if (doc == null) return new int[]{0, 0, 0};
 
         try {
@@ -632,8 +639,8 @@ public class CrawlerCore {
         }
     }
 
-    public int[] crawlShortDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter) {
-        Document doc = fetchWithRetry(detailUrl);
+    public int[] crawlShortDramaDetail(String detailUrl, AtomicBoolean stopFlag, Set<String> genreFilter, int rateLimitMs) {
+        Document doc = fetchWithRetry(detailUrl, rateLimitMs);
         if (doc == null) return new int[]{0, 0, 0};
 
         try {
@@ -844,9 +851,12 @@ public class CrawlerCore {
         }
     }
 
-    /** 检测代理是否可用 */
+    /** 检测代理是否可用（带 TTL 缓存，60秒后自动重检） */
     private boolean isProxyAvailable() {
-        if (proxyAvailable != null) return proxyAvailable;
+        long now = System.currentTimeMillis();
+        if (proxyAvailable != null && (now - proxyCheckTime) < PROXY_CACHE_TTL_MS) {
+            return proxyAvailable;
+        }
         try {
             var socket = new java.net.Socket();
             socket.connect(new InetSocketAddress(PROXY_HOST, PROXY_PORT), 2000);
@@ -857,21 +867,21 @@ public class CrawlerCore {
             proxyAvailable = false;
             log.warn("[PROXY] 代理不可用 {}:{}, 将直连", PROXY_HOST, PROXY_PORT);
         }
+        proxyCheckTime = now;
         return proxyAvailable;
     }
 
     // ========== Breakpoint Resumption ==========
 
     /** 保存爬取进度（断点续爬） */
-    private void saveCrawlProgress(Long scheduleId, int page, Long lastId) {
+    private void saveCrawlProgress(Long scheduleId, int page) {
         if (scheduleId == null) return;
         try {
             CrawlerSchedule s = scheduleService.getSchedule(scheduleId);
             if (s != null) {
                 s.setLastCrawledPage(page);
-                s.setLastCrawledId(lastId);
                 scheduleService.saveSchedule(s);
-                log.debug("[CrawlerCore] Saved progress: scheduleId={}, page={}, lastId={}", scheduleId, page, lastId);
+                log.debug("[CrawlerCore] Saved progress: scheduleId={}, page={}", scheduleId, page);
             }
         } catch (Exception e) {
             log.warn("[CrawlerCore] Failed to save progress: {}", e.getMessage());
@@ -885,7 +895,6 @@ public class CrawlerCore {
             CrawlerSchedule s = scheduleService.getSchedule(scheduleId);
             if (s != null) {
                 s.setLastCrawledPage(0);
-                s.setLastCrawledId(0L);
                 scheduleService.saveSchedule(s);
             }
         } catch (Exception e) {
@@ -895,7 +904,7 @@ public class CrawlerCore {
 
     // ========== HTTP Helper ==========
 
-    private Document fetchWithRetry(String url) {
+    private Document fetchWithRetry(String url, int rateLimitMs) {
         // 速率限制：请求间延迟
         if (rateLimitMs > 0) {
             try { Thread.sleep(rateLimitMs); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }

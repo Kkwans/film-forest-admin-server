@@ -104,6 +104,14 @@ public class CrawlerScheduler {
         runningJobs.put(schedule.getId(), true);
         log.info("[SCHEDULER] 触发爬虫: id={} name={} cron={}", schedule.getId(), schedule.getName(), schedule.getCronExpression());
 
+        // 更新 nextRunTime（供 UI 展示）
+        try {
+            String normalized = normalizeCron(schedule.getCronExpression());
+            var cron = CronExpression.parse(normalized);
+            schedule.setNextRunTime(cron.next(LocalDateTime.now()));
+            scheduleMapper.updateById(schedule);
+        } catch (Exception ignored) {}
+
         crawlerExecutor.submit(() -> {
             try {
                 scheduleService.startCrawler(schedule.getId());

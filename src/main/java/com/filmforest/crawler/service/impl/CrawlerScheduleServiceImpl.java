@@ -8,9 +8,10 @@ import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@Slf4j
 @Service
 public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
 
@@ -56,8 +58,20 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
             schedule.setStatus(CrawlerStatus.IDLE.getCode());
             schedule.setTotalRuns(0);
             schedule.setTotalItems(0);
+            // 计算 nextRunTime
+            if (schedule.getEnabled() != null && schedule.getEnabled() == 1
+                    && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
+                schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+            }
             return scheduleMapper.insert(schedule) > 0;
         } else {
+            // 更新时重算 nextRunTime
+            if (schedule.getEnabled() != null && schedule.getEnabled() == 1
+                    && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
+                schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+            } else {
+                schedule.setNextRunTime(null);
+            }
             return scheduleMapper.updateById(schedule) > 0;
         }
     }
@@ -157,6 +171,25 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         CrawlerSchedule schedule = scheduleMapper.selectById(id);
         if (schedule == null) return false;
         schedule.setEnabled(enabled ? 1 : 0);
+        if (enabled && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
+            schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+        } else {
+            schedule.setNextRunTime(null);
+        }
         return scheduleMapper.updateById(schedule) > 0;
+    }
+
+    /** 计算下一次运行时间（供 UI 展示） */
+    private LocalDateTime computeNextRunTime(String cronExpr) {
+        try {
+            String normalized = cronExpr.trim();
+            String[] parts = normalized.split("\\s+");
+            if (parts.length == 5) normalized = "0 " + normalized;
+            CronExpression cron = CronExpression.parse(normalized);
+            return cron.next(LocalDateTime.now());
+        } catch (Exception e) {
+            log.warn("[Scheduler] 无法解析 cron 表达式: {}", cronExpr);
+            return null;
+        }
     }
 }
