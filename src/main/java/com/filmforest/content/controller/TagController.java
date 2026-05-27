@@ -79,4 +79,24 @@ public class TagController {
         tagService.setContentTags(contentId, contentType, tagIds);
         return Result.ok();
     }
+
+    /**
+     * 批量获取多个内容的标签
+     * 请求体: [{contentType: "movie", contentId: 1}, ...]
+     * 返回: {"movie-1": [TagItem, ...], ...}
+     */
+    @PostMapping("/content/batch")
+    public Result<?> batchGetContentTags(@RequestBody List<Map<String, Object>> items) {
+        Map<String, Object> result = new java.util.HashMap<>();
+        for (Map<String, Object> item : items) {
+            String contentType = (String) item.get("contentType");
+            Number contentIdNum = (Number) item.get("contentId");
+            if (contentType != null && contentIdNum != null) {
+                Long contentId = contentIdNum.longValue();
+                String key = contentType + "-" + contentId;
+                result.put(key, tagService.getContentTags(contentId, contentType));
+            }
+        }
+        return Result.ok(result);
+    }
 }
