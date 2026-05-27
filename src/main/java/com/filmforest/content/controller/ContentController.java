@@ -89,14 +89,16 @@ public class ContentController {
     public Result<Movie> updateMovie(@PathVariable Long id, @Valid @RequestBody Movie movie) {
         movie.setId(id);
         movieService.updateById(movie);
+        Movie updated = movieService.getDetail(id);
         log.info("更新电影: id={}, title={}", id, movie.getTitle());
-        return Result.ok(movie);
+        return Result.ok(updated);
     }
 
     @DeleteMapping("/movies/{id}")
     public Result<Boolean> deleteMovie(@PathVariable Long id) {
         log.info("删除电影: id={}", id);
-        return Result.ok(movieService.removeById(id));
+        boolean ok = movieService.removeById(id);
+        return ok ? Result.ok(true) : Result.fail("电影不存在或删除失败");
     }
 
     // ==================== 剧集 ====================
@@ -128,14 +130,16 @@ public class ContentController {
     public Result<Drama> updateDrama(@PathVariable Long id, @Valid @RequestBody Drama drama) {
         drama.setId(id);
         dramaService.updateById(drama);
+        Drama updated = dramaService.getDetail(id);
         log.info("更新剧集: id={}, title={}", id, drama.getTitle());
-        return Result.ok(drama);
+        return Result.ok(updated);
     }
 
     @DeleteMapping("/dramas/{id}")
     public Result<Boolean> deleteDrama(@PathVariable Long id) {
         log.info("删除剧集: id={}", id);
-        return Result.ok(dramaService.removeById(id));
+        boolean ok = dramaService.removeById(id);
+        return ok ? Result.ok(true) : Result.fail("剧集不存在或删除失败");
     }
 
     // ==================== 综艺 ====================
@@ -167,14 +171,16 @@ public class ContentController {
     public Result<Variety> updateVariety(@PathVariable Long id, @Valid @RequestBody Variety variety) {
         variety.setId(id);
         varietyService.updateById(variety);
+        Variety updated = varietyService.getDetail(id);
         log.info("更新综艺: id={}, title={}", id, variety.getTitle());
-        return Result.ok(variety);
+        return Result.ok(updated);
     }
 
     @DeleteMapping("/varieties/{id}")
     public Result<Boolean> deleteVariety(@PathVariable Long id) {
         log.info("删除综艺: id={}", id);
-        return Result.ok(varietyService.removeById(id));
+        boolean ok = varietyService.removeById(id);
+        return ok ? Result.ok(true) : Result.fail("综艺不存在或删除失败");
     }
 
     // ==================== 动漫 ====================
@@ -206,14 +212,16 @@ public class ContentController {
     public Result<Anime> updateAnime(@PathVariable Long id, @Valid @RequestBody Anime anime) {
         anime.setId(id);
         animeService.updateById(anime);
+        Anime updated = animeService.getDetail(id);
         log.info("更新动漫: id={}, title={}", id, anime.getTitle());
-        return Result.ok(anime);
+        return Result.ok(updated);
     }
 
     @DeleteMapping("/animes/{id}")
     public Result<Boolean> deleteAnime(@PathVariable Long id) {
         log.info("删除动漫: id={}", id);
-        return Result.ok(animeService.removeById(id));
+        boolean ok = animeService.removeById(id);
+        return ok ? Result.ok(true) : Result.fail("动漫不存在或删除失败");
     }
 
     // ==================== 短剧 ====================
@@ -245,14 +253,16 @@ public class ContentController {
     public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @Valid @RequestBody ShortDrama shortDrama) {
         shortDrama.setId(id);
         shortDramaService.updateById(shortDrama);
+        ShortDrama updated = shortDramaService.getDetail(id);
         log.info("更新短剧: id={}, title={}", id, shortDrama.getTitle());
-        return Result.ok(shortDrama);
+        return Result.ok(updated);
     }
 
     @DeleteMapping("/short-dramas/{id}")
     public Result<Boolean> deleteShortDrama(@PathVariable Long id) {
         log.info("删除短剧: id={}", id);
-        return Result.ok(shortDramaService.removeById(id));
+        boolean ok = shortDramaService.removeById(id);
+        return ok ? Result.ok(true) : Result.fail("短剧不存在或删除失败");
     }
 
     // ==================== Genre 列表（爬虫配置用） ====================
