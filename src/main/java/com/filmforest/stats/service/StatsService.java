@@ -26,4 +26,16 @@ public interface StatsService {
      * 按搜索次数降序，支持时间范围过滤
      */
     List<Map<String, Object>> getHotSearchKeywords(int days, int limit);
+
+    /**
+     * 获取数据报表
+     * 按时间维度聚合，返回各类型增长对比、爬虫效率、资源增长等
+     */
+    Map<String, Object> getReport(int days);
+
+    /**
+     * 获取内容列表（导出用）
+     * @param type 内容类型，null 表示全部
+     */
+    List<Map<String, Object>> getContentList(String type);
 }

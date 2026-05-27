@@ -89,12 +89,24 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     }
 
     private void updateAllUsageCounts() {
+        // 使用 GROUP BY 单次查询获取各 tag 的使用次数（替代 N+1 查询）
+        List<java.util.Map<String, Object>> rows = contentTagMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ContentTag>()
+                        .select("tag_id", "COUNT(*) AS cnt")
+                        .groupBy("tag_id"));
+        java.util.Map<Long, Long> countMap = new java.util.HashMap<>();
+        for (java.util.Map<String, Object> row : rows) {
+            Long tagId = ((Number) row.get("tag_id")).longValue();
+            Long cnt = ((Number) row.get("cnt")).longValue();
+            countMap.put(tagId, cnt);
+        }
         List<Tag> tags = list();
         for (Tag tag : tags) {
-            Long count = contentTagMapper.selectCount(
-                    new LambdaQueryWrapper<ContentTag>().eq(ContentTag::getTagId, tag.getId()));
-            tag.setUsageCount(count.intValue());
-            updateById(tag);
+            Long count = countMap.getOrDefault(tag.getId(), 0L);
+            if (tag.getUsageCount() == null || tag.getUsageCount() != count.intValue()) {
+                tag.setUsageCount(count.intValue());
+                updateById(tag);
+            }
         }
     }
 }

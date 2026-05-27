@@ -7,6 +7,8 @@ import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -79,6 +81,7 @@ public class ContentController {
     }
 
     @PostMapping("/movies")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Movie> createMovie(@Valid @RequestBody Movie movie) {
         movieService.save(movie);
         log.info("创建电影: id={}, title={}", movie.getId(), movie.getTitle());
@@ -86,6 +89,7 @@ public class ContentController {
     }
 
     @PutMapping("/movies/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Movie> updateMovie(@PathVariable Long id, @Valid @RequestBody Movie movie) {
         movie.setId(id);
         movieService.updateById(movie);
@@ -95,6 +99,7 @@ public class ContentController {
     }
 
     @DeleteMapping("/movies/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Boolean> deleteMovie(@PathVariable Long id) {
         log.info("删除电影: id={}", id);
         boolean ok = movieService.removeById(id);
@@ -120,6 +125,7 @@ public class ContentController {
     }
 
     @PostMapping("/dramas")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Drama> createDrama(@Valid @RequestBody Drama drama) {
         dramaService.save(drama);
         log.info("创建剧集: id={}, title={}", drama.getId(), drama.getTitle());
@@ -127,6 +133,7 @@ public class ContentController {
     }
 
     @PutMapping("/dramas/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Drama> updateDrama(@PathVariable Long id, @Valid @RequestBody Drama drama) {
         drama.setId(id);
         dramaService.updateById(drama);
@@ -136,6 +143,7 @@ public class ContentController {
     }
 
     @DeleteMapping("/dramas/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Boolean> deleteDrama(@PathVariable Long id) {
         log.info("删除剧集: id={}", id);
         boolean ok = dramaService.removeById(id);
@@ -161,6 +169,7 @@ public class ContentController {
     }
 
     @PostMapping("/varieties")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Variety> createVariety(@Valid @RequestBody Variety variety) {
         varietyService.save(variety);
         log.info("创建综艺: id={}, title={}", variety.getId(), variety.getTitle());
@@ -168,6 +177,7 @@ public class ContentController {
     }
 
     @PutMapping("/varieties/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Variety> updateVariety(@PathVariable Long id, @Valid @RequestBody Variety variety) {
         variety.setId(id);
         varietyService.updateById(variety);
@@ -177,6 +187,7 @@ public class ContentController {
     }
 
     @DeleteMapping("/varieties/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Boolean> deleteVariety(@PathVariable Long id) {
         log.info("删除综艺: id={}", id);
         boolean ok = varietyService.removeById(id);
@@ -202,6 +213,7 @@ public class ContentController {
     }
 
     @PostMapping("/animes")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Anime> createAnime(@Valid @RequestBody Anime anime) {
         animeService.save(anime);
         log.info("创建动漫: id={}, title={}", anime.getId(), anime.getTitle());
@@ -209,6 +221,7 @@ public class ContentController {
     }
 
     @PutMapping("/animes/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Anime> updateAnime(@PathVariable Long id, @Valid @RequestBody Anime anime) {
         anime.setId(id);
         animeService.updateById(anime);
@@ -218,6 +231,7 @@ public class ContentController {
     }
 
     @DeleteMapping("/animes/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Boolean> deleteAnime(@PathVariable Long id) {
         log.info("删除动漫: id={}", id);
         boolean ok = animeService.removeById(id);
@@ -243,6 +257,7 @@ public class ContentController {
     }
 
     @PostMapping("/short-dramas")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<ShortDrama> createShortDrama(@Valid @RequestBody ShortDrama shortDrama) {
         shortDramaService.save(shortDrama);
         log.info("创建短剧: id={}, title={}", shortDrama.getId(), shortDrama.getTitle());
@@ -250,6 +265,7 @@ public class ContentController {
     }
 
     @PutMapping("/short-dramas/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @Valid @RequestBody ShortDrama shortDrama) {
         shortDrama.setId(id);
         shortDramaService.updateById(shortDrama);
@@ -259,6 +275,7 @@ public class ContentController {
     }
 
     @DeleteMapping("/short-dramas/{id}")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Boolean> deleteShortDrama(@PathVariable Long id) {
         log.info("删除短剧: id={}", id);
         boolean ok = shortDramaService.removeById(id);
@@ -275,6 +292,7 @@ public class ContentController {
      * 不做白名单过滤，保留数据库中实际存在的所有类型。
      */
     @GetMapping("/genres")
+    @Cacheable(value = "genres", key = "#contentType")
     public Result<List<String>> getGenres(@RequestParam String contentType) {
         String table = CONTENT_TYPE_TABLE_MAP.get(contentType);
         if (table == null) {
@@ -313,6 +331,7 @@ public class ContentController {
 
     /** 获取各类型内容的数量统计 */
     @GetMapping("/stats")
+    @Cacheable(value = "stats", key = "'content_stats'")
     public Result<Map<String, Object>> getStats() {
         Map<String, Object> stats = new HashMap<>();
         stats.put("movies", movieService.count());
@@ -337,6 +356,7 @@ public class ContentController {
 
         List<Map<String, Object>> results = new ArrayList<>();
 
+        // 只查询请求的类型，避免不必要的数据库查询
         if (type == null || "movie".equals(type)) {
             IPage<Movie> p = movieService.pageList(page, size, null, null, null);
             for (Movie m : p.getRecords()) {
@@ -345,7 +365,7 @@ public class ContentController {
                         m.getStatus() != null ? String.valueOf(m.getStatus()) : null, m.getCreatedAt()));
             }
         }
-        if (type == null || "drama".equals(type)) {
+        if ("drama".equals(type)) {
             IPage<Drama> p = dramaService.pageList(page, size, null, null, null);
             for (Drama d : p.getRecords()) {
                 results.add(toSummaryMap(d.getId(), "drama", d.getTitle(),
@@ -353,7 +373,7 @@ public class ContentController {
                         d.getStatus() != null ? String.valueOf(d.getStatus()) : null, d.getCreatedAt()));
             }
         }
-        if (type == null || "variety".equals(type)) {
+        if ("variety".equals(type)) {
             IPage<Variety> p = varietyService.pageList(page, size, null, null, null);
             for (Variety v : p.getRecords()) {
                 results.add(toSummaryMap(v.getId(), "variety", v.getTitle(),
@@ -361,7 +381,7 @@ public class ContentController {
                         v.getStatus() != null ? String.valueOf(v.getStatus()) : null, v.getCreatedAt()));
             }
         }
-        if (type == null || "anime".equals(type)) {
+        if ("anime".equals(type)) {
             IPage<Anime> p = animeService.pageList(page, size, null, null, null);
             for (Anime a : p.getRecords()) {
                 results.add(toSummaryMap(a.getId(), "anime", a.getTitle(),
@@ -369,11 +389,11 @@ public class ContentController {
                         a.getStatus() != null ? String.valueOf(a.getStatus()) : null, a.getCreatedAt()));
             }
         }
-        if (type == null || "short_drama".equals(type) || "short".equals(type)) {
+        if ("short_drama".equals(type) || "short".equals(type)) {
             IPage<ShortDrama> p = shortDramaService.pageList(page, size, null, null, null);
             for (ShortDrama s : p.getRecords()) {
                 results.add(toSummaryMap(s.getId(), "short_drama", s.getTitle(),
-                        s.getPosterUrl(), s.getYear(), null, 
+                        s.getPosterUrl(), s.getYear(), s.getScoreDouban(), 
                         s.getStatus() != null ? String.valueOf(s.getStatus()) : null, s.getCreatedAt()));
             }
         }

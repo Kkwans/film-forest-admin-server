@@ -4,6 +4,7 @@ import com.filmforest.stats.service.StatsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +37,7 @@ public class StatsServiceImpl implements StatsService {
     );
 
     @Override
+    @Cacheable(value = "stats", key = "'overview'")
     public Map<String, Object> getOverview() {
         Map<String, Object> overview = new LinkedHashMap<>();
 
@@ -154,6 +156,7 @@ public class StatsServiceImpl implements StatsService {
     }
 
     @Override
+    @Cacheable(value = "stats", key = "'trend_' + #days")
     public Map<String, Object> getTrend(int days) {
         LocalDate endDate = LocalDate.now();
         LocalDate startDate = endDate.minusDays(days - 1);
@@ -199,6 +202,7 @@ public class StatsServiceImpl implements StatsService {
     }
 
     @Override
+    @Cacheable(value = "stats", key = "'hotsearch_' + #days + '_' + #limit")
     public List<Map<String, Object>> getHotSearchKeywords(int days, int limit) {
         try {
             // 检查 search_log 表是否存在
@@ -233,5 +237,141 @@ public class StatsServiceImpl implements StatsService {
             log.error("[Stats] 查询热门搜索词失败", e);
             return Collections.emptyList();
         }
+    }
+
+    @Override
+    @Cacheable(value = "stats", key = "'report_' + #days")
+    public Map<String, Object> getReport(int days) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        LocalDate endDate = LocalDate.now();
+        LocalDate startDate = endDate.minusDays(days - 1);
+
+        // 1. 各类型新增数量对比
+        List<Map<String, Object>> typeGrowth = new ArrayList<>();
+        for (String table : CONTENT_TABLES) {
+            try {
+                Long count = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM " + table
+                                + " WHERE is_deleted = 0 AND created_at >= ? AND created_at < ?",
+                        Long.class,
+                        startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay());
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("type", table);
+                item.put("label", TYPE_LABELS.getOrDefault(table, table));
+                item.put("count", count != null ? count : 0);
+                typeGrowth.add(item);
+            } catch (Exception e) {
+                log.warn("[Report] 查询 {} 新增数量失败", table, e);
+            }
+        }
+        report.put("typeGrowth", typeGrowth);
+
+        // 2. 爬虫效率统计
+        try {
+            Map<String, Object> efficiency = jdbcTemplate.queryForMap(
+                    "SELECT COUNT(*) AS total_runs, " +
+                    "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success_runs, " +
+                    "SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed_runs, " +
+                    "COALESCE(SUM(items_crawled), 0) AS total_items, " +
+                    "COALESCE(SUM(items_added), 0) AS total_added, " +
+                    "COALESCE(SUM(items_updated), 0) AS total_updated, " +
+                    "COALESCE(AVG(duration_ms), 0) AS avg_duration " +
+                    "FROM crawler_task_log WHERE started_at >= ? AND started_at < ?",
+                    startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay());
+            Map<String, Object> crawlerEfficiency = new LinkedHashMap<>();
+            long totalRuns = ((Number) efficiency.getOrDefault("total_runs", 0)).longValue();
+            long successRuns = ((Number) efficiency.getOrDefault("success_runs", 0)).longValue();
+            crawlerEfficiency.put("totalRuns", totalRuns);
+            crawlerEfficiency.put("successRuns", successRuns);
+            crawlerEfficiency.put("failedRuns", ((Number) efficiency.getOrDefault("failed_runs", 0)).longValue());
+            crawlerEfficiency.put("totalItems", ((Number) efficiency.getOrDefault("total_items", 0)).longValue());
+            crawlerEfficiency.put("totalAdded", ((Number) efficiency.getOrDefault("total_added", 0)).longValue());
+            crawlerEfficiency.put("totalUpdated", ((Number) efficiency.getOrDefault("total_updated", 0)).longValue());
+            crawlerEfficiency.put("avgDurationMs", Math.round(((Number) efficiency.getOrDefault("avg_duration", 0)).doubleValue()));
+            crawlerEfficiency.put("successRate", totalRuns > 0 ? Math.round(successRuns * 1000.0 / totalRuns) / 10.0 : 0);
+            report.put("crawlerEfficiency", crawlerEfficiency);
+        } catch (Exception e) {
+            log.warn("[Report] 查询爬虫效率失败", e);
+        }
+
+        // 3. 内容质量统计（评分分布）
+        try {
+            List<Map<String, Object>> qualityStats = new ArrayList<>();
+            for (String table : CONTENT_TABLES) {
+                try {
+                    Map<String, Object> row = jdbcTemplate.queryForMap(
+                            "SELECT COUNT(*) AS total, " +
+                            "SUM(CASE WHEN score_douban >= 8 THEN 1 ELSE 0 END) AS high_score, " +
+                            "SUM(CASE WHEN score_douban >= 5 AND score_douban < 8 THEN 1 ELSE 0 END) AS mid_score, " +
+                            "SUM(CASE WHEN score_douban > 0 AND score_douban < 5 THEN 1 ELSE 0 END) AS low_score, " +
+                            "COALESCE(AVG(CASE WHEN score_douban > 0 THEN score_douban END), 0) AS avg_score " +
+                            "FROM " + table + " WHERE is_deleted = 0",
+                            (Object[]) null);
+                    Map<String, Object> item = new LinkedHashMap<>();
+                    item.put("type", table);
+                    item.put("label", TYPE_LABELS.getOrDefault(table, table));
+                    item.put("total", ((Number) row.getOrDefault("total", 0)).longValue());
+                    item.put("highScore", ((Number) row.getOrDefault("high_score", 0)).longValue());
+                    item.put("midScore", ((Number) row.getOrDefault("mid_score", 0)).longValue());
+                    item.put("lowScore", ((Number) row.getOrDefault("low_score", 0)).longValue());
+                    item.put("avgScore", Math.round(((Number) row.getOrDefault("avg_score", 0)).doubleValue() * 10) / 10.0);
+                    qualityStats.add(item);
+                } catch (Exception e) {
+                    log.warn("[Report] 查询 {} 质量统计失败", table, e);
+                }
+            }
+            report.put("qualityStats", qualityStats);
+        } catch (Exception e) {
+            log.warn("[Report] 查询内容质量统计失败", e);
+        }
+
+        // 4. 每日新增趋势（按天汇总所有类型）
+        try {
+            List<String> dates = new ArrayList<>();
+            List<Long> dailyTotals = new ArrayList<>();
+            for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
+                dates.add(d.format(DateTimeFormatter.ofPattern("MM-dd")));
+                long dayTotal = 0;
+                for (String table : CONTENT_TABLES) {
+                    try {
+                        Long cnt = jdbcTemplate.queryForObject(
+                                "SELECT COUNT(*) FROM " + table
+                                        + " WHERE is_deleted = 0 AND DATE(created_at) = ?",
+                                Long.class, d);
+                        dayTotal += cnt != null ? cnt : 0;
+                    } catch (Exception ignored) {}
+                }
+                dailyTotals.add(dayTotal);
+            }
+            Map<String, Object> dailyTrend = new LinkedHashMap<>();
+            dailyTrend.put("dates", dates);
+            dailyTrend.put("totals", dailyTotals);
+            report.put("dailyTrend", dailyTrend);
+        } catch (Exception e) {
+            log.warn("[Report] 查询每日趋势失败", e);
+        }
+
+        report.put("days", days);
+        report.put("startDate", startDate.toString());
+        report.put("endDate", endDate.toString());
+        return report;
+    }
+
+    @Override
+    public List<Map<String, Object>> getContentList(String type) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        String[] tables = type != null ? new String[]{type} : CONTENT_TABLES;
+        for (String table : tables) {
+            try {
+                List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                        "SELECT id, '" + table + "' AS type, title, year, score_douban, score_imdb, " +
+                        "CASE WHEN status = 1 THEN '已发布' ELSE '未发布' END AS status, " +
+                        "created_at FROM " + table + " WHERE is_deleted = 0 ORDER BY created_at DESC");
+                result.addAll(rows);
+            } catch (Exception e) {
+                log.warn("[Export] 查询 {} 列表失败", table, e);
+            }
+        }
+        return result;
     }
 }
