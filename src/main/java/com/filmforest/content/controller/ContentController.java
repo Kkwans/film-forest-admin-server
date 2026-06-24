@@ -62,6 +62,47 @@ public class ContentController {
             "short", "short_drama"
     );
 
+    // ==================== 状态切换（通用） ====================
+
+    /**
+     * 通用状态切换接口
+     * 只更新 status 字段，不影响其他数据
+     */
+    @PatchMapping("/{type}/{id}/status")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
+    public Result<Boolean> toggleStatus(
+            @PathVariable String type,
+            @PathVariable Long id,
+            @RequestParam int status) {
+        String table = CONTENT_TYPE_TABLE_MAP.get(type);
+        if (table == null) {
+            return Result.fail("不支持的内容类型: " + type);
+        }
+        if (!CONTENT_TYPE_TABLE_MAP.containsValue(table)) {
+            return Result.fail("不支持的内容类型: " + type);
+        }
+        // 校验 status 只能为 0 或 1
+        if (status != 0 && status != 1) {
+            return Result.fail("非法的状态值: " + status + "，只允许 0 或 1");
+        }
+        try {
+            int rows = jdbcTemplate.update(
+                    "UPDATE " + table + " SET status = ?, updated_at = NOW() WHERE id = ?",
+                    status, id
+            );
+            if (rows > 0) {
+                log.info("切换内容状态: type={}, id={}, status={}", type, id, status);
+                return Result.ok(true);
+            }
+            return Result.fail("内容不存在");
+        } catch (Exception e) {
+            log.error("切换状态失败: type={}, id={}", type, id, e);
+            return Result.fail("操作失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 内容管理 API（管理端） ====================
+
     // ==================== 电影 ====================
 
     @GetMapping("/movies")
@@ -299,6 +340,12 @@ public class ContentController {
             return Result.ok(Collections.emptyList());
         }
 
+        // 二次校验表名必须在白名单内，防止 SQL 注入
+        if (!CONTENT_TYPE_TABLE_MAP.containsValue(table)) {
+            log.warn("非法的 contentType 请求: {}", contentType);
+            return Result.ok(Collections.emptyList());
+        }
+
         try {
             List<String> genreJsons = jdbcTemplate.queryForList(
                     "SELECT genre FROM " + table + " WHERE genre IS NOT NULL AND genre != '[]'",
@@ -356,8 +403,10 @@ public class ContentController {
 
         List<Map<String, Object>> results = new ArrayList<>();
 
-        // 只查询请求的类型，避免不必要的数据库查询
-        if (type == null || "movie".equals(type)) {
+        // type=null 时查询所有类型，否则只查询指定类型
+        boolean queryAll = (type == null || type.isEmpty());
+
+        if (queryAll || "movie".equals(type)) {
             IPage<Movie> p = movieService.pageList(page, size, null, null, null);
             for (Movie m : p.getRecords()) {
                 results.add(toSummaryMap(m.getId(), "movie", m.getTitle(),
@@ -365,7 +414,7 @@ public class ContentController {
                         m.getStatus() != null ? String.valueOf(m.getStatus()) : null, m.getCreatedAt()));
             }
         }
-        if ("drama".equals(type)) {
+        if (queryAll || "drama".equals(type)) {
             IPage<Drama> p = dramaService.pageList(page, size, null, null, null);
             for (Drama d : p.getRecords()) {
                 results.add(toSummaryMap(d.getId(), "drama", d.getTitle(),
@@ -373,7 +422,7 @@ public class ContentController {
                         d.getStatus() != null ? String.valueOf(d.getStatus()) : null, d.getCreatedAt()));
             }
         }
-        if ("variety".equals(type)) {
+        if (queryAll || "variety".equals(type)) {
             IPage<Variety> p = varietyService.pageList(page, size, null, null, null);
             for (Variety v : p.getRecords()) {
                 results.add(toSummaryMap(v.getId(), "variety", v.getTitle(),
@@ -381,7 +430,7 @@ public class ContentController {
                         v.getStatus() != null ? String.valueOf(v.getStatus()) : null, v.getCreatedAt()));
             }
         }
-        if ("anime".equals(type)) {
+        if (queryAll || "anime".equals(type)) {
             IPage<Anime> p = animeService.pageList(page, size, null, null, null);
             for (Anime a : p.getRecords()) {
                 results.add(toSummaryMap(a.getId(), "anime", a.getTitle(),
@@ -389,7 +438,7 @@ public class ContentController {
                         a.getStatus() != null ? String.valueOf(a.getStatus()) : null, a.getCreatedAt()));
             }
         }
-        if ("short_drama".equals(type) || "short".equals(type)) {
+        if (queryAll || "short_drama".equals(type) || "short".equals(type)) {
             IPage<ShortDrama> p = shortDramaService.pageList(page, size, null, null, null);
             for (ShortDrama s : p.getRecords()) {
                 results.add(toSummaryMap(s.getId(), "short_drama", s.getTitle(),
@@ -397,6 +446,16 @@ public class ContentController {
                         s.getStatus() != null ? String.valueOf(s.getStatus()) : null, s.getCreatedAt()));
             }
         }
+
+        // 按创建时间降序排序
+        results.sort((a, b) -> {
+            Object ca = a.get("createdAt");
+            Object cb = b.get("createdAt");
+            if (ca == null && cb == null) return 0;
+            if (ca == null) return 1;
+            if (cb == null) return -1;
+            return cb.toString().compareTo(ca.toString());
+        });
 
         return Result.ok(results);
     }
