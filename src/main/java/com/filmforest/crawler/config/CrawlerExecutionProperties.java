@@ -10,6 +10,8 @@ public class CrawlerExecutionProperties {
     private int queueCapacity = 4;
     private long heartbeatIntervalMs = 15_000;
     private long staleHeartbeatMs = 120_000;
+    private int latestConsecutiveUnchanged = 20;
+    private int latestRecentPages = 2;
 
     public int getWorkerConcurrency() {
         return workerConcurrency;
@@ -49,5 +51,21 @@ public class CrawlerExecutionProperties {
 
     public void setStaleHeartbeatMs(long staleHeartbeatMs) {
         this.staleHeartbeatMs = staleHeartbeatMs;
+    }
+
+    public int getLatestConsecutiveUnchanged() {
+        return latestConsecutiveUnchanged;
+    }
+
+    public void setLatestConsecutiveUnchanged(int latestConsecutiveUnchanged) {
+        this.latestConsecutiveUnchanged = latestConsecutiveUnchanged;
+    }
+
+    public int getLatestRecentPages() {
+        return latestRecentPages;
+    }
+
+    public void setLatestRecentPages(int latestRecentPages) {
+        this.latestRecentPages = latestRecentPages;
     }
 }

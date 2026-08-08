@@ -3,6 +3,8 @@ package com.filmforest.crawler.core;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
+import com.filmforest.crawler.config.CrawlerExecutionProperties;
+import com.filmforest.crawler.entity.CrawlerCrawlMode;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.http.FetchCategory;
@@ -13,7 +15,9 @@ import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.CrawlerTime;
+import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +41,8 @@ public class CrawlerCore {
     private final SourceAdapterRegistry sourceAdapterRegistry;
     private final HttpFetcher httpFetcher;
     private final CrawlerContentPersistence contentPersistence;
+    private final CrawlerSourceItemService sourceItemService;
+    private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
     private final ThreadLocal<Long> executingJobId = new ThreadLocal<>();
 
@@ -45,16 +51,21 @@ public class CrawlerCore {
                        SourceAdapterRegistry sourceAdapterRegistry,
                        HttpFetcher httpFetcher,
                        CrawlerContentPersistence contentPersistence,
+                       CrawlerSourceItemService sourceItemService,
+                       CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper) {
         this.scheduleService = scheduleService;
         this.taskLogMapper = taskLogMapper;
         this.sourceAdapterRegistry = sourceAdapterRegistry;
         this.httpFetcher = httpFetcher;
         this.contentPersistence = contentPersistence;
+        this.sourceItemService = sourceItemService;
+        this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
     }
 
-    public CrawlExecutionSummary executeCrawl(Long scheduleId, Long logId, AtomicBoolean cancellation) {
+    public CrawlExecutionSummary executeCrawl(Long scheduleId, Long logId,
+                                              AtomicBoolean cancellation) {
         CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
         CrawlerTaskLog job = taskLogMapper.selectById(logId);
         if (schedule == null || job == null) {
@@ -65,27 +76,37 @@ public class CrawlerCore {
             return emptySummary();
         }
         CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(schedule.getSourceSite());
-        int startPage = job.getCurrentPage() == null ? 1 : Math.max(1, job.getCurrentPage());
-        int maxItems = schedule.getBatchSize() == null ? 20 : Math.max(1, schedule.getBatchSize());
-        int rateLimitMs = schedule.getRateLimitMs() == null ? 0 : Math.max(0, schedule.getRateLimitMs());
+        CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(job.getCrawlMode() == null
+                ? schedule.getCrawlMode() : job.getCrawlMode());
+        int startPage = crawlMode == CrawlerCrawlMode.FULL && job.getCurrentPage() != null
+                ? Math.max(1, job.getCurrentPage()) : 1;
+        int maxItems = crawlMode == CrawlerCrawlMode.FULL ? Integer.MAX_VALUE
+                : schedule.getBatchSize() == null ? 20 : Math.max(1, schedule.getBatchSize());
+        int rateLimitMs = schedule.getRateLimitMs() == null
+                ? 0 : Math.max(0, schedule.getRateLimitMs());
         Set<String> genreFilter = parseGenreFilter(schedule.getGenreFilter());
 
         executingJobId.set(logId);
         try {
-            return crawl(scheduleId, adapter, contentType, startPage, maxItems, rateLimitMs,
-                    genreFilter, cancellation);
+            return crawl(scheduleId, adapter, contentType, crawlMode, startPage, maxItems,
+                    rateLimitMs, genreFilter, cancellation);
         } finally {
             executingJobId.remove();
         }
     }
 
     private CrawlExecutionSummary crawl(Long scheduleId, CrawlerSourceAdapter adapter,
-                                        ContentType contentType, int startPage, int maxItems,
-                                        int rateLimitMs, Set<String> genreFilter,
-                                        AtomicBoolean cancellation) {
+                                        ContentType contentType, CrawlerCrawlMode crawlMode,
+                                        int startPage, int maxItems, int rateLimitMs,
+                                        Set<String> genreFilter, AtomicBoolean cancellation) {
         MutableStats stats = new MutableStats();
         int page = startPage;
         int consecutiveStructureFailures = 0;
+        int consecutiveOldItems = 0;
+        int latestStopThreshold = Math.max(1,
+                executionProperties.getLatestConsecutiveUnchanged());
+        int latestRecentPages = Math.max(1, executionProperties.getLatestRecentPages());
+        boolean latestBoundaryReached = false;
         while (stats.discovered < maxItems && !isCancellationRequested(cancellation)) {
             URI listUri = adapter.listUri(contentType, page);
             FetchResult listFetch = httpFetcher.fetch(listUri, Map.of(), rateLimitMs, cancellation);
@@ -102,17 +123,17 @@ public class CrawlerCore {
 
             boolean pageCompleted = true;
             for (SourceListItem item : items) {
-                if (stats.discovered >= maxItems) {
+                if (stats.discovered >= maxItems || isCancellationRequested(cancellation)) {
                     pageCompleted = false;
                     break;
                 }
-                if (isCancellationRequested(cancellation)) {
-                    pageCompleted = false;
-                    break;
-                }
+                CrawlerSourceItemService.Observation observation = sourceItemService.observeListItem(
+                        adapter.sourceCode(), contentType, item);
+                stats.discovered++;
                 recordProgress(page, item.sourceUrl(), stats);
                 ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
-                        genreFilter, cancellation, stats);
+                        genreFilter, cancellation, stats, observation,
+                        crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
                 if (result.outcome() == ItemOutcome.STRUCTURE_FAILURE) {
                     consecutiveStructureFailures++;
                     if (consecutiveStructureFailures >= STRUCTURE_FAILURE_THRESHOLD) {
@@ -120,16 +141,28 @@ public class CrawlerCore {
                                 consecutiveStructureFailures, result.diagnostic());
                     }
                 } else if (result.outcome() == ItemOutcome.SUCCESS
+                        || result.outcome() == ItemOutcome.UNCHANGED
                         || result.outcome() == ItemOutcome.FILTERED) {
                     consecutiveStructureFailures = 0;
                 }
+                consecutiveOldItems = result.oldItem() ? consecutiveOldItems + 1 : 0;
                 recordProgress(page, item.sourceUrl(), stats);
+                if (crawlMode == CrawlerCrawlMode.LATEST && page >= latestRecentPages
+                        && consecutiveOldItems >= latestStopThreshold) {
+                    pageCompleted = false;
+                    latestBoundaryReached = true;
+                    break;
+                }
             }
             recordProgress(pageCompleted ? page + 1 : page, null, stats);
             if (!pageCompleted) {
                 break;
             }
             page++;
+        }
+        if (latestBoundaryReached) {
+            log.info("LATEST crawl reached unchanged boundary: scheduleId={}, page={}, consecutiveOld={}",
+                    scheduleId, page, consecutiveOldItems);
         }
         if (isCancellationRequested(cancellation)) {
             recordProgress(page, null, stats);
@@ -140,15 +173,31 @@ public class CrawlerCore {
     private ItemProcessingResult processItem(CrawlerSourceAdapter adapter, ContentType contentType,
                                              SourceListItem item, int rateLimitMs,
                                              Set<String> genreFilter, AtomicBoolean cancellation,
-                                             MutableStats stats) {
+                                             MutableStats stats,
+                                             CrawlerSourceItemService.Observation observation,
+                                             boolean allowListFingerprintShortcut) {
+        if (allowListFingerprintShortcut && observation.knownBefore()
+                && !observation.listChanged() && observation.previousDetailFingerprint() != null) {
+            if ("filtered".equals(observation.previousParseStatus())) {
+                stats.filtered++;
+                return new ItemProcessingResult(ItemOutcome.FILTERED, "list-unchanged", true);
+            }
+            if ("parsed".equals(observation.previousParseStatus())
+                    && observation.internalContentId() != null) {
+                stats.unchanged++;
+                return new ItemProcessingResult(ItemOutcome.UNCHANGED, "list-unchanged", true);
+            }
+        }
+
         FetchResult detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
                 rateLimitMs, cancellation);
         if (detailFetch.category() == FetchCategory.CANCELLED) {
-            return new ItemProcessingResult(ItemOutcome.CANCELLED, "cancelled");
+            return new ItemProcessingResult(ItemOutcome.CANCELLED, "cancelled", false);
         }
-        stats.discovered++;
         if (!detailFetch.successful()) {
             stats.failed++;
+            sourceItemService.recordFetchFailure(adapter.sourceCode(), contentType,
+                    item.externalId(), detailFetch.category().name());
             log.atWarn().log("Detail fetch failed: source={}, externalId={}, category={}",
                     adapter.sourceCode(), item.externalId(), detailFetch.category());
             ItemOutcome outcome = switch (detailFetch.category()) {
@@ -156,7 +205,8 @@ public class CrawlerCore {
                 default -> ItemOutcome.FETCH_FAILURE;
             };
             return new ItemProcessingResult(outcome,
-                    "externalId=" + item.externalId() + ", category=" + detailFetch.category());
+                    "externalId=" + item.externalId() + ", category=" + detailFetch.category(),
+                    false);
         }
         stats.fetchSucceeded++;
         ParsedContent parsed;
@@ -164,37 +214,66 @@ public class CrawlerCore {
             parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
         } catch (RuntimeException parseFailure) {
             stats.failed++;
+            sourceItemService.recordParseFailure(adapter.sourceCode(), contentType,
+                    item.externalId(), parseFailure.getClass().getSimpleName());
             return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE,
                     "externalId=" + item.externalId() + ", parser="
-                            + parseFailure.getClass().getSimpleName());
+                            + parseFailure.getClass().getSimpleName(), false);
         }
         if (!parsed.valid()) {
             stats.failed++;
+            sourceItemService.recordParseFailure(adapter.sourceCode(), contentType,
+                    item.externalId(), "MISSING_REQUIRED_FIELDS");
             String diagnostic = "externalId=" + item.externalId() + ", missing="
                     + parsed.diagnostics().missingRequiredFields() + ", fingerprint="
                     + parsed.diagnostics().pageFingerprint();
             log.atWarn().log("Detail parse rejected: source={}, {}", adapter.sourceCode(), diagnostic);
-            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic);
+            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic, false);
         }
         stats.parseSucceeded++;
-        if (!matchesGenreFilter(parsed.genres(), genreFilter)) {
+        String detailFingerprint = SourceFingerprint.forDetail(parsed);
+        boolean detailUnchanged = detailFingerprint.equals(observation.previousDetailFingerprint());
+        if (detailUnchanged && "filtered".equals(observation.previousParseStatus())) {
+            sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
+                    item.externalId(), detailFingerprint);
             stats.filtered++;
-            return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered");
+            return new ItemProcessingResult(ItemOutcome.FILTERED, "detail-unchanged", true);
+        }
+        if (detailUnchanged && "parsed".equals(observation.previousParseStatus())
+                && observation.internalContentId() != null) {
+            sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
+                    observation.internalContentId(), detailFingerprint);
+            stats.unchanged++;
+            return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
+        }
+        if (!matchesGenreFilter(parsed.genres(), genreFilter)) {
+            sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
+                    item.externalId(), detailFingerprint);
+            stats.filtered++;
+            return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered", detailUnchanged);
         }
         try {
             CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
                     adapter.sourceCode(), parsed);
+            long internalContentId = persisted.contentId() > 0
+                    ? persisted.contentId() : Long.parseLong(parsed.externalId());
+            sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
+                    internalContentId, detailFingerprint);
             if (persisted.added()) stats.added++;
             if (persisted.updated()) stats.updated++;
             if (persisted.unchanged()) stats.unchanged++;
-            return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok");
+            return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
         } catch (RuntimeException persistenceFailure) {
             stats.failed++;
+            sourceItemService.recordPersistFailure(adapter.sourceCode(), contentType,
+                    item.externalId(), detailFingerprint,
+                    persistenceFailure.getClass().getSimpleName());
             log.warn("Detail persistence failed: source={}, externalId={}, error={}",
-                    adapter.sourceCode(), item.externalId(), persistenceFailure.getClass().getSimpleName());
+                    adapter.sourceCode(), item.externalId(),
+                    persistenceFailure.getClass().getSimpleName());
             return new ItemProcessingResult(ItemOutcome.PERSISTENCE_FAILURE,
                     "externalId=" + item.externalId() + ", persistence="
-                            + persistenceFailure.getClass().getSimpleName());
+                            + persistenceFailure.getClass().getSimpleName(), false);
         }
     }
 
@@ -278,6 +357,7 @@ public class CrawlerCore {
 
     private enum ItemOutcome {
         SUCCESS,
+        UNCHANGED,
         FILTERED,
         FETCH_FAILURE,
         STRUCTURE_FAILURE,
@@ -285,5 +365,7 @@ public class CrawlerCore {
         CANCELLED
     }
 
-    private record ItemProcessingResult(ItemOutcome outcome, String diagnostic) { }
+    private record ItemProcessingResult(ItemOutcome outcome, String diagnostic,
+                                        boolean oldItem) {
+    }
 }

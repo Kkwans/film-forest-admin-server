@@ -55,7 +55,7 @@ public class CrawlerContentPersistence {
         };
         CrawlerResourceDiffService.ResourceDiffResult resourceDiff = resourceDiffService.apply(
                 sourceCode, parsed.contentType().value(), contentId, parsed.resources());
-        return new PersistResult(isNew, !isNew, false, resourceDiff);
+        return new PersistResult(contentId, isNew, !isNew, false, resourceDiff);
     }
 
     private boolean persistMovie(long id, ParsedContent parsed) {
@@ -226,10 +226,10 @@ public class CrawlerContentPersistence {
         if (isNew) service.save(entity); else service.updateById(entity);
     }
 
-    public record PersistResult(boolean added, boolean updated, boolean unchanged,
+    public record PersistResult(long contentId, boolean added, boolean updated, boolean unchanged,
                                 CrawlerResourceDiffService.ResourceDiffResult resourceDiff) {
         public PersistResult(boolean added, boolean updated, boolean unchanged) {
-            this(added, updated, unchanged,
+            this(-1L, added, updated, unchanged,
                     new CrawlerResourceDiffService.ResourceDiffResult(0, 0, 0, 0, false));
         }
     }

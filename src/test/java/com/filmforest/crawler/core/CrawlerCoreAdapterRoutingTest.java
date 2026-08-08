@@ -2,6 +2,7 @@ package com.filmforest.crawler.core;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
+import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.http.FetchCategory;
@@ -12,6 +13,7 @@ import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import org.junit.jupiter.api.Test;
@@ -44,9 +46,10 @@ class CrawlerCoreAdapterRoutingTest {
         SourceAdapterRegistry registry = mock(SourceAdapterRegistry.class);
         HttpFetcher fetcher = mock(HttpFetcher.class);
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
+        CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
         CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
-                new ObjectMapper());
+                sourceItems, executionProperties(), new ObjectMapper());
 
         CrawlerSchedule schedule = new CrawlerSchedule();
         schedule.setId(1L);
@@ -70,6 +73,8 @@ class CrawlerCoreAdapterRoutingTest {
                 .thenReturn(success(listUri, "list"));
         when(adapter.parseList("list", listUri)).thenReturn(List.of(
                 new SourceListItem("7", detailUri.toString(), "Title", null, 0)));
+        when(sourceItems.observeListItem(eq("pkmp4"), eq(ContentType.MOVIE),
+                any(SourceListItem.class))).thenReturn(observation());
         when(fetcher.fetch(eq(detailUri), anyMap(), anyInt(), same(cancellation)))
                 .thenReturn(success(detailUri, "detail"));
         ParsedContent parsed = parsedMovie(detailUri);
@@ -94,9 +99,10 @@ class CrawlerCoreAdapterRoutingTest {
         SourceAdapterRegistry registry = mock(SourceAdapterRegistry.class);
         HttpFetcher fetcher = mock(HttpFetcher.class);
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
+        CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
         CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
-                new ObjectMapper());
+                sourceItems, executionProperties(), new ObjectMapper());
         CrawlerSchedule schedule = new CrawlerSchedule();
         schedule.setId(1L);
         schedule.setSourceSite("pkmp4");
@@ -117,6 +123,8 @@ class CrawlerCoreAdapterRoutingTest {
                 .thenReturn(success(listUri, "list"));
         when(adapter.parseList("list", listUri)).thenReturn(List.of(
                 item(1), item(2), item(3)));
+        when(sourceItems.observeListItem(eq("pkmp4"), eq(ContentType.DRAMA),
+                any(SourceListItem.class))).thenReturn(observation());
         when(fetcher.fetch(argThat(uri -> uri.getPath().startsWith("/mv/")),
                 anyMap(), anyInt(), any(AtomicBoolean.class)))
                 .thenAnswer(invocation -> success(invocation.getArgument(0), "detail"));
@@ -145,5 +153,17 @@ class CrawlerCoreAdapterRoutingTest {
     private static SourceListItem item(int id) {
         return new SourceListItem(Integer.toString(id),
                 "https://source.test/mv/" + id + ".html", "Title " + id, null, id - 1);
+    }
+
+    private static CrawlerExecutionProperties executionProperties() {
+        CrawlerExecutionProperties properties = new CrawlerExecutionProperties();
+        properties.setLatestConsecutiveUnchanged(20);
+        properties.setLatestRecentPages(2);
+        return properties;
+    }
+
+    private static CrawlerSourceItemService.Observation observation() {
+        return new CrawlerSourceItemService.Observation(null, false, true,
+                null, null, "discovered");
     }
 }
