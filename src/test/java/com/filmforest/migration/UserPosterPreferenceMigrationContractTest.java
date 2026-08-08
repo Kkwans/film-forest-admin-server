@@ -36,5 +36,10 @@ class UserPosterPreferenceMigrationContractTest {
                 "DELETE FROM",
                 "DROP TABLE"
         );
+
+        String enrichmentJobSql = sql.substring(sql.indexOf("CREATE TABLE `poster_enrichment_job`"));
+        assertThat(enrichmentJobSql)
+                .contains("FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)")
+                .doesNotContain("ON DELETE CASCADE");
     }
 }

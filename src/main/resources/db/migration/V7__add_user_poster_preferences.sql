@@ -51,8 +51,10 @@ CREATE TABLE `poster_enrichment_job` (
   UNIQUE KEY `uk_poster_enrichment_active_user` (`active_user_id`),
   KEY `idx_poster_enrichment_user_queued` (`user_id`, `queued_at`),
   KEY `idx_poster_enrichment_status_heartbeat` (`status`, `heartbeat_at`),
+  -- user_id 被存储生成列 active_user_id 依赖。MySQL 不允许该基列使用级联外键动作；
+  -- 用户删除采用逻辑删除，因此保留默认 RESTRICT 既满足兼容性，也避免 Job 失去审计主体。
   CONSTRAINT `fk_poster_enrichment_user`
-    FOREIGN KEY (`user_id`) REFERENCES `user` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`user_id`) REFERENCES `user` (`id`),
   CONSTRAINT `chk_poster_enrichment_status`
     CHECK (`status` IN ('queued', 'running', 'cancel_requested', 'success', 'partial_success', 'failed', 'cancelled', 'interrupted')),
   CONSTRAINT `chk_poster_enrichment_cancel_requested`
