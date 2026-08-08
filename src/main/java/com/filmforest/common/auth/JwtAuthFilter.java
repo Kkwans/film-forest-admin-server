@@ -17,6 +17,11 @@ import java.io.IOException;
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private static final ObjectMapper mapper = new ObjectMapper();
+    private final JwtUtil jwtUtil;
+
+    public JwtAuthFilter(JwtUtil jwtUtil) {
+        this.jwtUtil = jwtUtil;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
@@ -38,10 +43,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            if (JwtUtil.validateToken(token)) {
+            if (jwtUtil.validateToken(token)) {
                 // 将用户信息存入 request attribute
-                request.setAttribute("userId", JwtUtil.getUserId(token));
-                request.setAttribute("username", JwtUtil.getUsername(token));
+                request.setAttribute("userId", jwtUtil.getUserId(token));
+                request.setAttribute("username", jwtUtil.getUsername(token));
                 chain.doFilter(request, response);
                 return;
             }

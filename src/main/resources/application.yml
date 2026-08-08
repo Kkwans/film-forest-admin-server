@@ -6,9 +6,9 @@ spring:
     name: film-forest-admin
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://192.168.5.110:3306/film_forest?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
-    username: root
-    password: Root2026
+    url: ${FILM_FOREST_DB_URL}
+    username: ${FILM_FOREST_DB_USERNAME}
+    password: ${FILM_FOREST_DB_PASSWORD}
     type: com.alibaba.druid.pool.DruidDataSource
     druid:
       initial-size: 5
@@ -47,3 +47,12 @@ logging:
   level:
     com.filmforest: info
     com.filmforest.mapper: warn
+
+jwt:
+  secret: ${FILM_FOREST_ADMIN_JWT_SECRET}
+  expiration: ${FILM_FOREST_ADMIN_JWT_EXPIRATION_MS:86400000}
+  issuer: ${FILM_FOREST_ADMIN_JWT_ISSUER:film-forest-admin}
+
+app:
+  cors:
+    allowed-origins: ${FILM_FOREST_ADMIN_CORS_ORIGINS:http://localhost:3001}

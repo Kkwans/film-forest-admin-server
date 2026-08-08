@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.mapper.UserMapper;
-import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -25,8 +24,13 @@ public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
-    @Autowired
-    private UserMapper userMapper;
+    private final UserMapper userMapper;
+    private final JwtUtil jwtUtil;
+
+    public AuthController(UserMapper userMapper, JwtUtil jwtUtil) {
+        this.userMapper = userMapper;
+        this.jwtUtil = jwtUtil;
+    }
 
     /** 登录 */
     @PostMapping("/login")
@@ -55,7 +59,7 @@ public class AuthController {
             return Result.fail("账号已被禁用");
         }
 
-        String token = JwtUtil.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
         log.info("登录成功: userId={}, username={}", user.getId(), user.getUsername());
 
         Map<String, Object> data = new HashMap<>();
@@ -90,7 +94,7 @@ public class AuthController {
         user.setStatus(1);
         userMapper.insert(user);
 
-        String token = JwtUtil.generateToken(user.getId(), user.getUsername());
+        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
         log.info("注册成功: userId={}, username={}", user.getId(), user.getUsername());
 
         Map<String, Object> data = new HashMap<>();
@@ -112,14 +116,14 @@ public class AuthController {
             return Result.fail("Token 无效");
         }
         String token = auth.substring(7);
-        if (!JwtUtil.validateToken(token)) {
+        if (!jwtUtil.validateToken(token)) {
             log.warn("Token 刷新失败: Token 已过期");
             return Result.fail("Token 已过期");
         }
 
-        Long userId = JwtUtil.getUserId(token);
-        String username = JwtUtil.getUsername(token);
-        String newToken = JwtUtil.generateToken(userId, username);
+        Long userId = jwtUtil.getUserId(token);
+        String username = jwtUtil.getUsername(token);
+        String newToken = jwtUtil.generateToken(userId, username);
         log.info("Token 刷新成功: userId={}, username={}", userId, username);
 
         Map<String, Object> data = new HashMap<>();
