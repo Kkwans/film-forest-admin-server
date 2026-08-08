@@ -16,7 +16,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 认证 API - 登录/注册/Token 刷新
+ * 认证 API - 登录/Token 刷新
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -68,40 +68,6 @@ public class AuthController {
             "id", user.getId(),
             "username", user.getUsername(),
             "nickname", user.getNickname() != null ? user.getNickname() : user.getUsername()
-        ));
-
-        return Result.ok(data);
-    }
-
-    /** 注册（管理员） */
-    @PostMapping("/register")
-    public Result<Map<String, Object>> register(@Valid @RequestBody LoginRequest req) {
-        log.info("注册请求: username={}", req.getUsername());
-
-        // 检查用户名是否已存在
-        Long count = userMapper.selectCount(
-            new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())
-        );
-        if (count > 0) {
-            log.warn("注册失败: 用户名已存在, username={}", req.getUsername());
-            return Result.fail("用户名已存在");
-        }
-
-        User user = new User();
-        user.setUsername(req.getUsername());
-        user.setPasswordHash(hashPassword(req.getPassword()));
-        user.setNickname(req.getUsername());
-        user.setStatus(1);
-        userMapper.insert(user);
-
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
-        log.info("注册成功: userId={}, username={}", user.getId(), user.getUsername());
-
-        Map<String, Object> data = new HashMap<>();
-        data.put("token", token);
-        data.put("user", Map.of(
-            "id", user.getId(),
-            "username", user.getUsername()
         ));
 
         return Result.ok(data);
@@ -165,7 +131,7 @@ public class AuthController {
         }
     }
 
-    /** 登录/注册请求体 */
+    /** 登录请求体 */
     public static class LoginRequest {
         @NotBlank(message = "用户名不能为空")
         @Size(min = 3, max = 30, message = "用户名长度 3~30 位")

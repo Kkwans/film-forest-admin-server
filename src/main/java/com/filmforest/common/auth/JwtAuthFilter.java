@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.dto.Result;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
+import org.springframework.http.HttpMethod;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
@@ -11,7 +12,7 @@ import java.io.IOException;
 /**
  * JWT 认证过滤器
  * 拦截 /api/** 请求，验证 Authorization 头
- * 白名单: /api/auth/login, /api/auth/register, /api/health
+ * 白名单: POST /api/auth/login, GET /api/health
  */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -26,16 +27,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
-        String path = request.getRequestURI();
-
-        // 白名单放行（仅登录和注册）
-        if (path.equals("/api/auth/login") || path.equals("/api/auth/register") || path.startsWith("/api/health") || path.equals("/")) {
-            chain.doFilter(request, response);
-            return;
-        }
-
-        // OPTIONS 请求放行（CORS 预检）
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+        if (isPublicRequest(request)) {
             chain.doFilter(request, response);
             return;
         }
@@ -55,6 +47,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         // 未认证
         response.setStatus(401);
         response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write(mapper.writeValueAsString(Result.fail("未登录或 Token 已过期")));
+        response.getWriter().write(mapper.writeValueAsString(Result.fail(401, "未登录或 Token 已过期")));
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return !path.equals("/api") && !path.startsWith("/api/");
+    }
+
+    boolean isPublicRequest(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (HttpMethod.OPTIONS.matches(request.getMethod())) {
+            return true;
+        }
+        return (path.equals("/api/auth/login") && HttpMethod.POST.matches(request.getMethod()))
+                || (path.equals("/api/health") && HttpMethod.GET.matches(request.getMethod()));
     }
 }
