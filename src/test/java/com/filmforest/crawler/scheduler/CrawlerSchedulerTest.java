@@ -1,8 +1,11 @@
 package com.filmforest.crawler.scheduler;
 
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.config.CrawlerExecutionConfiguration;
+import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerTime;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -11,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -78,23 +80,25 @@ class CrawlerSchedulerTest {
     class ConcurrencyTest {
 
         @Test
-        @DisplayName("TC-502: 线程池限制并发不超过4个")
-        void threadPool_shouldLimitConcurrency() {
-            // 验证线程池配置
-            // CrawlerScheduler 使用 ThreadPoolExecutor(2, 4, ...)
-            int corePoolSize = 2;
-            int maxPoolSize = 4;
+        @DisplayName("TC-502: NAS 默认只有1个 Worker、详情并发1、队列容量4")
+        void executionProperties_shouldUseNasDefaults() {
+            CrawlerExecutionProperties properties = new CrawlerExecutionProperties();
 
-            assertThat(maxPoolSize).isLessThanOrEqualTo(4);
-            assertThat(corePoolSize).isLessThanOrEqualTo(maxPoolSize);
+            assertThat(properties.getWorkerConcurrency()).isEqualTo(1);
+            assertThat(properties.getDetailConcurrency()).isEqualTo(1);
+            assertThat(properties.getQueueCapacity()).isEqualTo(4);
         }
 
         @Test
-        @DisplayName("TC-503: 线程池队列满时 CallerRunsPolicy")
-        void threadPool_shouldUseCallerRunsPolicy() {
-            // CrawlerScheduler 使用 CallerRunsPolicy
-            // 验证策略类型存在
-            assertThat(org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor.class).isNotNull();
+        @DisplayName("TC-503: 队列满时使用 AbortPolicy，禁止 Scheduler 线程代跑")
+        void threadPool_shouldRejectInsteadOfCallerRuns() {
+            CrawlerExecutionConfiguration configuration = new CrawlerExecutionConfiguration();
+            var executor = (org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor)
+                    configuration.crawlerJobExecutor(new CrawlerExecutionProperties());
+
+            assertThat(executor.getThreadPoolExecutor().getRejectedExecutionHandler())
+                    .isInstanceOf(java.util.concurrent.ThreadPoolExecutor.AbortPolicy.class);
+            executor.shutdown();
         }
     }
 
@@ -117,7 +121,7 @@ class CrawlerSchedulerTest {
             scheduler.checkAndTriggerSchedules();
 
             // 不应调用 startCrawler
-            verify(scheduleService, never()).startCrawler(any());
+            verify(scheduleService, never()).startScheduledCrawler(any());
         }
 
         @Test
@@ -132,7 +136,7 @@ class CrawlerSchedulerTest {
 
             scheduler.checkAndTriggerSchedules();
 
-            verify(scheduleService, never()).startCrawler(any());
+            verify(scheduleService, never()).startScheduledCrawler(any());
         }
 
         @Test
@@ -148,7 +152,7 @@ class CrawlerSchedulerTest {
 
             scheduler.checkAndTriggerSchedules();
 
-            verify(scheduleService, never()).startCrawler(any());
+            verify(scheduleService, never()).startScheduledCrawler(any());
         }
 
         @Test
@@ -158,7 +162,23 @@ class CrawlerSchedulerTest {
 
             scheduler.checkAndTriggerSchedules();
 
-            verify(scheduleService, never()).startCrawler(any());
+            verify(scheduleService, never()).startScheduledCrawler(any());
+        }
+
+        @Test
+        @DisplayName("enabled=1 且 nextRunTime 到期时只请求创建 scheduled Job")
+        void checkAndTriggerSchedules_shouldStartDueSchedule() {
+            CrawlerSchedule due = new CrawlerSchedule();
+            due.setId(7L);
+            due.setName("到期任务");
+            due.setEnabled(1);
+            due.setNextRunTime(CrawlerTime.nowUtc().minusSeconds(1));
+            when(scheduleMapper.selectList(any())).thenReturn(List.of(due));
+            when(scheduleService.startScheduledCrawler(7L)).thenReturn(true);
+
+            scheduler.checkAndTriggerSchedules();
+
+            verify(scheduleService).startScheduledCrawler(7L);
         }
     }
 }

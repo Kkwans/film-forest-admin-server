@@ -24,8 +24,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.when;
 
 /**
  * CrawlerCore 单元测试
@@ -1035,6 +1037,71 @@ class CrawlerCoreTest {
             // 无效 cron 不是 5 或 6 段
             assertThat(parts.length).isNotEqualTo(5);
             assertThat(parts.length).isNotEqualTo(6);
+        }
+    }
+
+    @Nested
+    @DisplayName("Phase 1 Job 边界")
+    class JobLifecycleBoundaryTest {
+
+        @Test
+        @DisplayName("未知 contentType 不能伪装成功")
+        void executeCrawl_unknownContentType_shouldFailFast() {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setId(1L);
+            schedule.setContentType("unknown");
+            schedule.setBatchSize(1);
+            CrawlerTaskLog job = new CrawlerTaskLog();
+            job.setId(9L);
+            job.setCurrentPage(1);
+            when(scheduleService.getSchedule(1L)).thenReturn(schedule);
+            when(taskLogMapper.selectById(9L)).thenReturn(job);
+
+            assertThatThrownBy(() -> crawlerCore.executeCrawl(1L, 9L, new AtomicBoolean(false)))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Unknown contentType");
+        }
+
+        @Test
+        @DisplayName("首个请求前已取消时不进入任何抓取分支")
+        void executeCrawl_cancelBeforeFirstRequest_shouldReturnEmptySummary() {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setId(1L);
+            schedule.setContentType("movie");
+            schedule.setBatchSize(1);
+            CrawlerTaskLog job = new CrawlerTaskLog();
+            job.setId(9L);
+            when(scheduleService.getSchedule(1L)).thenReturn(schedule);
+            when(taskLogMapper.selectById(9L)).thenReturn(job);
+
+            var summary = crawlerCore.executeCrawl(1L, 9L, new AtomicBoolean(true));
+
+            assertThat(summary.discovered()).isZero();
+            assertThat(summary.added()).isZero();
+        }
+
+        @Test
+        @DisplayName("限速等待期间取消会提前结束，且不继续发请求")
+        void sleepWithCancellation_cancelDuringSleep_shouldExitEarly() throws Exception {
+            var method = CrawlerCore.class.getDeclaredMethod(
+                    "sleepWithCancellation", long.class, AtomicBoolean.class);
+            method.setAccessible(true);
+            AtomicBoolean cancellation = new AtomicBoolean(false);
+            long started = System.nanoTime();
+
+            var future = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    return (Boolean) method.invoke(crawlerCore, 2_000L, cancellation);
+                } catch (ReflectiveOperationException error) {
+                    throw new RuntimeException(error);
+                }
+            });
+            Thread.sleep(80L);
+            cancellation.set(true);
+
+            assertThat(future.get(1, java.util.concurrent.TimeUnit.SECONDS)).isFalse();
+            assertThat(java.time.Duration.ofNanos(System.nanoTime() - started).toMillis())
+                    .isLessThan(1_000L);
         }
     }
 

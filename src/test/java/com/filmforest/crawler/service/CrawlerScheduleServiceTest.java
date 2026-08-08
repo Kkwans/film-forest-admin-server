@@ -1,8 +1,8 @@
 package com.filmforest.crawler.service;
 
-import com.filmforest.crawler.core.CrawlerCore;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
+import com.filmforest.crawler.entity.CrawlerTriggerType;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.impl.CrawlerScheduleServiceImpl;
@@ -16,7 +16,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -42,7 +41,7 @@ class CrawlerScheduleServiceTest {
     private CrawlerTaskLogMapper taskLogMapper;
 
     @Mock
-    private CrawlerCore crawlerCore;
+    private CrawlerJobLifecycleService jobLifecycleService;
 
     @InjectMocks
     private CrawlerScheduleServiceImpl scheduleService;
@@ -302,97 +301,54 @@ class CrawlerScheduleServiceTest {
     class StartStopCrawlerTest {
 
         @Test
-        @DisplayName("TC-050: 启动已 idle 的爬虫 - 状态变为 running，任务日志创建")
-        void startCrawler_idle_shouldSetRunningAndCreateLog() {
-            CrawlerSchedule schedule = new CrawlerSchedule();
-            schedule.setId(1L);
-            schedule.setName("电影爬虫");
-            schedule.setContentType("movie");
-            schedule.setStatus("idle");
-
-            when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
-            when(taskLogMapper.insert(any(CrawlerTaskLog.class))).thenReturn(1);
+        @DisplayName("TC-050: 手工启动只创建 QUEUED Job，由提交后事件派发")
+        void startCrawler_idle_shouldEnqueueManualJob() {
+            when(jobLifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(101L);
 
             boolean result = scheduleService.startCrawler(1L);
 
             assertThat(result).isTrue();
-
-            // 验证状态更新为 running
-            ArgumentCaptor<CrawlerSchedule> scheduleCaptor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).updateById(scheduleCaptor.capture());
-            assertThat(scheduleCaptor.getValue().getStatus()).isEqualTo("running");
-            assertThat(scheduleCaptor.getValue().getLastRunTime()).isNotNull();
-
-            // 验证任务日志创建
-            ArgumentCaptor<CrawlerTaskLog> logCaptor = ArgumentCaptor.forClass(CrawlerTaskLog.class);
-            verify(taskLogMapper).insert(logCaptor.capture());
-            assertThat(logCaptor.getValue().getScheduleId()).isEqualTo(1L);
-            assertThat(logCaptor.getValue().getStatus()).isEqualTo("running");
-
-            // 验证爬虫核心被调用
-            verify(crawlerCore).executeCrawl(eq(1L), any(), any(AtomicBoolean.class));
+            verify(jobLifecycleService).enqueue(1L, CrawlerTriggerType.MANUAL, null);
         }
 
         @Test
-        @DisplayName("TC-050 补充: 启动爬虫 - lastRunTime 被设置")
-        void startCrawler_shouldSetLastRunTime() {
-            CrawlerSchedule schedule = new CrawlerSchedule();
-            schedule.setId(1L);
-            schedule.setName("测试");
-            schedule.setContentType("movie");
-            schedule.setStatus("idle");
+        @DisplayName("TC-050 补充: 同一 schedule 已有活动 Job 时拒绝重复启动")
+        void startCrawler_activeJobExists_shouldReturnFalse() {
+            when(jobLifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
 
-            when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
-            when(taskLogMapper.insert(any(CrawlerTaskLog.class))).thenReturn(1);
-
-            LocalDateTime before = LocalDateTime.now().minusSeconds(1);
-            scheduleService.startCrawler(1L);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).updateById(captor.capture());
-            assertThat(captor.getValue().getLastRunTime()).isAfter(before);
+            assertThat(scheduleService.startCrawler(1L)).isFalse();
         }
 
         @Test
         @DisplayName("TC-051: 启动不存在的爬虫 - 返回 false")
         void startCrawler_notFound_shouldReturnFalse() {
-            when(scheduleMapper.selectById(999L)).thenReturn(null);
+            when(jobLifecycleService.enqueue(999L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
 
             boolean result = scheduleService.startCrawler(999L);
 
             assertThat(result).isFalse();
-            verify(taskLogMapper, never()).insert(any(CrawlerTaskLog.class));
-            verify(crawlerCore, never()).executeCrawl(any(), any(), any());
+            verify(jobLifecycleService).enqueue(999L, CrawlerTriggerType.MANUAL, null);
         }
 
         @Test
-        @DisplayName("TC-052: 停止正在运行的爬虫 - 状态变回 idle")
-        void stopCrawler_running_shouldSetIdle() {
-            CrawlerSchedule schedule = new CrawlerSchedule();
-            schedule.setId(1L);
-            schedule.setStatus("running");
-            when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
+        @DisplayName("TC-052: 停止正在运行的爬虫 - 请求 Job 在安全边界取消")
+        void stopCrawler_running_shouldRequestCancellation() {
+            when(jobLifecycleService.requestCancelBySchedule(1L)).thenReturn(true);
 
             boolean result = scheduleService.stopCrawler(1L);
 
             assertThat(result).isTrue();
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).updateById(captor.capture());
-            assertThat(captor.getValue().getStatus()).isEqualTo("idle");
+            verify(jobLifecycleService).requestCancelBySchedule(1L);
         }
 
         @Test
-        @DisplayName("TC-052 补充: 停止不存在的爬虫 - 仍返回 true（幂等）")
-        void stopCrawler_notFound_shouldStillReturnTrue() {
-            when(scheduleMapper.selectById(999L)).thenReturn(null);
+        @DisplayName("TC-052 补充: 不存在活动 Job 时返回 false")
+        void stopCrawler_notFound_shouldReturnFalse() {
+            when(jobLifecycleService.requestCancelBySchedule(999L)).thenReturn(false);
 
             boolean result = scheduleService.stopCrawler(999L);
 
-            // stopCrawler 是幂等操作，不存在也返回 true
-            assertThat(result).isTrue();
+            assertThat(result).isFalse();
         }
     }
 
