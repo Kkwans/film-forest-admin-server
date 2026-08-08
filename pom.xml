@@ -59,6 +59,16 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- 数据库版本迁移：仅 admin-server 持有 film_forest schema 的迁移所有权 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
         <!-- Jsoup HTML 解析 -->
         <dependency>
             <groupId>org.jsoup</groupId>
