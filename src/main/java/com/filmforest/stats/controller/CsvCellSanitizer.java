@@ -16,7 +16,8 @@ final class CsvCellSanitizer {
         if (startsLikeFormula(value)) {
             value = "'" + value;
         }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r")) {
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")
+                || value.contains("\r") || value.contains("\t")) {
             return "\"" + value.replace("\"", "\"\"") + "\"";
         }
         return value;
