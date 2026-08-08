@@ -9,7 +9,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 @Configuration
-@EnableConfigurationProperties(CrawlerExecutionProperties.class)
+@EnableConfigurationProperties({CrawlerExecutionProperties.class, CrawlerHttpProperties.class})
 public class CrawlerExecutionConfiguration {
 
     @Bean(name = "crawlerJobExecutor")
