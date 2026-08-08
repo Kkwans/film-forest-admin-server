@@ -4,6 +4,12 @@ on:
   push:
     branches: [ master ]
   workflow_dispatch:
+    inputs:
+      run_tests:
+        description: '运行完整 Maven 测试'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -27,9 +33,13 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Build JAR
+      - name: Build or verify JAR
         run: |
-          mvn -f pom.xml clean package -DskipTests
+          if [ "${{ inputs.run_tests }}" = "true" ]; then
+            mvn -f pom.xml clean verify
+          else
+            mvn -f pom.xml clean package -DskipTests
+          fi
 
       - name: Upload JAR as artifact
         uses: actions/upload-artifact@v4
