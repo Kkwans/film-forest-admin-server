@@ -29,7 +29,7 @@
 | `client-ui` | 1 | 1 | 前端依赖安全基线 |
 | `client-server` | 6 | 6 | 公共写接口、认证、配置、密码和依赖基线 |
 | `admin-ui` | 2 | 2 | 前端依赖安全基线与 API 地址外置 |
-| `admin-server` | 18 | 16 | 保留执行前已存在的 2 个本地提交，新增权限、导出、迁移与文档提交 |
+| `admin-server` | 19 | 17 | 保留执行前已存在的 2 个本地提交，新增权限、导出、迁移与文档提交 |
 
 当前提交尚未推送。精确远端与目标分支的外部写入授权仍是发布门禁。
 
@@ -45,7 +45,7 @@
 ### admin-server
 
 - 执行 `mvn clean verify` 成功。
-- 共执行 118 个测试，0 failure，0 error，0 skipped。
+- 共执行 119 个测试，0 failure，0 error，0 skipped。
 - 生成可构建 JAR。
 - 回归覆盖管理端公开注册封堵、`ADMIN` 实时授权、登录限流、遗留密码渐进升级、动态表名白名单、CSV 注入防护、数据库定位信息隐藏和爬虫既有行为。
 
@@ -88,7 +88,7 @@
 - V1：按真实 schema 固化 18 表 baseline，结构比对为 237/237 columns、89/89 indexes、2/2 foreign keys；
 - V2：非破坏性新增 `role`、`password_algorithm`、`must_change_password`，识别现有 BCrypt，并仅为已确认管理员回填 `ADMIN`；
 - `baselineOnMigrate` 使用 V1，`validate` 开启，`clean` 禁用；
-- 首次迁移默认关闭，必须先通过隔离恢复演练再允许发布时启用。
+- 应用配置和部署配置均保持首次迁移默认关闭，并有聚焦配置测试锁定显式 opt-in 语义；必须先通过隔离恢复演练再允许发布时启用。
 
 ### 共享 MySQL 凭据影响审计
 
