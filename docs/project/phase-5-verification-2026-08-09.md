@@ -33,6 +33,8 @@
   `deploy/backups/20260809-phase5-62472bc-780618d-e06dc57-f57cc22/film_forest-predeploy.sql`
 - 大小：102,115,989 bytes；
 - SHA-256：`938f38b78cc70dafe7aa91186af4a4b0a83e3d440193a4afd45a57dc2ba4cc58`。
+- 已部署 `.env` 和 Compose 另存为权限 0600 的运行恢复副本；其中 AES 密钥不输出、
+  不入 Git，也不写入校验日志。
 
 备份在独立 MySQL 8.4 容器和独立临时卷中完成全量恢复。首次 V7 演练发现
 `poster_enrichment_job.user_id` 同时被存储生成列依赖时，MySQL 不允许该列使用
