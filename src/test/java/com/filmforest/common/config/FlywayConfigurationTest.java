@@ -13,12 +13,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class FlywayConfigurationTest {
 
     @Test
-    void migrationRequiresExplicitOptIn() throws IOException {
+    void migrationRequiresExplicitOptInAndUsesDedicatedDataSource() throws IOException {
         List<PropertySource<?>> propertySources = new YamlPropertySourceLoader()
                 .load("application", new ClassPathResource("application.yml"));
 
         assertThat(propertySources)
                 .extracting(source -> source.getProperty("spring.flyway.enabled"))
                 .containsExactly("${FILM_FOREST_FLYWAY_ENABLED:false}");
+        assertThat(propertySources)
+                .extracting(source -> source.getProperty("spring.flyway.url"))
+                .containsExactly("${FILM_FOREST_DB_URL}");
+        assertThat(propertySources)
+                .extracting(source -> source.getProperty("spring.flyway.user"))
+                .containsExactly("${FILM_FOREST_DB_USERNAME}");
+        assertThat(propertySources)
+                .extracting(source -> source.getProperty("spring.flyway.password"))
+                .containsExactly("${FILM_FOREST_DB_PASSWORD}");
     }
 }
