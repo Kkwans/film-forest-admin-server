@@ -63,3 +63,12 @@ jwt:
 app:
   cors:
     allowed-origins: ${FILM_FOREST_ADMIN_CORS_ORIGINS:http://localhost:3001}
+  crawler:
+    execution:
+      worker-concurrency: ${FILM_FOREST_CRAWLER_WORKERS:1}
+      detail-concurrency: ${FILM_FOREST_CRAWLER_DETAIL_CONCURRENCY:1}
+      queue-capacity: ${FILM_FOREST_CRAWLER_QUEUE_CAPACITY:4}
+      heartbeat-interval-ms: ${FILM_FOREST_CRAWLER_HEARTBEAT_INTERVAL_MS:15000}
+      stale-heartbeat-ms: ${FILM_FOREST_CRAWLER_STALE_HEARTBEAT_MS:120000}
+      recovery-interval-ms: ${FILM_FOREST_CRAWLER_RECOVERY_INTERVAL_MS:60000}
+      queue-dispatch-interval-ms: ${FILM_FOREST_CRAWLER_QUEUE_DISPATCH_INTERVAL_MS:5000}

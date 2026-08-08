@@ -30,10 +30,19 @@ public interface CrawlerScheduleService {
      */
     boolean startCrawler(Long id);
 
+    /** 由定时调度触发，和手工/重试共用唯一活动 Job 约束。 */
+    boolean startScheduledCrawler(Long id);
+
+    /** 基于终态 Job 的安全检查点创建重试 Job。 */
+    boolean retryCrawler(Long jobId);
+
     /**
      * 停止爬虫
      */
     boolean stopCrawler(Long id);
+
+    /** 按 Job ID 请求取消。 */
+    boolean cancelJob(Long jobId);
 
     /**
      * 切换启用/禁用状态

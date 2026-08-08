@@ -6,17 +6,16 @@ import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,14 +25,17 @@ public class CrawlerController {
 
     private static final Logger log = LoggerFactory.getLogger(CrawlerController.class);
 
-    @Autowired
-    private CrawlerScheduleService scheduleService;
+    private final CrawlerScheduleService scheduleService;
+    private final CrawlerTaskLogMapper taskLogMapper;
+    private final ResourceSourceMapper resourceSourceMapper;
 
-    @Autowired
-    private CrawlerTaskLogMapper taskLogMapper;
-
-    @Autowired
-    private ResourceSourceMapper resourceSourceMapper;
+    public CrawlerController(CrawlerScheduleService scheduleService,
+                             CrawlerTaskLogMapper taskLogMapper,
+                             ResourceSourceMapper resourceSourceMapper) {
+        this.scheduleService = scheduleService;
+        this.taskLogMapper = taskLogMapper;
+        this.resourceSourceMapper = resourceSourceMapper;
+    }
 
     /** 获取所有定时配置 */
     @GetMapping("/schedules")
@@ -74,6 +76,26 @@ public class CrawlerController {
     public Result<Boolean> stopCrawler(@PathVariable Long id) {
         log.info("停止爬虫: scheduleId={}", id);
         return Result.ok(scheduleService.stopCrawler(id));
+    }
+
+    /** 获取单个权威 Job。 */
+    @GetMapping("/jobs/{jobId}")
+    public Result<CrawlerTaskLog> getJob(@PathVariable Long jobId) {
+        CrawlerTaskLog job = taskLogMapper.selectById(jobId);
+        return job == null ? Result.fail("爬虫 Job 不存在") : Result.ok(job);
+    }
+
+    /** 获取全部活动 Job。 */
+    @GetMapping("/jobs/active")
+    public Result<List<CrawlerTaskLog>> listActiveJobs() {
+        return Result.ok(taskLogMapper.selectActiveJobs());
+    }
+
+    /** 按 Job ID 请求取消；运行中 Job 会完成当前内容项后退出。 */
+    @PostMapping("/jobs/{jobId}/cancel")
+    public Result<Boolean> cancelJob(@PathVariable Long jobId) {
+        log.info("请求取消爬虫 Job: jobId={}", jobId);
+        return Result.ok(scheduleService.cancelJob(jobId));
     }
 
     /** 切换启用状态 */
@@ -118,12 +140,12 @@ public class CrawlerController {
     /** 获取爬虫每日运行趋势（近7天） */
     @GetMapping("/daily-stats")
     public Result<List<Map<String, Object>>> getDailyStats() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = CrawlerTime.todayInScheduleZone();
         LocalDate startDate = today.minusDays(6); // 近7天
 
         LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.ge(CrawlerTaskLog::getStartedAt, startDate.atStartOfDay())
-               .le(CrawlerTaskLog::getStartedAt, today.plusDays(1).atStartOfDay())
+        wrapper.ge(CrawlerTaskLog::getStartedAt, CrawlerTime.startOfScheduleDayUtc(startDate))
+               .lt(CrawlerTaskLog::getStartedAt, CrawlerTime.startOfScheduleDayUtc(today.plusDays(1)))
                .orderByAsc(CrawlerTaskLog::getStartedAt);
 
         List<CrawlerTaskLog> logs = taskLogMapper.selectList(wrapper);
@@ -131,7 +153,7 @@ public class CrawlerController {
         // 按日期分组统计
         Map<LocalDate, List<CrawlerTaskLog>> byDate = logs.stream()
                 .collect(Collectors.groupingBy(
-                        log -> log.getStartedAt().toLocalDate(),
+                        log -> CrawlerTime.toScheduleDate(log.getStartedAt()),
                         TreeMap::new,
                         Collectors.toList()
                 ));
@@ -163,16 +185,13 @@ public class CrawlerController {
         if (status == null || !status.isRetryable()) {
             return Result.fail("当前状态不支持重试: " + taskLog.getStatus());
         }
-        Long scheduleId = taskLog.getScheduleId();
-        CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
+        CrawlerSchedule schedule = scheduleService.getSchedule(taskLog.getScheduleId());
         if (schedule == null) {
             return Result.fail("关联的爬虫配置已不存在");
         }
-        if ("running".equals(schedule.getStatus())) {
-            return Result.fail("该爬虫正在运行中，请等待完成后再重试");
-        }
-        log.info("重试爬虫任务: logId={}, scheduleId={}, scheduleName={}", logId, scheduleId, schedule.getName());
-        boolean started = scheduleService.startCrawler(scheduleId);
+        log.info("重试爬虫任务: logId={}, scheduleId={}, scheduleName={}",
+                logId, taskLog.getScheduleId(), schedule.getName());
+        boolean started = scheduleService.retryCrawler(logId);
         if (started) {
             return Result.ok("重试任务已启动");
         } else {
@@ -184,9 +203,11 @@ public class CrawlerController {
     @PostMapping("/retry-all")
     public Result<Map<String, Object>> retryAllFailed() {
         LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(CrawlerTaskLog::getStatus, CrawlerStatus.FAILED.getCode())
-               .or()
-               .eq(CrawlerTaskLog::getStatus, CrawlerStatus.STOPPED.getCode());
+        wrapper.in(CrawlerTaskLog::getStatus,
+                CrawlerStatus.FAILED.getCode(),
+                CrawlerStatus.PARTIAL_SUCCESS.getCode(),
+                CrawlerStatus.CANCELLED.getCode(),
+                CrawlerStatus.INTERRUPTED.getCode());
         List<CrawlerTaskLog> failedLogs = taskLogMapper.selectList(wrapper);
 
         if (failedLogs.isEmpty()) {
@@ -203,11 +224,15 @@ public class CrawlerController {
         int skipped = 0;
         for (Long scheduleId : scheduleIds) {
             CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
-            if (schedule == null || "running".equals(schedule.getStatus())) {
+            if (schedule == null) {
                 skipped++;
                 continue;
             }
-            boolean ok = scheduleService.startCrawler(scheduleId);
+            CrawlerTaskLog latest = failedLogs.stream()
+                    .filter(job -> scheduleId.equals(job.getScheduleId()))
+                    .max(Comparator.comparing(CrawlerTaskLog::getId))
+                    .orElse(null);
+            boolean ok = latest != null && scheduleService.retryCrawler(latest.getId());
             if (ok) started++;
             else skipped++;
         }
@@ -225,7 +250,7 @@ public class CrawlerController {
     public Result<Map<String, Object>> getLogStats() {
         List<CrawlerTaskLog> allLogs = taskLogMapper.selectList(
             new LambdaQueryWrapper<CrawlerTaskLog>()
-                .ge(CrawlerTaskLog::getStartedAt, LocalDateTime.now().minusDays(30))
+                .ge(CrawlerTaskLog::getStartedAt, CrawlerTime.nowUtc().minusDays(30))
         );
         Map<String, Long> statusCounts = allLogs.stream()
                 .collect(Collectors.groupingBy(

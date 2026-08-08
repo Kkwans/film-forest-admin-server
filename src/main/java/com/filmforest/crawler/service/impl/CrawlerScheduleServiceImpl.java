@@ -1,50 +1,52 @@
 package com.filmforest.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.filmforest.crawler.core.CrawlerCore;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
+import com.filmforest.crawler.entity.CrawlerTriggerType;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import com.filmforest.crawler.service.CrawlerJobLifecycleService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerTime;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
-import org.springframework.scheduling.support.CronExpression;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
 public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
 
-    @Autowired
-    private CrawlerScheduleMapper scheduleMapper;
+    private final CrawlerScheduleMapper scheduleMapper;
+    private final CrawlerTaskLogMapper taskLogMapper;
+    private final CrawlerJobLifecycleService jobLifecycleService;
 
-    @Autowired
-    private CrawlerTaskLogMapper taskLogMapper;
-
-    @Lazy @Autowired
-    private CrawlerCore crawlerCore;
-
-    /** 正在运行的爬虫任务 */
-    private final ConcurrentHashMap<Long, AtomicBoolean> runningTasks = new ConcurrentHashMap<>();
+    public CrawlerScheduleServiceImpl(CrawlerScheduleMapper scheduleMapper,
+                                      CrawlerTaskLogMapper taskLogMapper,
+                                      CrawlerJobLifecycleService jobLifecycleService) {
+        this.scheduleMapper = scheduleMapper;
+        this.taskLogMapper = taskLogMapper;
+        this.jobLifecycleService = jobLifecycleService;
+    }
 
     @Override
     public List<CrawlerSchedule> listSchedules() {
-        return scheduleMapper.selectList(new LambdaQueryWrapper<CrawlerSchedule>()
+        List<CrawlerSchedule> schedules = scheduleMapper.selectList(new LambdaQueryWrapper<CrawlerSchedule>()
                 .orderByDesc(CrawlerSchedule::getCreatedAt));
+        schedules.forEach(this::decorateRuntimeStatus);
+        return schedules;
     }
 
     @Override
     public CrawlerSchedule getSchedule(Long id) {
-        return scheduleMapper.selectById(id);
+        CrawlerSchedule schedule = scheduleMapper.selectById(id);
+        decorateRuntimeStatus(schedule);
+        return schedule;
     }
 
     @Override
@@ -53,9 +55,15 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         // 修复 #6: genreFilter 是 JSON 列，空字符串/null/非法值统一转为 null
         // 合法格式: 逗号分隔的中文标签 "爱情,科幻" 或 JSON 数组 "[\"爱情\",\"科幻\"]"
         schedule.setGenreFilter(normalizeGenreFilter(schedule.getGenreFilter()));
+        if (schedule.getCrawlMode() == null || schedule.getCrawlMode().isBlank()) {
+            schedule.setCrawlMode("incremental");
+        }
 
         if (schedule.getId() == null) {
-            schedule.setStatus(CrawlerStatus.IDLE.getCode());
+            schedule.setStatus("idle");
+            if (schedule.getEnabled() == null) {
+                schedule.setEnabled(0);
+            }
             schedule.setTotalRuns(0);
             schedule.setTotalItems(0);
             // 计算 nextRunTime
@@ -118,52 +126,43 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
 
     @Override
     public boolean deleteSchedule(Long id) {
-        runningTasks.remove(id);
+        if (taskLogMapper.selectActiveByScheduleId(id) != null) {
+            return false;
+        }
         return scheduleMapper.deleteById(id) > 0;
     }
 
     @Override
-    @Transactional
     public boolean startCrawler(Long id) {
-        CrawlerSchedule schedule = scheduleMapper.selectById(id);
-        if (schedule == null) return false;
+        return enqueue(id, CrawlerTriggerType.MANUAL, null);
+    }
 
-        // 标记为运行中
-        schedule.setStatus(CrawlerStatus.RUNNING.getCode());
-        schedule.setLastRunTime(LocalDateTime.now());
-        scheduleMapper.updateById(schedule);
+    @Override
+    public boolean startScheduledCrawler(Long id) {
+        return enqueue(id, CrawlerTriggerType.SCHEDULED, null);
+    }
 
-        // 记录任务日志
-        CrawlerTaskLog log = new CrawlerTaskLog();
-        log.setScheduleId(id);
-        log.setScheduleName(schedule.getName());
-        log.setContentType(schedule.getContentType());
-        log.setStatus(CrawlerStatus.RUNNING.getCode());
-        log.setStartedAt(LocalDateTime.now());
-        taskLogMapper.insert(log);
-
-        // 将停止标志注入爬虫核心
-        AtomicBoolean stopFlag = new AtomicBoolean(false);
-        runningTasks.put(id, stopFlag);
-
-        // 传递 stopFlag 给爬虫核心
-        crawlerCore.executeCrawl(id, log.getId(), stopFlag);
-
-        return true;
+    @Override
+    public boolean retryCrawler(Long jobId) {
+        CrawlerTaskLog previous = taskLogMapper.selectById(jobId);
+        if (previous == null) {
+            return false;
+        }
+        CrawlerStatus status = CrawlerStatus.fromCode(previous.getStatus());
+        if (status == null || !status.isRetryable()) {
+            return false;
+        }
+        return enqueue(previous.getScheduleId(), CrawlerTriggerType.RETRY, jobId);
     }
 
     @Override
     public boolean stopCrawler(Long id) {
-        AtomicBoolean running = runningTasks.get(id);
-        if (running != null) {
-            running.set(false);
-        }
-        CrawlerSchedule schedule = scheduleMapper.selectById(id);
-        if (schedule != null) {
-            schedule.setStatus(CrawlerStatus.IDLE.getCode());
-            scheduleMapper.updateById(schedule);
-        }
-        return true;
+        return jobLifecycleService.requestCancelBySchedule(id);
+    }
+
+    @Override
+    public boolean cancelJob(Long jobId) {
+        return jobLifecycleService.requestCancelByJob(jobId);
     }
 
     @Override
@@ -185,11 +184,28 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
             String normalized = cronExpr.trim();
             String[] parts = normalized.split("\\s+");
             if (parts.length == 5) normalized = "0 " + normalized;
-            CronExpression cron = CronExpression.parse(normalized);
-            return cron.next(LocalDateTime.now());
+            return CrawlerTime.nextRunUtc(normalized, CrawlerTime.nowUtc());
         } catch (Exception e) {
             log.warn("[Scheduler] 无法解析 cron 表达式: {}", cronExpr);
             return null;
         }
+    }
+
+    private boolean enqueue(Long scheduleId, CrawlerTriggerType triggerType, Long retryOfJobId) {
+        try {
+            return jobLifecycleService.enqueue(scheduleId, triggerType, retryOfJobId) != null;
+        } catch (DuplicateKeyException conflict) {
+            log.info("同一 schedule 已有活动 Job，拒绝重复启动: scheduleId={}, trigger={}",
+                    scheduleId, triggerType.getCode());
+            return false;
+        }
+    }
+
+    private void decorateRuntimeStatus(CrawlerSchedule schedule) {
+        if (schedule == null || schedule.getId() == null) {
+            return;
+        }
+        CrawlerTaskLog active = taskLogMapper.selectActiveByScheduleId(schedule.getId());
+        schedule.setStatus(active == null ? "idle" : "running");
     }
 }

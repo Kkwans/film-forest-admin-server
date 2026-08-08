@@ -24,6 +24,8 @@ public class CrawlerSchedule {
     @NotBlank(message = "内容类型不能为空")
     private String contentType;
 
+    private String crawlMode;
+
     @NotBlank(message = "来源站点不能为空")
     private String sourceSite;
     private Integer enabled;
@@ -32,13 +34,21 @@ public class CrawlerSchedule {
     private Integer rateLimitMs;
     private String priority;
     private String genreFilter;
+    /**
+     * 兼容既有管理端响应的瞬时展示字段，不再持久化执行状态。
+     */
+    @TableField(exist = false)
     private String status;
     private LocalDateTime lastRunTime;
     private LocalDateTime nextRunTime;
     private Integer totalRuns;
     private Integer totalItems;
-    private Integer lastCrawledPage;  // 断点续爬：上次爬到第几页
-    private Long lastCrawledId;       // 断点续爬：上次爬到哪个内容ID
+    /** @deprecated 执行检查点已迁移到 crawler_task_log Job。 */
+    @Deprecated
+    private Integer lastCrawledPage;
+    /** @deprecated 执行检查点已迁移到 crawler_task_log Job。 */
+    @Deprecated
+    private Long lastCrawledId;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

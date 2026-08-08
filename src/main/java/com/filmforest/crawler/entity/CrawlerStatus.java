@@ -1,31 +1,31 @@
 package com.filmforest.crawler.entity;
 
 /**
- * 爬虫任务/调度状态枚举
- * 统一管理所有爬虫相关状态，避免硬编码字符串
+ * 爬虫 Job 状态枚举。
+ * Schedule 不再保存执行结果状态；活动态与终态以 Job 为唯一事实源。
  */
 public enum CrawlerStatus {
 
-    /** 空闲 - 等待下次调度 */
-    IDLE("idle", "空闲"),
+    /** 已入队，等待唯一 Worker 领取。 */
+    QUEUED("queued", "排队中"),
 
-    /** 运行中 - 正在执行爬取 */
     RUNNING("running", "运行中"),
 
-    /** 成功 - 任务完成 */
+    /** 已收到取消请求，Worker 会在安全边界退出。 */
+    CANCEL_REQUESTED("cancel_requested", "正在取消"),
+
     SUCCESS("success", "成功"),
 
-    /** 失败 - 任务执行出错 */
+    /** 已处理部分内容，但存在可定位失败。 */
+    PARTIAL_SUCCESS("partial_success", "部分成功"),
+
     FAILED("failed", "失败"),
 
-    /** 已停止 - 用户手动停止 */
-    STOPPED("stopped", "已停止"),
+    /** Worker 已在安全边界退出。 */
+    CANCELLED("cancelled", "已取消"),
 
-    /** 已禁用 - 调度配置被禁用 */
-    DISABLED("disabled", "已禁用"),
-
-    /** 等待重试 - 失败后等待重试 */
-    PENDING_RETRY("pending_retry", "等待重试");
+    /** 进程重启或心跳过期导致的中断。 */
+    INTERRUPTED("interrupted", "已中断");
 
     private final String code;
     private final String label;
@@ -54,11 +54,17 @@ public enum CrawlerStatus {
 
     /** 判断是否为终态（任务已结束） */
     public boolean isTerminal() {
-        return this == SUCCESS || this == FAILED || this == STOPPED;
+        return this == SUCCESS || this == PARTIAL_SUCCESS || this == FAILED
+                || this == CANCELLED || this == INTERRUPTED;
     }
 
     /** 判断是否可以重试 */
     public boolean isRetryable() {
-        return this == FAILED || this == STOPPED;
+        return this == FAILED || this == PARTIAL_SUCCESS
+                || this == CANCELLED || this == INTERRUPTED;
+    }
+
+    public boolean isActive() {
+        return this == QUEUED || this == RUNNING || this == CANCEL_REQUESTED;
     }
 }
