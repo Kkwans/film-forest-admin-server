@@ -6,6 +6,7 @@ import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -28,17 +29,24 @@ public class AuthController {
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
     private final PasswordService passwordService;
+    private final LoginAttemptService loginAttemptService;
 
-    public AuthController(UserMapper userMapper, JwtUtil jwtUtil, PasswordService passwordService) {
+    public AuthController(UserMapper userMapper, JwtUtil jwtUtil, PasswordService passwordService,
+                          LoginAttemptService loginAttemptService) {
         this.userMapper = userMapper;
         this.jwtUtil = jwtUtil;
         this.passwordService = passwordService;
+        this.loginAttemptService = loginAttemptService;
     }
 
     /** 登录 */
     @PostMapping("/login")
     @Transactional(rollbackFor = Exception.class)
-    public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
+    public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req, HttpServletRequest request) {
+        String remoteAddress = request.getRemoteAddr();
+        if (loginAttemptService.isBlocked(remoteAddress, req.getUsername())) {
+            return Result.fail(429, "登录尝试过多，请稍后再试");
+        }
         log.info("登录请求: username={}", req.getUsername());
 
         User user = userMapper.selectOne(
@@ -49,24 +57,24 @@ public class AuthController {
 
         if (user == null) {
             log.warn("登录失败: 用户不存在, username={}", req.getUsername());
-            return Result.fail("用户名或密码错误");
+            return loginFailure(remoteAddress, req.getUsername(), 400, "用户名或密码错误");
         }
 
         PasswordService.Verification verification = passwordService.verify(
                 req.getPassword(), user.getPasswordHash(), user.getPasswordAlgorithm());
         if (!verification.matches()) {
             log.warn("登录失败: 密码错误, username={}", req.getUsername());
-            return Result.fail("用户名或密码错误");
+            return loginFailure(remoteAddress, req.getUsername(), 400, "用户名或密码错误");
         }
 
         if (!Integer.valueOf(1).equals(user.getStatus())) {
             log.warn("登录失败: 账号已禁用, userId={}", user.getId());
-            return Result.fail("账号已被禁用");
+            return loginFailure(remoteAddress, req.getUsername(), 400, "账号已被禁用");
         }
 
         if (user.getRole() != UserRole.ADMIN) {
             log.warn("管理端登录拒绝: userId={}, role={}", user.getId(), user.getRole());
-            return Result.fail(403, "当前账号没有管理权限");
+            return loginFailure(remoteAddress, req.getUsername(), 403, "当前账号没有管理权限");
         }
 
         if (verification.needsUpgrade()) {
@@ -76,6 +84,7 @@ public class AuthController {
         }
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        loginAttemptService.recordSuccess(remoteAddress, req.getUsername());
         log.info("登录成功: userId={}, username={}", user.getId(), user.getUsername());
 
         Map<String, Object> data = new HashMap<>();
@@ -89,6 +98,12 @@ public class AuthController {
         ));
 
         return Result.ok(data);
+    }
+
+    private Result<Map<String, Object>> loginFailure(String remoteAddress, String username,
+                                                      int code, String message) {
+        loginAttemptService.recordFailure(remoteAddress, username);
+        return Result.fail(code, message);
     }
 
     /** 刷新 Token */

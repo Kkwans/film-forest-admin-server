@@ -7,6 +7,7 @@ import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -25,7 +26,9 @@ class AuthControllerTest {
     private final UserMapper userMapper = mock(UserMapper.class);
     private final JwtUtil jwtUtil = mock(JwtUtil.class);
     private final PasswordService passwordService = new PasswordService();
-    private final AuthController controller = new AuthController(userMapper, jwtUtil, passwordService);
+    private final LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
+    private final AuthController controller = new AuthController(
+            userMapper, jwtUtil, passwordService, loginAttemptService);
 
     @Test
     void rejectsValidUserCredentialsFromAdminLogin() throws Exception {
@@ -33,11 +36,12 @@ class AuthControllerTest {
         when(userMapper.selectOne(org.mockito.ArgumentMatchers.<Wrapper<User>>any())).thenReturn(user);
         AuthController.LoginRequest request = loginRequest();
 
-        Result<Map<String, Object>> result = controller.login(request);
+        Result<Map<String, Object>> result = controller.login(request, servletRequest());
 
         assertThat(result.getCode()).isEqualTo(403);
         verify(jwtUtil, never()).generateToken(any(), any());
         verify(userMapper, never()).updateById(any());
+        verify(loginAttemptService).recordFailure("192.0.2.10", "admin");
     }
 
     @Test
@@ -46,13 +50,24 @@ class AuthControllerTest {
         when(userMapper.selectOne(org.mockito.ArgumentMatchers.<Wrapper<User>>any())).thenReturn(admin);
         when(jwtUtil.generateToken(1L, "admin")).thenReturn("token");
 
-        Result<Map<String, Object>> result = controller.login(loginRequest());
+        Result<Map<String, Object>> result = controller.login(loginRequest(), servletRequest());
 
         assertThat(result.getCode()).isEqualTo(200);
         assertThat(result.getData()).containsEntry("token", "token");
         assertThat(admin.getPasswordAlgorithm()).isEqualTo(PasswordAlgorithm.BCRYPT);
         assertThat(admin.getPasswordHash()).startsWith("$2");
         verify(userMapper).updateById(admin);
+        verify(loginAttemptService).recordSuccess("192.0.2.10", "admin");
+    }
+
+    @Test
+    void blocksLoginBeforeDatabaseLookup() {
+        when(loginAttemptService.isBlocked("192.0.2.10", "admin")).thenReturn(true);
+
+        Result<Map<String, Object>> result = controller.login(loginRequest(), servletRequest());
+
+        assertThat(result.getCode()).isEqualTo(429);
+        verify(userMapper, never()).selectOne(org.mockito.ArgumentMatchers.<Wrapper<User>>any());
     }
 
     private User user(UserRole role) throws Exception {
@@ -74,6 +89,12 @@ class AuthControllerTest {
         AuthController.LoginRequest request = new AuthController.LoginRequest();
         request.setUsername("admin");
         request.setPassword("secret12");
+        return request;
+    }
+
+    private MockHttpServletRequest servletRequest() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr("192.0.2.10");
         return request;
     }
 }
