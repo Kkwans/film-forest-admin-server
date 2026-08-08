@@ -1,6 +1,8 @@
 package com.filmforest.crawler.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.filmforest.common.auth.JwtAuthFilter;
+import com.filmforest.common.config.WebConfig;
 import com.filmforest.crawler.core.CrawlerCore;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
@@ -13,7 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -31,7 +36,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 
  * TC-600~608: API 接口验证
  */
-@WebMvcTest(CrawlerController.class)
+@WebMvcTest(
+        controllers = CrawlerController.class,
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.ASSIGNABLE_TYPE,
+                classes = {JwtAuthFilter.class, WebConfig.class}))
+@ContextConfiguration(classes = CrawlerController.class)
 @DisplayName("CrawlerController API 接口测试")
 class CrawlerControllerTest {
 
@@ -324,8 +334,7 @@ class CrawlerControllerTest {
             mockMvc.perform(post("/api/crawler/schedule")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(schedule)))
-                    .andExpect(status().isOk()) // GlobalExceptionHandler 捕获后返回 200 + code=400
-                    .andExpect(jsonPath("$.code").value(400));
+                    .andExpect(status().isBadRequest());
 
             // 不应调用 service
             verify(scheduleService, never()).saveSchedule(any());

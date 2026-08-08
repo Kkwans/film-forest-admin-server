@@ -40,7 +40,7 @@ class AuthControllerTest {
 
         assertThat(result.getCode()).isEqualTo(403);
         verify(jwtUtil, never()).generateToken(any(), any());
-        verify(userMapper, never()).updateById(any());
+        verify(userMapper, never()).updateById(any(User.class));
         verify(loginAttemptService).recordFailure("192.0.2.10", "admin");
     }
 

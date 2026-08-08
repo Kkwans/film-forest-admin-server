@@ -63,7 +63,7 @@ class CrawlerScheduleServiceTest {
             schedule.setBatchSize(10);
             schedule.setCronExpression("0 2 * * *");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.saveSchedule(schedule);
 
@@ -88,7 +88,7 @@ class CrawlerScheduleServiceTest {
             schedule.setSourceSite("pkmp4.xyz");
             schedule.setCronExpression("0 2 * * *");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.saveSchedule(schedule);
 
@@ -111,7 +111,7 @@ class CrawlerScheduleServiceTest {
             schedule.setSourceSite("pkmp4.xyz");
             schedule.setBatchSize(50);
 
-            when(scheduleMapper.updateById(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.saveSchedule(schedule);
 
@@ -123,7 +123,7 @@ class CrawlerScheduleServiceTest {
             assertThat(updated.getId()).isEqualTo(1L);
             assertThat(updated.getBatchSize()).isEqualTo(50);
             // 更新时不应重置 status/totalRuns/totalItems
-            verify(scheduleMapper, never()).insert(any());
+            verify(scheduleMapper, never()).insert(any(CrawlerSchedule.class));
         }
 
         @Test
@@ -150,7 +150,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter(null);
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -164,7 +164,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("  ");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -178,7 +178,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("爱情,科幻");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -192,7 +192,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("[\"爱情\",\"科幻\"]");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -206,7 +206,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("[]");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -220,7 +220,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("爱情，科幻");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -234,7 +234,7 @@ class CrawlerScheduleServiceTest {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("{invalid json}");
 
-            when(scheduleMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
@@ -256,7 +256,7 @@ class CrawlerScheduleServiceTest {
             schedule.setId(1L);
             schedule.setEnabled(1);
             when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.toggleEnabled(1L, false);
 
@@ -273,7 +273,7 @@ class CrawlerScheduleServiceTest {
             schedule.setId(1L);
             schedule.setEnabled(0);
             when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.toggleEnabled(1L, true);
 
@@ -291,7 +291,7 @@ class CrawlerScheduleServiceTest {
             boolean result = scheduleService.toggleEnabled(999L, true);
 
             assertThat(result).isFalse();
-            verify(scheduleMapper, never()).updateById(any());
+            verify(scheduleMapper, never()).updateById(any(CrawlerSchedule.class));
         }
     }
 
@@ -311,8 +311,8 @@ class CrawlerScheduleServiceTest {
             schedule.setStatus("idle");
 
             when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any())).thenReturn(1);
-            when(taskLogMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
+            when(taskLogMapper.insert(any(CrawlerTaskLog.class))).thenReturn(1);
 
             boolean result = scheduleService.startCrawler(1L);
 
@@ -344,8 +344,8 @@ class CrawlerScheduleServiceTest {
             schedule.setStatus("idle");
 
             when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any())).thenReturn(1);
-            when(taskLogMapper.insert(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
+            when(taskLogMapper.insert(any(CrawlerTaskLog.class))).thenReturn(1);
 
             LocalDateTime before = LocalDateTime.now().minusSeconds(1);
             scheduleService.startCrawler(1L);
@@ -363,7 +363,7 @@ class CrawlerScheduleServiceTest {
             boolean result = scheduleService.startCrawler(999L);
 
             assertThat(result).isFalse();
-            verify(taskLogMapper, never()).insert(any());
+            verify(taskLogMapper, never()).insert(any(CrawlerTaskLog.class));
             verify(crawlerCore, never()).executeCrawl(any(), any(), any());
         }
 
@@ -374,7 +374,7 @@ class CrawlerScheduleServiceTest {
             schedule.setId(1L);
             schedule.setStatus("running");
             when(scheduleMapper.selectById(1L)).thenReturn(schedule);
-            when(scheduleMapper.updateById(any())).thenReturn(1);
+            when(scheduleMapper.updateById(any(CrawlerSchedule.class))).thenReturn(1);
 
             boolean result = scheduleService.stopCrawler(1L);
 

@@ -1,7 +1,7 @@
 package com.filmforest.settings.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.filmforest.settings.entity.SystemSetting;
 import com.filmforest.settings.mapper.SystemSettingMapper;
 import com.filmforest.settings.service.SystemSettingService;

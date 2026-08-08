@@ -1,6 +1,6 @@
 package com.filmforest.settings.service;
 
-import com.baomidou.mybatisplus.extension.service.IService;
+import com.baomidou.mybatisplus.spring.service.IService;
 import com.filmforest.settings.entity.SystemSetting;
 
 import java.util.Map;
