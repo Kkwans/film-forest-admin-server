@@ -22,6 +22,12 @@ public class ResourceMagnet {
     @NotNull(message = "内容 ID 不能为空")
     private Long contentId;
 
+    private String sourceCode;
+    private String resourceKey;
+    private String rawText;
+    private LocalDateTime lastSeenAt;
+    private LocalDateTime removedAt;
+
     private String title;            // 资源标题（如"HD高清"）
 
     @NotBlank(message = "磁力链接不能为空")

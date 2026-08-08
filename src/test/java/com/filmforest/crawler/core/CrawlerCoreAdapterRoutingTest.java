@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -73,7 +74,7 @@ class CrawlerCoreAdapterRoutingTest {
                 .thenReturn(success(detailUri, "detail"));
         ParsedContent parsed = parsedMovie(detailUri);
         when(adapter.parseDetail(ContentType.MOVIE, "detail", detailUri)).thenReturn(parsed);
-        when(persistence.persist(parsed)).thenReturn(
+        when(persistence.persist("pkmp4", parsed)).thenReturn(
                 new CrawlerContentPersistence.PersistResult(true, false, false));
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
@@ -83,7 +84,7 @@ class CrawlerCoreAdapterRoutingTest {
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.added()).isEqualTo(1);
         verify(registry).require("pkmp4");
-        verify(persistence).persist(parsed);
+        verify(persistence).persist("pkmp4", parsed);
     }
 
     @Test
@@ -126,7 +127,7 @@ class CrawlerCoreAdapterRoutingTest {
                 .isInstanceOf(CrawlerSourceStructureException.class)
                 .hasMessageContaining("consecutiveFailures=3", "source=pkmp4")
                 .hasMessageNotContaining("<html");
-        verify(persistence, never()).persist(any());
+        verify(persistence, never()).persist(anyString(), any());
     }
 
     private static FetchResult success(URI uri, String body) {

@@ -22,6 +22,12 @@ public class ResourceCloud {
     @NotNull(message = "内容 ID 不能为空")
     private Long contentId;
 
+    private String sourceCode;
+    private String resourceKey;
+    private String rawText;
+    private LocalDateTime lastSeenAt;
+    private LocalDateTime removedAt;
+
     private String diskType;         // baidu/quark/thunder/uc/123
     private String title;            // 资源标题
 

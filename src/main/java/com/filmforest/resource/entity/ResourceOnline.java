@@ -22,6 +22,12 @@ public class ResourceOnline {
     @NotNull(message = "内容 ID 不能为空")
     private Long contentId;          // 内容ID
 
+    private String sourceCode;
+    private String resourceKey;
+    private String rawText;
+    private LocalDateTime lastSeenAt;
+    private LocalDateTime removedAt;
+
     // 剧集信息（替代原 episode 表）
     private Integer season;          // 季，默认1
     private Integer episodeNumber;   // 集号/期号

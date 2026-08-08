@@ -182,7 +182,8 @@ public class CrawlerCore {
             return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered");
         }
         try {
-            CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(parsed);
+            CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
+                    adapter.sourceCode(), parsed);
             if (persisted.added()) stats.added++;
             if (persisted.updated()) stats.updated++;
             if (persisted.unchanged()) stats.unchanged++;

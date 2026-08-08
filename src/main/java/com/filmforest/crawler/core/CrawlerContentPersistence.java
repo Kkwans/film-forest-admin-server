@@ -2,7 +2,6 @@ package com.filmforest.crawler.core;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.content.entity.Anime;
 import com.filmforest.content.entity.Drama;
 import com.filmforest.content.entity.Movie;
@@ -14,13 +13,6 @@ import com.filmforest.content.service.MovieService;
 import com.filmforest.content.service.ShortDramaService;
 import com.filmforest.content.service.VarietyService;
 import com.filmforest.crawler.model.ParsedContent;
-import com.filmforest.crawler.model.ParsedResource;
-import com.filmforest.resource.entity.ResourceCloud;
-import com.filmforest.resource.entity.ResourceMagnet;
-import com.filmforest.resource.entity.ResourceOnline;
-import com.filmforest.resource.mapper.ResourceCloudMapper;
-import com.filmforest.resource.mapper.ResourceMagnetMapper;
-import com.filmforest.resource.mapper.ResourceOnlineMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,29 +26,25 @@ public class CrawlerContentPersistence {
     private final VarietyService varietyService;
     private final AnimeService animeService;
     private final ShortDramaService shortDramaService;
-    private final ResourceMagnetMapper magnetMapper;
-    private final ResourceCloudMapper cloudMapper;
-    private final ResourceOnlineMapper onlineMapper;
+    private final CrawlerResourceDiffService resourceDiffService;
     private final ObjectMapper objectMapper;
 
     public CrawlerContentPersistence(MovieService movieService, DramaService dramaService,
                                      VarietyService varietyService, AnimeService animeService,
                                      ShortDramaService shortDramaService,
-                                     ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper,
-                                     ResourceOnlineMapper onlineMapper, ObjectMapper objectMapper) {
+                                     CrawlerResourceDiffService resourceDiffService,
+                                     ObjectMapper objectMapper) {
         this.movieService = movieService;
         this.dramaService = dramaService;
         this.varietyService = varietyService;
         this.animeService = animeService;
         this.shortDramaService = shortDramaService;
-        this.magnetMapper = magnetMapper;
-        this.cloudMapper = cloudMapper;
-        this.onlineMapper = onlineMapper;
+        this.resourceDiffService = resourceDiffService;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
-    public PersistResult persist(ParsedContent parsed) {
+    public PersistResult persist(String sourceCode, ParsedContent parsed) {
         long contentId = numericExternalId(parsed.externalId());
         boolean isNew = switch (parsed.contentType()) {
             case MOVIE -> persistMovie(contentId, parsed);
@@ -65,8 +53,9 @@ public class CrawlerContentPersistence {
             case ANIME -> persistAnime(contentId, parsed);
             case SHORT_DRAMA -> persistShortDrama(contentId, parsed);
         };
-        replaceResources(parsed.contentType().value(), contentId, parsed.resources());
-        return new PersistResult(isNew, !isNew, false);
+        CrawlerResourceDiffService.ResourceDiffResult resourceDiff = resourceDiffService.apply(
+                sourceCode, parsed.contentType().value(), contentId, parsed.resources());
+        return new PersistResult(isNew, !isNew, false, resourceDiff);
     }
 
     private boolean persistMovie(long id, ParsedContent parsed) {
@@ -196,60 +185,6 @@ public class CrawlerContentPersistence {
         entity.setStatus(1);
     }
 
-    private void replaceResources(String contentType, long contentId, List<ParsedResource> resources) {
-        magnetMapper.delete(new LambdaQueryWrapper<ResourceMagnet>()
-                .eq(ResourceMagnet::getContentType, contentType).eq(ResourceMagnet::getContentId, contentId));
-        cloudMapper.delete(new LambdaQueryWrapper<ResourceCloud>()
-                .eq(ResourceCloud::getContentType, contentType).eq(ResourceCloud::getContentId, contentId));
-        onlineMapper.delete(new LambdaQueryWrapper<ResourceOnline>()
-                .eq(ResourceOnline::getContentType, contentType).eq(ResourceOnline::getContentId, contentId));
-        for (ParsedResource resource : resources) {
-            switch (resource.kind()) {
-                case MAGNET -> insertMagnet(contentType, contentId, resource);
-                case CLOUD -> insertCloud(contentType, contentId, resource);
-                case ONLINE -> insertOnline(contentType, contentId, resource);
-            }
-        }
-    }
-
-    private void insertMagnet(String contentType, long contentId, ParsedResource parsed) {
-        ResourceMagnet entity = new ResourceMagnet();
-        entity.setContentType(contentType);
-        entity.setContentId(contentId);
-        entity.setTitle(limit(parsed.title(), 200));
-        entity.setMagnetUrl(parsed.url());
-        entity.setResolution(parsed.resolution());
-        entity.setHasSubtitle(parsed.hasSubtitle());
-        entity.setIsSpecialSub(parsed.specialSubtitle());
-        entity.setSort(parsed.sourceOrder());
-        magnetMapper.insert(entity);
-    }
-
-    private void insertCloud(String contentType, long contentId, ParsedResource parsed) {
-        ResourceCloud entity = new ResourceCloud();
-        entity.setContentType(contentType);
-        entity.setContentId(contentId);
-        entity.setDiskType(parsed.diskType());
-        entity.setTitle(limit(parsed.title(), 200));
-        entity.setUrl(parsed.url());
-        entity.setPassword(limit(parsed.password(), 50));
-        entity.setSort(parsed.sourceOrder());
-        cloudMapper.insert(entity);
-    }
-
-    private void insertOnline(String contentType, long contentId, ParsedResource parsed) {
-        ResourceOnline entity = new ResourceOnline();
-        entity.setContentType(contentType);
-        entity.setContentId(contentId);
-        entity.setSeason(parsed.season());
-        entity.setEpisodeNumber(parsed.episodeNumber());
-        entity.setEpisodeTitle(limit(parsed.episodeTitle(), 200));
-        entity.setSourceName(limit(parsed.title(), 50));
-        entity.setSourceUrl(parsed.url());
-        entity.setSort(parsed.sourceOrder());
-        onlineMapper.insert(entity);
-    }
-
     private String json(List<String> values, boolean isNew) {
         if (values == null || values.isEmpty()) return isNew ? "[]" : null;
         try {
@@ -269,11 +204,6 @@ public class CrawlerContentPersistence {
 
     private static String firstNonBlank(String value) {
         return value == null || value.isBlank() ? null : value;
-    }
-
-    private static String limit(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) return value;
-        return value.substring(0, maxLength);
     }
 
     private static void saveOrUpdate(MovieService service, Movie entity, boolean isNew) {
@@ -296,5 +226,11 @@ public class CrawlerContentPersistence {
         if (isNew) service.save(entity); else service.updateById(entity);
     }
 
-    public record PersistResult(boolean added, boolean updated, boolean unchanged) { }
+    public record PersistResult(boolean added, boolean updated, boolean unchanged,
+                                CrawlerResourceDiffService.ResourceDiffResult resourceDiff) {
+        public PersistResult(boolean added, boolean updated, boolean unchanged) {
+            this(added, updated, unchanged,
+                    new CrawlerResourceDiffService.ResourceDiffResult(0, 0, 0, 0, false));
+        }
+    }
 }
