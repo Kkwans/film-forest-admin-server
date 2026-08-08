@@ -3,6 +3,7 @@ package com.filmforest.crawler.controller;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,6 +20,7 @@ import static org.mockito.Mockito.*;
 class CrawlerControllerJobApiTest {
 
     @Mock private CrawlerScheduleService scheduleService;
+    @Mock private CrawlerOperationsQueryService operationsQueryService;
     @Mock private CrawlerTaskLogMapper jobMapper;
     @Mock private ResourceSourceMapper resourceSourceMapper;
 
@@ -26,7 +28,7 @@ class CrawlerControllerJobApiTest {
 
     @BeforeEach
     void setUp() {
-        controller = new CrawlerController(scheduleService, jobMapper, resourceSourceMapper);
+        controller = new CrawlerController(scheduleService, operationsQueryService, jobMapper, resourceSourceMapper);
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.filmforest.crawler.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.filmforest.crawler.dto.CrawlerJobFilter;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -9,6 +10,7 @@ import org.apache.ibatis.annotations.Update;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 /**
@@ -108,4 +110,110 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
             LIMIT #{limit}
             """)
     List<CrawlerTaskLog> selectQueuedJobs(@Param("limit") int limit);
+
+    @Select("""
+            <script>
+            SELECT * FROM crawler_task_log
+            <where>
+              <if test="filter.status != null">AND status = #{filter.status}</if>
+              <if test="filter.scheduleId != null">AND schedule_id = #{filter.scheduleId}</if>
+              <if test="filter.sourceCode != null">AND source_code = #{filter.sourceCode}</if>
+              <if test="filter.contentType != null">AND content_type = #{filter.contentType}</if>
+              <if test="filter.triggerType != null">AND trigger_type = #{filter.triggerType}</if>
+              <if test="filter.from != null">AND COALESCE(started_at, queued_at) &gt;= #{filter.from}</if>
+              <if test="filter.to != null">AND COALESCE(started_at, queued_at) &lt; #{filter.to}</if>
+              <if test="filter.keyword != null">
+                AND (
+                  INSTR(LOWER(COALESCE(schedule_name, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(current_item, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(error_summary, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(source_code, '')), LOWER(#{filter.keyword})) &gt; 0
+                )
+              </if>
+            </where>
+            ORDER BY queued_at DESC, id DESC
+            LIMIT #{limit} OFFSET #{offset}
+            </script>
+            """)
+    List<CrawlerTaskLog> selectJobPage(@Param("filter") CrawlerJobFilter filter,
+                                       @Param("limit") int limit,
+                                       @Param("offset") long offset);
+
+    @Select("""
+            <script>
+            SELECT COUNT(*) FROM crawler_task_log
+            <where>
+              <if test="filter.status != null">AND status = #{filter.status}</if>
+              <if test="filter.scheduleId != null">AND schedule_id = #{filter.scheduleId}</if>
+              <if test="filter.sourceCode != null">AND source_code = #{filter.sourceCode}</if>
+              <if test="filter.contentType != null">AND content_type = #{filter.contentType}</if>
+              <if test="filter.triggerType != null">AND trigger_type = #{filter.triggerType}</if>
+              <if test="filter.from != null">AND COALESCE(started_at, queued_at) &gt;= #{filter.from}</if>
+              <if test="filter.to != null">AND COALESCE(started_at, queued_at) &lt; #{filter.to}</if>
+              <if test="filter.keyword != null">
+                AND (
+                  INSTR(LOWER(COALESCE(schedule_name, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(current_item, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(error_summary, '')), LOWER(#{filter.keyword})) &gt; 0
+                  OR INSTR(LOWER(COALESCE(source_code, '')), LOWER(#{filter.keyword})) &gt; 0
+                )
+              </if>
+            </where>
+            </script>
+            """)
+    long countJobs(@Param("filter") CrawlerJobFilter filter);
+
+    @Select("""
+            SELECT COUNT(*) AS jobs,
+                   COALESCE(SUM(status = 'success'), 0) AS success,
+                   COALESCE(SUM(status = 'partial_success'), 0) AS partial,
+                   COALESCE(SUM(status = 'failed'), 0) AS failed,
+                   COALESCE(SUM(status IN ('cancelled', 'interrupted')), 0) AS cancelled,
+                   COALESCE(AVG(CASE WHEN finished_at IS NOT NULL THEN duration_ms END), 0) AS avgDurationMs,
+                   COALESCE(SUM(added_count), 0) AS added,
+                   COALESCE(SUM(updated_count), 0) AS updated,
+                   COALESCE(SUM(failed_count), 0) AS failedItems
+            FROM crawler_task_log
+            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
+              AND COALESCE(started_at, queued_at) &lt; #{to}
+            """)
+    Map<String, Object> selectOperationsSummary(@Param("from") LocalDateTime from,
+                                                 @Param("to") LocalDateTime to);
+
+    @Select("""
+            SELECT DATE(DATE_ADD(COALESCE(started_at, queued_at), INTERVAL 8 HOUR)) AS day,
+                   COUNT(*) AS jobs,
+                   COALESCE(SUM(status = 'success'), 0) AS success,
+                   COALESCE(SUM(status = 'partial_success'), 0) AS partial,
+                   COALESCE(SUM(status = 'failed'), 0) AS failed,
+                   COALESCE(SUM(status IN ('cancelled', 'interrupted')), 0) AS cancelled,
+                   COALESCE(SUM(added_count), 0) AS added,
+                   COALESCE(SUM(updated_count), 0) AS updated,
+                   COALESCE(SUM(failed_count), 0) AS failedItems
+            FROM crawler_task_log
+            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
+              AND COALESCE(started_at, queued_at) &lt; #{to}
+            GROUP BY day
+            ORDER BY day ASC
+            """)
+    List<Map<String, Object>> selectDailyOperations(@Param("from") LocalDateTime from,
+                                                     @Param("to") LocalDateTime to);
+
+    @Select("""
+            SELECT COALESCE(NULLIF(source_code, ''), 'unknown') AS source,
+                   COUNT(*) AS jobs,
+                   COALESCE(SUM(status = 'success'), 0) AS success,
+                   COALESCE(SUM(status = 'partial_success'), 0) AS partial,
+                   COALESCE(SUM(status = 'failed'), 0) AS failed,
+                   COALESCE(SUM(status IN ('cancelled', 'interrupted')), 0) AS cancelled,
+                   COALESCE(AVG(CASE WHEN finished_at IS NOT NULL THEN duration_ms END), 0) AS avgDurationMs,
+                   MAX(COALESCE(started_at, queued_at)) AS lastRunAt
+            FROM crawler_task_log
+            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
+              AND COALESCE(started_at, queued_at) &lt; #{to}
+            GROUP BY COALESCE(NULLIF(source_code, ''), 'unknown')
+            ORDER BY jobs DESC, source ASC
+            """)
+    List<Map<String, Object>> selectSourceHealth(@Param("from") LocalDateTime from,
+                                                  @Param("to") LocalDateTime to);
 }

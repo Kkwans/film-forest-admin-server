@@ -1,11 +1,14 @@
 package com.filmforest.crawler.controller;
 
 import com.filmforest.common.dto.Result;
+import com.filmforest.common.dto.PageResult;
+import com.filmforest.crawler.dto.CrawlerOperationsStats;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
@@ -16,6 +19,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,13 +30,16 @@ public class CrawlerController {
     private static final Logger log = LoggerFactory.getLogger(CrawlerController.class);
 
     private final CrawlerScheduleService scheduleService;
+    private final CrawlerOperationsQueryService operationsQueryService;
     private final CrawlerTaskLogMapper taskLogMapper;
     private final ResourceSourceMapper resourceSourceMapper;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
+                             CrawlerOperationsQueryService operationsQueryService,
                              CrawlerTaskLogMapper taskLogMapper,
                              ResourceSourceMapper resourceSourceMapper) {
         this.scheduleService = scheduleService;
+        this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
         this.resourceSourceMapper = resourceSourceMapper;
     }
@@ -105,26 +112,28 @@ public class CrawlerController {
         return Result.ok(scheduleService.toggleEnabled(id, enabled));
     }
 
-    /** 获取任务日志（支持状态筛选 + 分页） */
+    /** 权威 Job/日志的服务端真分页与筛选。 */
     @GetMapping("/logs")
-    public Result<List<CrawlerTaskLog>> listLogs(
+    public Result<PageResult<CrawlerTaskLog>> listLogs(
             @RequestParam(required = false) Long scheduleId,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String triggerType,
+            @RequestParam(required = false) OffsetDateTime from,
+            @RequestParam(required = false) OffsetDateTime to,
+            @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "1") Integer page,
-            @RequestParam(required = false, defaultValue = "50") Integer size) {
-        LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.orderByDesc(CrawlerTaskLog::getStartedAt);
-        if (scheduleId != null) {
-            wrapper.eq(CrawlerTaskLog::getScheduleId, scheduleId);
-        }
-        if (status != null && !status.isEmpty() && !"all".equals(status)) {
-            wrapper.eq(CrawlerTaskLog::getStatus, status);
-        }
-        // 分页：限制 size 最大 200
-        int safeSize = Math.min(Math.max(size, 1), 200);
-        int offset = (Math.max(page, 1) - 1) * safeSize;
-        wrapper.last("LIMIT " + safeSize + " OFFSET " + offset);
-        return Result.ok(taskLogMapper.selectList(wrapper));
+            @RequestParam(required = false, defaultValue = "20") Integer size) {
+        return Result.ok(operationsQueryService.listJobs(
+                status, scheduleId, source, type, triggerType, from, to, keyword, page, size));
+    }
+
+    /** 7/30 天 Job 汇总、每日趋势和来源健康度，全部由 SQL 聚合。 */
+    @GetMapping("/operations-stats")
+    public Result<CrawlerOperationsStats> getOperationsStats(
+            @RequestParam(required = false, defaultValue = "7") int days) {
+        return Result.ok(operationsQueryService.getOperationsStats(days));
     }
 
     /** 获取资源来源列表（爬虫配置用） */

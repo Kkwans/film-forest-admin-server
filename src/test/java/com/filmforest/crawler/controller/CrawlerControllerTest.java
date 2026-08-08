@@ -8,6 +8,7 @@ import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -53,6 +54,9 @@ class CrawlerControllerTest {
 
     @MockBean
     private CrawlerScheduleService scheduleService;
+
+    @MockBean
+    private CrawlerOperationsQueryService operationsQueryService;
 
     @MockBean
     private CrawlerCore crawlerCore;
@@ -190,15 +194,17 @@ class CrawlerControllerTest {
     class LogAndStatusTest {
 
         @Test
-        @DisplayName("TC-607: GET /api/crawler/logs - 返回最近50条日志")
+        @DisplayName("TC-607: GET /api/crawler/logs - 返回服务端真分页")
         void getLogs_shouldReturnRecentLogs() throws Exception {
             CrawlerTaskLog log1 = createTaskLog(1L, 1L, "success");
-            when(taskLogMapper.selectList(any())).thenReturn(List.of(log1));
+            when(operationsQueryService.listJobs(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                    .thenReturn(new com.filmforest.common.dto.PageResult<>(List.of(log1), 1, 20, 1, 1));
 
             mockMvc.perform(get("/api/crawler/logs"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").isArray());
+                    .andExpect(jsonPath("$.data.total").value(1))
+                    .andExpect(jsonPath("$.data.records").isArray());
         }
 
         @Test
