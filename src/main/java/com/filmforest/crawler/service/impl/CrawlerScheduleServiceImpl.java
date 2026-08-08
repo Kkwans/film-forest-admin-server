@@ -2,6 +2,7 @@ package com.filmforest.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerCrawlMode;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
@@ -55,8 +56,11 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         // 修复 #6: genreFilter 是 JSON 列，空字符串/null/非法值统一转为 null
         // 合法格式: 逗号分隔的中文标签 "爱情,科幻" 或 JSON 数组 "[\"爱情\",\"科幻\"]"
         schedule.setGenreFilter(normalizeGenreFilter(schedule.getGenreFilter()));
-        if (schedule.getCrawlMode() == null || schedule.getCrawlMode().isBlank()) {
-            schedule.setCrawlMode("incremental");
+        CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(schedule.getCrawlMode());
+        schedule.setCrawlMode(crawlMode.getCode());
+        if (crawlMode == CrawlerCrawlMode.FULL) {
+            schedule.setEnabled(0);
+            schedule.setNextRunTime(null);
         }
 
         if (schedule.getId() == null) {
@@ -67,14 +71,16 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
             schedule.setTotalRuns(0);
             schedule.setTotalItems(0);
             // 计算 nextRunTime
-            if (schedule.getEnabled() != null && schedule.getEnabled() == 1
+            if (crawlMode == CrawlerCrawlMode.LATEST
+                    && schedule.getEnabled() != null && schedule.getEnabled() == 1
                     && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
                 schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
             }
             return scheduleMapper.insert(schedule) > 0;
         } else {
             // 更新时重算 nextRunTime
-            if (schedule.getEnabled() != null && schedule.getEnabled() == 1
+            if (crawlMode == CrawlerCrawlMode.LATEST
+                    && schedule.getEnabled() != null && schedule.getEnabled() == 1
                     && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
                 schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
             } else {
@@ -169,6 +175,9 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     public boolean toggleEnabled(Long id, boolean enabled) {
         CrawlerSchedule schedule = scheduleMapper.selectById(id);
         if (schedule == null) return false;
+        if (enabled && CrawlerCrawlMode.fromCode(schedule.getCrawlMode()) == CrawlerCrawlMode.FULL) {
+            return false;
+        }
         schedule.setEnabled(enabled ? 1 : 0);
         if (enabled && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
             schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));

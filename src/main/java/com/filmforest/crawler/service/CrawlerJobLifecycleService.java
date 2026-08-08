@@ -1,6 +1,7 @@
 package com.filmforest.crawler.service;
 
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerCrawlMode;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
@@ -55,19 +56,26 @@ public class CrawlerJobLifecycleService {
             }
         }
 
+        CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(
+                retriedJob == null ? schedule.getCrawlMode() : retriedJob.getCrawlMode());
+        if (triggerType == CrawlerTriggerType.SCHEDULED && crawlMode == CrawlerCrawlMode.FULL) {
+            return null;
+        }
+
         CrawlerTaskLog job = new CrawlerTaskLog();
         job.setScheduleId(scheduleId);
         job.setScheduleName(schedule.getName());
         job.setContentType(schedule.getContentType());
         job.setSourceCode(normalizeSourceCode(schedule.getSourceSite()));
-        job.setCrawlMode(normalizeCrawlMode(schedule.getCrawlMode()));
+        job.setCrawlMode(crawlMode.getCode());
         job.setTriggerType(triggerType.getCode());
         job.setRetryOfJobId(retryOfJobId);
         job.setStatus(CrawlerStatus.QUEUED.getCode());
         job.setCancelRequested(false);
-        job.setCurrentPage(retriedJob != null && retriedJob.getCurrentPage() != null
+        boolean resumeFull = retriedJob != null && crawlMode == CrawlerCrawlMode.FULL;
+        job.setCurrentPage(resumeFull && retriedJob.getCurrentPage() != null
                 ? retriedJob.getCurrentPage() : 1);
-        job.setCheckpoint(retriedJob == null ? null : retriedJob.getCheckpoint());
+        job.setCheckpoint(resumeFull ? retriedJob.getCheckpoint() : null);
         job.setDiscoveredCount(0);
         job.setFetchSucceededCount(0);
         job.setParseSucceededCount(0);
@@ -191,10 +199,6 @@ public class CrawlerJobLifecycleService {
         return Integer.valueOf(1).equals(schedule.getEnabled())
                 && schedule.getNextRunTime() != null
                 && !schedule.getNextRunTime().isAfter(now);
-    }
-
-    private String normalizeCrawlMode(String crawlMode) {
-        return crawlMode == null || crawlMode.isBlank() ? "incremental" : crawlMode.trim();
     }
 
     private long durationMillis(LocalDateTime startedAt, LocalDateTime finishedAt) {

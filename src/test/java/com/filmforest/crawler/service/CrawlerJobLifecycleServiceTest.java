@@ -57,6 +57,7 @@ class CrawlerJobLifecycleServiceTest {
         verify(jobMapper).insert(jobCaptor.capture());
         assertThat(jobCaptor.getValue().getStatus()).isEqualTo("queued");
         assertThat(jobCaptor.getValue().getTriggerType()).isEqualTo("manual");
+        assertThat(jobCaptor.getValue().getCrawlMode()).isEqualTo("latest");
         assertThat(jobCaptor.getValue().getCurrentPage()).isEqualTo(1);
         verify(eventPublisher).publishEvent(new CrawlerJobQueuedEvent(101L));
     }
@@ -90,11 +91,14 @@ class CrawlerJobLifecycleServiceTest {
     @Test
     @DisplayName("重试 Job 复制安全检查点并记录 retryOfJobId")
     void enqueue_retry_shouldCopyCheckpoint() {
-        when(scheduleMapper.selectByIdForUpdate(1L)).thenReturn(schedule(1L));
+        CrawlerSchedule schedule = schedule(1L);
+        schedule.setCrawlMode("full");
+        when(scheduleMapper.selectByIdForUpdate(1L)).thenReturn(schedule);
         when(jobMapper.selectActiveByScheduleId(1L)).thenReturn(null);
         CrawlerTaskLog previous = job(88L, 1L, "interrupted");
         previous.setCurrentPage(7);
         previous.setCheckpoint("{\"nextPage\":7}");
+        previous.setCrawlMode("full");
         when(jobMapper.selectById(88L)).thenReturn(previous);
         when(jobMapper.insert(any(CrawlerTaskLog.class))).thenAnswer(invocation -> {
             invocation.<CrawlerTaskLog>getArgument(0).setId(102L);
@@ -109,6 +113,43 @@ class CrawlerJobLifecycleServiceTest {
         assertThat(captor.getValue().getCurrentPage()).isEqualTo(7);
         assertThat(captor.getValue().getCheckpoint()).isEqualTo("{\"nextPage\":7}");
         assertThat(captor.getValue().getRetryOfJobId()).isEqualTo(88L);
+        assertThat(captor.getValue().getCrawlMode()).isEqualTo("full");
+    }
+
+    @Test
+    @DisplayName("LATEST 重试从第一页重新回查，不继承旧 checkpoint")
+    void enqueue_latestRetry_shouldRestartFromFirstPage() {
+        when(scheduleMapper.selectByIdForUpdate(1L)).thenReturn(schedule(1L));
+        when(jobMapper.selectActiveByScheduleId(1L)).thenReturn(null);
+        CrawlerTaskLog previous = job(88L, 1L, "interrupted");
+        previous.setCrawlMode("latest");
+        previous.setCurrentPage(7);
+        previous.setCheckpoint("{\"nextPage\":7}");
+        when(jobMapper.selectById(88L)).thenReturn(previous);
+        when(jobMapper.insert(any(CrawlerTaskLog.class))).thenAnswer(invocation -> {
+            invocation.<CrawlerTaskLog>getArgument(0).setId(103L);
+            return 1;
+        });
+
+        lifecycleService.enqueue(1L, CrawlerTriggerType.RETRY, 88L);
+
+        ArgumentCaptor<CrawlerTaskLog> captor = ArgumentCaptor.forClass(CrawlerTaskLog.class);
+        verify(jobMapper).insert(captor.capture());
+        assertThat(captor.getValue().getCurrentPage()).isEqualTo(1);
+        assertThat(captor.getValue().getCheckpoint()).isNull();
+    }
+
+    @Test
+    @DisplayName("FULL 模式拒绝定时触发")
+    void enqueue_scheduledFull_shouldReject() {
+        CrawlerSchedule schedule = schedule(1L);
+        schedule.setCrawlMode("full");
+        when(scheduleMapper.selectByIdForUpdate(1L)).thenReturn(schedule);
+        when(jobMapper.selectActiveByScheduleId(1L)).thenReturn(null);
+
+        assertThat(lifecycleService.enqueue(1L, CrawlerTriggerType.SCHEDULED, null)).isNull();
+
+        verify(jobMapper, never()).insert(any(CrawlerTaskLog.class));
     }
 
     @Test

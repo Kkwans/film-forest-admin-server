@@ -76,6 +76,28 @@ class CrawlerScheduleServiceTest {
             assertThat(saved.getTotalItems()).isEqualTo(0);
             assertThat(saved.getContentType()).isEqualTo("movie");
             assertThat(saved.getBatchSize()).isEqualTo(10);
+            assertThat(saved.getCrawlMode()).isEqualTo("latest");
+        }
+
+        @Test
+        @DisplayName("FULL 配置只能手工触发，保存时强制关闭调度")
+        void saveSchedule_fullMode_shouldDisableSchedule() {
+            CrawlerSchedule schedule = new CrawlerSchedule();
+            schedule.setName("全量回填");
+            schedule.setContentType("movie");
+            schedule.setSourceSite("pkmp4");
+            schedule.setCrawlMode("FULL");
+            schedule.setEnabled(1);
+            schedule.setCronExpression("0 0 2 * * *");
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
+
+            assertThat(scheduleService.saveSchedule(schedule)).isTrue();
+
+            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
+            verify(scheduleMapper).insert(captor.capture());
+            assertThat(captor.getValue().getCrawlMode()).isEqualTo("full");
+            assertThat(captor.getValue().getEnabled()).isZero();
+            assertThat(captor.getValue().getNextRunTime()).isNull();
         }
 
         @Test
