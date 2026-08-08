@@ -48,30 +48,32 @@ public class JavaHttpFetcher implements HttpFetcher {
 
     @Override
     public FetchResult fetch(URI uri, Map<String, String> headers, int rateLimitMs,
-                             AtomicBoolean cancellation) {
+                             AtomicBoolean cancellation, Set<String> sensitiveQueryParameters) {
+        URI publicUri = redactUri(uri, sensitiveQueryParameters);
         if (!sleepCancellable(Math.max(0, rateLimitMs), cancellation)) {
-            return cancelled(uri, 0L);
+            return cancelled(publicUri, 0L);
         }
 
         int attempts = Math.max(1, properties.getMaxAttempts());
         FetchResult last = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if (isCancelled(cancellation)) {
-                return cancelled(uri, last == null ? 0L : last.elapsedMs());
+                return cancelled(publicUri, last == null ? 0L : last.elapsedMs());
             }
-            last = fetchOnce(uri, headers, cancellation);
+            last = fetchOnce(uri, publicUri, headers, cancellation, sensitiveQueryParameters);
             if (!last.retryable() || attempt == attempts) {
                 return last;
             }
             long delayMs = retryDelayMs(last, attempt);
             if (!sleepCancellable(delayMs, cancellation)) {
-                return cancelled(uri, last.elapsedMs());
+                return cancelled(publicUri, last.elapsedMs());
             }
         }
         return last;
     }
 
-    private FetchResult fetchOnce(URI uri, Map<String, String> headers, AtomicBoolean cancellation) {
+    private FetchResult fetchOnce(URI uri, URI publicUri, Map<String, String> headers,
+                                  AtomicBoolean cancellation, Set<String> sensitiveQueryParameters) {
         long started = System.nanoTime();
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .GET()
@@ -86,13 +88,14 @@ public class JavaHttpFetcher implements HttpFetcher {
             HttpResponse<byte[]> response = await(future, cancellation);
             long elapsedMs = elapsedMs(started);
             if (response == null) {
-                return cancelled(uri, elapsedMs);
+                return cancelled(publicUri, elapsedMs);
             }
             byte[] bytes = response.body() == null ? new byte[0] : response.body();
             String contentType = response.headers().firstValue("content-type").orElse("");
             Map<String, String> importantHeaders = importantHeaders(response);
             if (bytes.length > properties.getMaxBodyBytes()) {
-                return new FetchResult(uri, response.uri(), response.statusCode(), contentType, "",
+                return new FetchResult(publicUri, redactUri(response.uri(), sensitiveQueryParameters),
+                        response.statusCode(), contentType, "",
                         elapsedMs, FetchCategory.INVALID_CONTENT_TYPE, false, importantHeaders);
             }
             String body = new String(bytes, StandardCharsets.UTF_8);
@@ -102,7 +105,8 @@ public class JavaHttpFetcher implements HttpFetcher {
                     || category == FetchCategory.NETWORK_ERROR;
             log.atDebug().log("HTTP fetch {} {} -> {} in {} ms", response.statusCode(), safeUri(uri),
                     category, elapsedMs);
-            return new FetchResult(uri, response.uri(), response.statusCode(), contentType, body,
+            return new FetchResult(publicUri, redactUri(response.uri(), sensitiveQueryParameters),
+                    response.statusCode(), contentType, body,
                     elapsedMs, category, retryable, importantHeaders);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -110,12 +114,12 @@ public class JavaHttpFetcher implements HttpFetcher {
             if (cancellation != null) {
                 cancellation.set(true);
             }
-            return cancelled(uri, elapsedMs(started));
+            return cancelled(publicUri, elapsedMs(started));
         } catch (ExecutionException | TimeoutException error) {
             future.cancel(true);
             long elapsedMs = elapsedMs(started);
             log.atWarn().log("HTTP fetch failed for {}: {}", safeUri(uri), error.getClass().getSimpleName());
-            return new FetchResult(uri, uri, 0, "", "", elapsedMs,
+            return new FetchResult(publicUri, publicUri, 0, "", "", elapsedMs,
                     FetchCategory.NETWORK_ERROR, true, Map.of());
         }
     }
@@ -247,6 +251,29 @@ public class JavaHttpFetcher implements HttpFetcher {
 
     private static String safeUri(URI uri) {
         return uri.getScheme() + "://" + uri.getAuthority() + uri.getPath();
+    }
+
+    static URI redactUri(URI uri, Set<String> sensitiveQueryParameters) {
+        if (uri == null || uri.getRawQuery() == null || sensitiveQueryParameters.isEmpty()) {
+            return uri;
+        }
+        StringBuilder query = new StringBuilder();
+        for (String pair : uri.getRawQuery().split("&")) {
+            if (query.length() > 0) query.append('&');
+            int separator = pair.indexOf('=');
+            String key = separator >= 0 ? pair.substring(0, separator) : pair;
+            query.append(key);
+            if (separator >= 0) {
+                query.append('=').append(sensitiveQueryParameters.contains(key)
+                        ? "REDACTED" : pair.substring(separator + 1));
+            }
+        }
+        try {
+            return new URI(uri.getScheme(), uri.getRawAuthority(), uri.getRawPath(),
+                    query.toString(), uri.getRawFragment());
+        } catch (java.net.URISyntaxException impossible) {
+            return URI.create(uri.getScheme() + "://" + uri.getAuthority() + uri.getPath());
+        }
     }
 
     private static long elapsedMs(long startedNanos) {

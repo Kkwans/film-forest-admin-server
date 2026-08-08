@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,5 +49,15 @@ class JavaHttpFetcherTest {
 
         assertThat(result.category()).isEqualTo(FetchCategory.CANCELLED);
         assertThat(result.retryable()).isFalse();
+    }
+
+    @Test
+    void sensitiveQueryValuesNeverAppearInFetchResultUris() {
+        URI uri = URI.create("https://api.example.test/search?query=title&api_key=secret-value&page=1");
+
+        URI redacted = JavaHttpFetcher.redactUri(uri, Set.of("api_key"));
+
+        assertThat(redacted.toString()).contains("query=title", "api_key=REDACTED", "page=1");
+        assertThat(redacted.toString()).doesNotContain("secret-value");
     }
 }
