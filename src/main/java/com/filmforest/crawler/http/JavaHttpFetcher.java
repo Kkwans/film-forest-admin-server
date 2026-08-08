@@ -2,6 +2,7 @@ package com.filmforest.crawler.http;
 
 import com.filmforest.crawler.config.CrawlerHttpProperties;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.InetSocketAddress;
@@ -37,6 +38,7 @@ public class JavaHttpFetcher implements HttpFetcher {
     private final CrawlerHttpProperties properties;
     private final HttpClient httpClient;
 
+    @Autowired
     public JavaHttpFetcher(CrawlerHttpProperties properties) {
         this(properties, createClient(properties));
     }
