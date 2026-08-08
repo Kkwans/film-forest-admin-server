@@ -54,6 +54,54 @@ class FlywayRestoreDrillIT {
         }
     }
 
+    static DrillTarget validateTarget(
+            String confirmation,
+            String modeValue,
+            String jdbcUrl,
+            String username,
+            String password
+    ) {
+        if (!CONFIRMATION.equals(confirmation)) {
+            throw new IllegalArgumentException("必须显式确认仅操作隔离恢复目标");
+        }
+
+        DrillMode mode;
+        try {
+            mode = DrillMode.valueOf(requireNonBlank(modeValue, "演练模式").toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("演练模式只允许 RESTORED 或 EMPTY", exception);
+        }
+
+        Matcher matcher = ISOLATED_JDBC_URL.matcher(requireNonBlank(jdbcUrl, "JDBC URL"));
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException(
+                    "JDBC URL 必须指向本机 film_forest_phase0_restore/empty 隔离 schema"
+            );
+        }
+
+        int port = Integer.parseInt(matcher.group(2));
+        if (port < 1 || port > 65_535 || port == 3306) {
+            throw new IllegalArgumentException("演练端口必须是 1-65535 范围内的非生产临时端口");
+        }
+        if (!matcher.group(3).equals(mode.schemaName())) {
+            throw new IllegalArgumentException("演练模式与隔离 schema 不匹配");
+        }
+
+        return new DrillTarget(
+                mode,
+                jdbcUrl,
+                requireNonBlank(username, "数据库用户名"),
+                requireNonBlank(password, "数据库密码")
+        );
+    }
+
+    private static String requireNonBlank(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + "不能为空");
+        }
+        return value;
+    }
+
     private static void assertPreMigrationState(Connection connection, DrillMode mode)
             throws SQLException {
         assertThat(tableCount(connection, "flyway_schema_history")).isZero();
@@ -212,7 +260,7 @@ class FlywayRestoreDrillIT {
     private record UserSnapshot(long totalUsers, long bcryptUsers, long undeletedAdminCount) {
     }
 
-    private record DrillTarget(
+    record DrillTarget(
             DrillMode mode,
             String jdbcUrl,
             String username,
@@ -220,26 +268,10 @@ class FlywayRestoreDrillIT {
     ) {
 
         private static DrillTarget fromEnvironment() {
-            assertThat(requiredEnvironment("FILM_FOREST_DRILL_CONFIRM"))
-                    .as("必须显式确认仅操作隔离恢复目标")
-                    .isEqualTo(CONFIRMATION);
-
-            DrillMode mode = DrillMode.valueOf(
-                    requiredEnvironment("FILM_FOREST_DRILL_MODE").toUpperCase(Locale.ROOT)
-            );
-            String jdbcUrl = requiredEnvironment("FILM_FOREST_DRILL_DB_URL");
-            Matcher matcher = ISOLATED_JDBC_URL.matcher(jdbcUrl);
-
-            assertThat(matcher.matches())
-                    .as("JDBC URL 必须指向本机 film_forest_phase0_restore/empty 隔离 schema")
-                    .isTrue();
-            int port = Integer.parseInt(matcher.group(2));
-            assertThat(port).isBetween(1, 65535).isNotEqualTo(3306);
-            assertThat(matcher.group(3)).isEqualTo(mode.schemaName());
-
-            return new DrillTarget(
-                    mode,
-                    jdbcUrl,
+            return validateTarget(
+                    requiredEnvironment("FILM_FOREST_DRILL_CONFIRM"),
+                    requiredEnvironment("FILM_FOREST_DRILL_MODE"),
+                    requiredEnvironment("FILM_FOREST_DRILL_DB_URL"),
                     requiredEnvironment("FILM_FOREST_DRILL_DB_USERNAME"),
                     requiredEnvironment("FILM_FOREST_DRILL_DB_PASSWORD")
             );
@@ -247,12 +279,15 @@ class FlywayRestoreDrillIT {
 
         private static String requiredEnvironment(String name) {
             String value = System.getenv(name);
-            assertThat(value).as("缺少环境变量 %s", name).isNotBlank();
-            return value;
+            try {
+                return requireNonBlank(value, "环境变量 " + name);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalStateException(exception.getMessage(), exception);
+            }
         }
     }
 
-    private enum DrillMode {
+    enum DrillMode {
         RESTORED("film_forest_phase0_restore"),
         EMPTY("film_forest_phase0_empty");
 
