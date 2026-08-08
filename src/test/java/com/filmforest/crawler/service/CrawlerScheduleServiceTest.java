@@ -16,6 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +46,48 @@ class CrawlerScheduleServiceTest {
 
     @InjectMocks
     private CrawlerScheduleServiceImpl scheduleService;
+
+    @Nested
+    @DisplayName("配置列表运行事实装饰")
+    class RuntimeDecorationTest {
+
+        @Test
+        @DisplayName("无活动 Job 时返回最近 Job 的 ID 与结果")
+        void listSchedules_shouldExposeLatestJobResult() {
+            CrawlerSchedule schedule = createBaseSchedule(1L);
+            CrawlerTaskLog latest = new CrawlerTaskLog();
+            latest.setId(91L);
+            latest.setStatus("partial_success");
+            when(scheduleMapper.selectList(any())).thenReturn(List.of(schedule));
+            when(taskLogMapper.selectLatestByScheduleId(1L)).thenReturn(latest);
+
+            List<CrawlerSchedule> result = scheduleService.listSchedules();
+
+            assertThat(result).singleElement().satisfies(item -> {
+                assertThat(item.getStatus()).isEqualTo("idle");
+                assertThat(item.getLatestJobId()).isEqualTo(91L);
+                assertThat(item.getLatestResult()).isEqualTo("partial_success");
+            });
+        }
+
+        @Test
+        @DisplayName("活动 Job 同时作为当前状态和最近结果")
+        void getSchedule_shouldPreferActiveJob() {
+            CrawlerSchedule schedule = createBaseSchedule(1L);
+            CrawlerTaskLog active = new CrawlerTaskLog();
+            active.setId(92L);
+            active.setStatus("running");
+            when(scheduleMapper.selectById(1L)).thenReturn(schedule);
+            when(taskLogMapper.selectActiveByScheduleId(1L)).thenReturn(active);
+
+            CrawlerSchedule result = scheduleService.getSchedule(1L);
+
+            assertThat(result.getStatus()).isEqualTo("running");
+            assertThat(result.getLatestJobId()).isEqualTo(92L);
+            assertThat(result.getLatestResult()).isEqualTo("running");
+            verify(taskLogMapper, never()).selectLatestByScheduleId(1L);
+        }
+    }
 
     // ========== TC-001~004: 基础配置 CRUD ==========
 

@@ -216,5 +216,10 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         }
         CrawlerTaskLog active = taskLogMapper.selectActiveByScheduleId(schedule.getId());
         schedule.setStatus(active == null ? "idle" : "running");
+        CrawlerTaskLog latest = active == null
+                ? taskLogMapper.selectLatestByScheduleId(schedule.getId())
+                : active;
+        schedule.setLatestJobId(latest == null ? null : latest.getId());
+        schedule.setLatestResult(latest == null ? null : latest.getStatus());
     }
 }

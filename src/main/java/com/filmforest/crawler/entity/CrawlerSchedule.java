@@ -39,6 +39,12 @@ public class CrawlerSchedule {
      */
     @TableField(exist = false)
     private String status;
+    /** 最近一次权威 Job，仅用于管理端配置列表展示。 */
+    @TableField(exist = false)
+    private Long latestJobId;
+    /** 最近一次权威 Job 的终态或活动态。 */
+    @TableField(exist = false)
+    private String latestResult;
     private LocalDateTime lastRunTime;
     private LocalDateTime nextRunTime;
     private Integer totalRuns;

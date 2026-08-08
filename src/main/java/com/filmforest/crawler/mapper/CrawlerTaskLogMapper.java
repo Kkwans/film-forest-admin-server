@@ -30,6 +30,14 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
 
     @Select("""
             SELECT * FROM crawler_task_log
+            WHERE schedule_id = #{scheduleId}
+            ORDER BY queued_at DESC, id DESC
+            LIMIT 1
+            """)
+    CrawlerTaskLog selectLatestByScheduleId(@Param("scheduleId") Long scheduleId);
+
+    @Select("""
+            SELECT * FROM crawler_task_log
             WHERE status IN ('queued', 'running', 'cancel_requested')
             ORDER BY queued_at ASC, id ASC
             """)
