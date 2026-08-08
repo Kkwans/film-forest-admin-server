@@ -22,11 +22,15 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -82,6 +86,49 @@ class CrawlerCoreAdapterRoutingTest {
         verify(persistence).persist(parsed);
     }
 
+    @Test
+    void threeConsecutiveParserFailuresStopSourceWithLimitedDiagnostic() {
+        CrawlerScheduleService schedules = mock(CrawlerScheduleService.class);
+        CrawlerTaskLogMapper jobs = mock(CrawlerTaskLogMapper.class);
+        SourceAdapterRegistry registry = mock(SourceAdapterRegistry.class);
+        HttpFetcher fetcher = mock(HttpFetcher.class);
+        CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
+        CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
+        CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
+                new ObjectMapper());
+        CrawlerSchedule schedule = new CrawlerSchedule();
+        schedule.setId(1L);
+        schedule.setSourceSite("pkmp4");
+        schedule.setContentType("drama");
+        schedule.setBatchSize(3);
+        schedule.setRateLimitMs(0);
+        CrawlerTaskLog job = new CrawlerTaskLog();
+        job.setId(9L);
+        job.setCurrentPage(1);
+        URI listUri = URI.create("https://source.test/list");
+
+        when(schedules.getSchedule(1L)).thenReturn(schedule);
+        when(jobs.selectById(9L)).thenReturn(job);
+        when(registry.require("pkmp4")).thenReturn(adapter);
+        when(adapter.sourceCode()).thenReturn("pkmp4");
+        when(adapter.listUri(ContentType.DRAMA, 1)).thenReturn(listUri);
+        when(fetcher.fetch(eq(listUri), anyMap(), anyInt(), any(AtomicBoolean.class)))
+                .thenReturn(success(listUri, "list"));
+        when(adapter.parseList("list", listUri)).thenReturn(List.of(
+                item(1), item(2), item(3)));
+        when(fetcher.fetch(argThat(uri -> uri.getPath().startsWith("/mv/")),
+                anyMap(), anyInt(), any(AtomicBoolean.class)))
+                .thenAnswer(invocation -> success(invocation.getArgument(0), "detail"));
+        when(adapter.parseDetail(eq(ContentType.DRAMA), eq("detail"), any(URI.class)))
+                .thenThrow(new IllegalArgumentException("wrong page kind"));
+
+        assertThatThrownBy(() -> crawler.executeCrawl(1L, 9L, new AtomicBoolean(false)))
+                .isInstanceOf(CrawlerSourceStructureException.class)
+                .hasMessageContaining("consecutiveFailures=3", "source=pkmp4")
+                .hasMessageNotContaining("<html");
+        verify(persistence, never()).persist(any());
+    }
+
     private static FetchResult success(URI uri, String body) {
         return new FetchResult(uri, uri, 200, "text/html", body, 1L,
                 FetchCategory.SUCCESS, false, Map.of());
@@ -92,5 +139,10 @@ class CrawlerCoreAdapterRoutingTest {
                 2024, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, null, List.of(), null, null, null, "", null, List.of(),
                 new ParseDiagnostics(List.of("h1"), List.of(), List.of(), "fingerprint", Map.of()));
+    }
+
+    private static SourceListItem item(int id) {
+        return new SourceListItem(Integer.toString(id),
+                "https://source.test/mv/" + id + ".html", "Title " + id, null, id - 1);
     }
 }

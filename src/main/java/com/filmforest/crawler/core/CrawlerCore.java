@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class CrawlerCore {
 
+    private static final int STRUCTURE_FAILURE_THRESHOLD = 3;
+
     private final CrawlerScheduleService scheduleService;
     private final CrawlerTaskLogMapper taskLogMapper;
     private final SourceAdapterRegistry sourceAdapterRegistry;
@@ -83,6 +85,7 @@ public class CrawlerCore {
                                         AtomicBoolean cancellation) {
         MutableStats stats = new MutableStats();
         int page = startPage;
+        int consecutiveStructureFailures = 0;
         while (stats.discovered < maxItems && !isCancellationRequested(cancellation)) {
             URI listUri = adapter.listUri(contentType, page);
             FetchResult listFetch = httpFetcher.fetch(listUri, Map.of(), rateLimitMs, cancellation);
@@ -108,7 +111,18 @@ public class CrawlerCore {
                     break;
                 }
                 recordProgress(page, item.sourceUrl(), stats);
-                processItem(adapter, contentType, item, rateLimitMs, genreFilter, cancellation, stats);
+                ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
+                        genreFilter, cancellation, stats);
+                if (result.outcome() == ItemOutcome.STRUCTURE_FAILURE) {
+                    consecutiveStructureFailures++;
+                    if (consecutiveStructureFailures >= STRUCTURE_FAILURE_THRESHOLD) {
+                        throw new CrawlerSourceStructureException(adapter.sourceCode(),
+                                consecutiveStructureFailures, result.diagnostic());
+                    }
+                } else if (result.outcome() == ItemOutcome.SUCCESS
+                        || result.outcome() == ItemOutcome.FILTERED) {
+                    consecutiveStructureFailures = 0;
+                }
                 recordProgress(page, item.sourceUrl(), stats);
             }
             recordProgress(pageCompleted ? page + 1 : page, null, stats);
@@ -123,43 +137,63 @@ public class CrawlerCore {
         return stats.toSummary();
     }
 
-    private void processItem(CrawlerSourceAdapter adapter, ContentType contentType,
-                             SourceListItem item, int rateLimitMs, Set<String> genreFilter,
-                             AtomicBoolean cancellation, MutableStats stats) {
+    private ItemProcessingResult processItem(CrawlerSourceAdapter adapter, ContentType contentType,
+                                             SourceListItem item, int rateLimitMs,
+                                             Set<String> genreFilter, AtomicBoolean cancellation,
+                                             MutableStats stats) {
         FetchResult detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
                 rateLimitMs, cancellation);
         if (detailFetch.category() == FetchCategory.CANCELLED) {
-            return;
+            return new ItemProcessingResult(ItemOutcome.CANCELLED, "cancelled");
         }
         stats.discovered++;
         if (!detailFetch.successful()) {
             stats.failed++;
             log.atWarn().log("Detail fetch failed: source={}, externalId={}, category={}",
                     adapter.sourceCode(), item.externalId(), detailFetch.category());
-            return;
+            ItemOutcome outcome = switch (detailFetch.category()) {
+                case CHALLENGE_PAGE, INVALID_CONTENT_TYPE, EMPTY_BODY -> ItemOutcome.STRUCTURE_FAILURE;
+                default -> ItemOutcome.FETCH_FAILURE;
+            };
+            return new ItemProcessingResult(outcome,
+                    "externalId=" + item.externalId() + ", category=" + detailFetch.category());
         }
         stats.fetchSucceeded++;
+        ParsedContent parsed;
         try {
-            ParsedContent parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
-            if (!parsed.valid()) {
-                stats.failed++;
-                log.atWarn().log("Detail parse rejected: source={}, externalId={}, missing={}",
-                        adapter.sourceCode(), item.externalId(), parsed.diagnostics().missingRequiredFields());
-                return;
-            }
-            stats.parseSucceeded++;
-            if (!matchesGenreFilter(parsed.genres(), genreFilter)) {
-                stats.filtered++;
-                return;
-            }
+            parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
+        } catch (RuntimeException parseFailure) {
+            stats.failed++;
+            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE,
+                    "externalId=" + item.externalId() + ", parser="
+                            + parseFailure.getClass().getSimpleName());
+        }
+        if (!parsed.valid()) {
+            stats.failed++;
+            String diagnostic = "externalId=" + item.externalId() + ", missing="
+                    + parsed.diagnostics().missingRequiredFields() + ", fingerprint="
+                    + parsed.diagnostics().pageFingerprint();
+            log.atWarn().log("Detail parse rejected: source={}, {}", adapter.sourceCode(), diagnostic);
+            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic);
+        }
+        stats.parseSucceeded++;
+        if (!matchesGenreFilter(parsed.genres(), genreFilter)) {
+            stats.filtered++;
+            return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered");
+        }
+        try {
             CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(parsed);
             if (persisted.added()) stats.added++;
             if (persisted.updated()) stats.updated++;
             if (persisted.unchanged()) stats.unchanged++;
-        } catch (RuntimeException parseOrPersistenceFailure) {
+            return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok");
+        } catch (RuntimeException persistenceFailure) {
             stats.failed++;
-            log.warn("Detail processing failed: source={}, externalId={}, error={}",
-                    adapter.sourceCode(), item.externalId(), parseOrPersistenceFailure.getClass().getSimpleName());
+            log.warn("Detail persistence failed: source={}, externalId={}, error={}",
+                    adapter.sourceCode(), item.externalId(), persistenceFailure.getClass().getSimpleName());
+            return new ItemProcessingResult(ItemOutcome.PERSISTENCE_FAILURE,
+                    "externalId=" + item.externalId() + ", persistence="
+                            + persistenceFailure.getClass().getSimpleName());
         }
     }
 
@@ -240,4 +274,15 @@ public class CrawlerCore {
                     added, updated, unchanged, filtered, failed);
         }
     }
+
+    private enum ItemOutcome {
+        SUCCESS,
+        FILTERED,
+        FETCH_FAILURE,
+        STRUCTURE_FAILURE,
+        PERSISTENCE_FAILURE,
+        CANCELLED
+    }
+
+    private record ItemProcessingResult(ItemOutcome outcome, String diagnostic) { }
 }
