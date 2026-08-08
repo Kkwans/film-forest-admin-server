@@ -20,6 +20,9 @@ public class User {
     private String phone;
     @JsonIgnore
     private String passwordHash;
+    @JsonIgnore
+    private PasswordAlgorithm passwordAlgorithm;
+    private Boolean mustChangePassword;
     private String nickname;
     private String avatarUrl;
     private Integer status;

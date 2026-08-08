@@ -2,6 +2,7 @@ package com.filmforest.common.auth;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.filmforest.common.dto.Result;
+import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
@@ -23,7 +24,8 @@ class AuthControllerTest {
 
     private final UserMapper userMapper = mock(UserMapper.class);
     private final JwtUtil jwtUtil = mock(JwtUtil.class);
-    private final AuthController controller = new AuthController(userMapper, jwtUtil);
+    private final PasswordService passwordService = new PasswordService();
+    private final AuthController controller = new AuthController(userMapper, jwtUtil, passwordService);
 
     @Test
     void rejectsValidUserCredentialsFromAdminLogin() throws Exception {
@@ -35,6 +37,7 @@ class AuthControllerTest {
 
         assertThat(result.getCode()).isEqualTo(403);
         verify(jwtUtil, never()).generateToken(any(), any());
+        verify(userMapper, never()).updateById(any());
     }
 
     @Test
@@ -47,6 +50,9 @@ class AuthControllerTest {
 
         assertThat(result.getCode()).isEqualTo(200);
         assertThat(result.getData()).containsEntry("token", "token");
+        assertThat(admin.getPasswordAlgorithm()).isEqualTo(PasswordAlgorithm.BCRYPT);
+        assertThat(admin.getPasswordHash()).startsWith("$2");
+        verify(userMapper).updateById(admin);
     }
 
     private User user(UserRole role) throws Exception {
@@ -56,6 +62,8 @@ class AuthControllerTest {
         user.setNickname("管理员");
         user.setPasswordHash(HexFormat.of().formatHex(
                 MessageDigest.getInstance("SHA-256").digest("secret12".getBytes(StandardCharsets.UTF_8))));
+        user.setPasswordAlgorithm(PasswordAlgorithm.LEGACY_SHA256);
+        user.setMustChangePassword(false);
         user.setStatus(1);
         user.setIsDeleted(0);
         user.setRole(role);

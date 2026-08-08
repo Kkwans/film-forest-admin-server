@@ -2,20 +2,21 @@ package com.filmforest.system.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.filmforest.common.auth.PasswordService;
 import com.filmforest.common.dto.Result;
+import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.security.MessageDigest;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import java.util.Objects;
 
 /**
  * 用户管理 API（管理员操作）
@@ -26,8 +27,13 @@ public class UserAdminController {
 
     private static final Logger log = LoggerFactory.getLogger(UserAdminController.class);
 
-    @Autowired
-    private UserMapper userMapper;
+    private final UserMapper userMapper;
+    private final PasswordService passwordService;
+
+    public UserAdminController(UserMapper userMapper, PasswordService passwordService) {
+        this.userMapper = userMapper;
+        this.passwordService = passwordService;
+    }
 
     /** 分页查询用户列表 */
     @GetMapping
@@ -70,7 +76,7 @@ public class UserAdminController {
 
     /** 创建用户 */
     @PostMapping
-    public Result<User> create(@RequestBody CreateUserRequest req) {
+    public Result<User> create(@Valid @RequestBody CreateUserRequest req) {
         // 检查用户名唯一
         Long count = userMapper.selectCount(
             new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())
@@ -79,7 +85,9 @@ public class UserAdminController {
 
         User user = new User();
         user.setUsername(req.getUsername());
-        user.setPasswordHash(hashPassword(req.getPassword()));
+        user.setPasswordHash(passwordService.encode(req.getPassword()));
+        user.setPasswordAlgorithm(PasswordAlgorithm.BCRYPT);
+        user.setMustChangePassword(true);
         user.setNickname(req.getNickname() != null ? req.getNickname() : req.getUsername());
         user.setEmail(req.getEmail());
         user.setPhone(req.getPhone());
@@ -134,25 +142,18 @@ public class UserAdminController {
 
     /** 重置用户密码 */
     @PostMapping("/{id}/reset-password")
-    public Result<Boolean> resetPassword(@PathVariable Long id, @RequestBody ResetPasswordRequest req) {
+    public Result<Boolean> resetPassword(@PathVariable Long id,
+                                         @Valid @RequestBody ResetPasswordRequest req,
+                                         HttpServletRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) return Result.fail("用户不存在");
-        user.setPasswordHash(hashPassword(req.getNewPassword()));
+        user.setPasswordHash(passwordService.encode(req.getNewPassword()));
+        user.setPasswordAlgorithm(PasswordAlgorithm.BCRYPT);
+        Long actorUserId = (Long) request.getAttribute("userId");
+        user.setMustChangePassword(!Objects.equals(actorUserId, id));
         userMapper.updateById(user);
         log.info("重置用户密码: id={}, username={}", id, user.getUsername());
         return Result.ok(true);
-    }
-
-    private String hashPassword(String password) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(password.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("密码哈希失败", e);
-        }
     }
 
     // ===== Request DTOs =====

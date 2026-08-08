@@ -2,6 +2,7 @@ package com.filmforest.common.auth;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.common.dto.Result;
+import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
@@ -10,9 +11,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-import java.security.MessageDigest;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,14 +27,17 @@ public class AuthController {
 
     private final UserMapper userMapper;
     private final JwtUtil jwtUtil;
+    private final PasswordService passwordService;
 
-    public AuthController(UserMapper userMapper, JwtUtil jwtUtil) {
+    public AuthController(UserMapper userMapper, JwtUtil jwtUtil, PasswordService passwordService) {
         this.userMapper = userMapper;
         this.jwtUtil = jwtUtil;
+        this.passwordService = passwordService;
     }
 
     /** 登录 */
     @PostMapping("/login")
+    @Transactional(rollbackFor = Exception.class)
     public Result<Map<String, Object>> login(@Valid @RequestBody LoginRequest req) {
         log.info("登录请求: username={}", req.getUsername());
 
@@ -46,13 +49,14 @@ public class AuthController {
 
         if (user == null) {
             log.warn("登录失败: 用户不存在, username={}", req.getUsername());
-            return Result.fail("用户不存在");
+            return Result.fail("用户名或密码错误");
         }
 
-        // 验证密码（SHA-256 哈希）
-        if (!hashPassword(req.getPassword()).equals(user.getPasswordHash())) {
+        PasswordService.Verification verification = passwordService.verify(
+                req.getPassword(), user.getPasswordHash(), user.getPasswordAlgorithm());
+        if (!verification.matches()) {
             log.warn("登录失败: 密码错误, username={}", req.getUsername());
-            return Result.fail("密码错误");
+            return Result.fail("用户名或密码错误");
         }
 
         if (!Integer.valueOf(1).equals(user.getStatus())) {
@@ -65,6 +69,12 @@ public class AuthController {
             return Result.fail(403, "当前账号没有管理权限");
         }
 
+        if (verification.needsUpgrade()) {
+            user.setPasswordHash(passwordService.encode(req.getPassword()));
+            user.setPasswordAlgorithm(PasswordAlgorithm.BCRYPT);
+            userMapper.updateById(user);
+        }
+
         String token = jwtUtil.generateToken(user.getId(), user.getUsername());
         log.info("登录成功: userId={}, username={}", user.getId(), user.getUsername());
 
@@ -74,7 +84,8 @@ public class AuthController {
             "id", user.getId(),
             "username", user.getUsername(),
             "nickname", user.getNickname() != null ? user.getNickname() : user.getUsername(),
-            "role", user.getRole().name()
+            "role", user.getRole().name(),
+            "mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword())
         ));
 
         return Result.ok(data);
@@ -121,22 +132,8 @@ public class AuthController {
         data.put("phone", user.getPhone());
         data.put("avatarUrl", user.getAvatarUrl());
         data.put("role", user.getRole());
+        data.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
         return Result.ok(data);
-    }
-
-    /** SHA-256 哈希密码 */
-    private String hashPassword(String password) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hash = md.digest(password.getBytes(StandardCharsets.UTF_8));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString();
-        } catch (Exception e) {
-            throw new RuntimeException("密码哈希失败", e);
-        }
     }
 
     /** 登录请求体 */
