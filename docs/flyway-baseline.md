@@ -21,6 +21,13 @@
 - 首次生产迁移前必须确认 `user` 表尚不存在 `role`、`password_algorithm`、`must_change_password` 三列及 V2 中的三个同名约束。
 - 若实际 schema 与 V1 结构漂移、已有同名列/约束、或共享 MySQL 使用方受影响，停止迁移并升级确认。
 
+## 首次发布顺序
+
+1. 在 V2 完成前保持 client-server 与 admin-server 停止；两端新代码都按新增安全字段映射 `user` 表，不能先于迁移发布。
+2. 通过备份与隔离恢复演练后，仅为 admin-server 启用 Flyway，并先启动 admin-server。
+3. 确认 `flyway_schema_history` 中 V2 成功、三列及三个约束存在、且唯一未删除的 `admin` 已回填为 `ADMIN`。
+4. 管理端健康检查与登录授权验证通过后，再启动 client-server；任一步失败都不得继续启动客户端后端。
+
 ## 回滚边界
 
 - Flyway `clean` 已禁用，禁止用删除 schema 的方式回滚。
