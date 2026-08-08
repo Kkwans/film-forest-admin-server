@@ -12,6 +12,7 @@ import com.filmforest.resource.mapper.ResourceMagnetMapper;
 import com.filmforest.resource.mapper.ResourceOnlineMapper;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
