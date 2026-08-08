@@ -77,7 +77,7 @@ class CrawlerResourceDiffServiceTest {
         assertThat(result.unchanged()).isEqualTo(1);
         assertThat(result.changed()).isFalse();
         verify(magnetMapper).touchCrawlerResource(org.mockito.ArgumentMatchers.eq(7L), any());
-        verify(magnetMapper, never()).insert(any());
+        verify(magnetMapper, never()).insert(any(ResourceMagnet.class));
         verify(magnetMapper, never()).updateCrawlerResource(any());
     }
 
