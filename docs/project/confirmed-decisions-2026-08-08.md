@@ -6,7 +6,7 @@
 >
 > 权威位置：`/volume2/Project/film-forest/docs/requirements/confirmed-decisions.md`
 >
-> 源文档 SHA-256：`95935335b7ccf4b6b1fc7e70350a4b7fba2a699396485cc616dec7353d7ef54c`
+> 源文档 SHA-256：`b113478d4ee3a21899f72f737c8a0a9fa69b2c5c9a249306b7e474e3205b96a0`
 >
 > 总控契约：`影视森林_Codex终极总控提示词_2026-08-07.md`
 >
@@ -91,8 +91,11 @@
 ## 9. Git 交付决策
 
 - 四个真实仓库目录为 `client-ui`、`client-server`、`admin-ui`、`admin-server`。
-- 四仓整改分支统一为 `remediation/film-forest-20260808`，均从各自执行前 HEAD 创建。
+- 四仓整改分支最初统一为 `remediation/film-forest-20260808`，均从各自执行前 HEAD 创建；该临时交付方式已由后续“仅保留 `master`”决策取代。
 - admin-server 当前领先 `origin/main` 的两个本地提交必须保留，不得 reset、rebase 或改写。
+- 四仓最终仅保留本地与远程 `master`，后续直接在 `master` 开发；删除其他分支前必须先把全部未合并、未推送提交纳入 `master` 并普通推送。
+- `client-ui` 与 `admin-server` 的无共同祖先旧 `master` 使用 `ours` 历史合并：保留旧提交可追溯性，最终文件树采用整改分支。
+- 项目通过根目录 `deploy/docker-compose.yml` 部署为单一 `film-forest` Compose project，关联 `client-ui`、`client-server`、`admin-ui`、`admin-server` 四个容器。
 - 每完成一个独立需求点立即精确暂存、创建小提交并推送，少量多次。
 - 提交遵循 Conventional Commits；type/scope 使用英文，标题和正文使用中文。
 - 禁止 `git add .` 混入无关内容，禁止 force push、amend、rebase、hard reset 和跳过 hooks。
@@ -105,3 +108,7 @@
 | 2026-08-08 | 已确认 | 完成首次代码、运行、数据库、NAS、爬虫和 UI/UX 事实审计及 Grill Me。 |
 | 2026-08-08 | 已确认 | 用户批准正式 Phase 0–9 整改计划，并要求每个 Phase 使用 Codex Goal Mode。 |
 | 2026-08-08 | 已确认 | 用户要求每完成一个独立需求点及时 commit 并 push，采用少量多次交付。 |
+| 2026-08-08 | 已确认 | 用户授权备份恢复演练、临时数据清理、四仓整改分支推送、创建 `film_forest_app`、轮换 MySQL root；GitHub 旧 token 由用户自行撤销。 |
+| 2026-08-08 | 已确认 | 用户要求四仓仅保留 `master`，未合并/未推送提交先并入并推送，再删除其他本地与远程分支。 |
+| 2026-08-08 | 已确认 | 用户授权 `client-ui` 与 `admin-server` 采用 `ours` 历史合并，保留旧 `master` 可追溯性，最终文件树采用整改分支。 |
+| 2026-08-08 | 已确认 | 用户授权通过 Docker Compose 部署为单一四容器 `film-forest` 项目；Phase 0 若存在功能或样式变化，则部署成功后先验收，不自动进入下一阶段。 |
