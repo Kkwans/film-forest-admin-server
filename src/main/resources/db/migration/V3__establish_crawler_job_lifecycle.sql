@@ -31,6 +31,18 @@ ALTER TABLE `crawler_task_log`
   ADD COLUMN `error_summary` varchar(1000) DEFAULT NULL AFTER `progress_updated_at`,
   ADD COLUMN `queued_at` datetime(6) DEFAULT NULL AFTER `error_summary`;
 
+-- Phase 0 及更早版本使用 NAS 的 Asia/Shanghai 本地时间写入无时区 datetime；
+-- Phase 1 起统一存储 UTC，因此先把既有运行时间平移到 UTC。
+UPDATE `crawler_task_log`
+SET `started_at` = CASE
+      WHEN `started_at` IS NULL THEN NULL
+      ELSE DATE_SUB(`started_at`, INTERVAL 8 HOUR)
+    END,
+    `finished_at` = CASE
+      WHEN `finished_at` IS NULL THEN NULL
+      ELSE DATE_SUB(`finished_at`, INTERVAL 8 HOUR)
+    END;
+
 UPDATE `crawler_task_log`
 SET `finished_at` = CASE
     WHEN LOWER(`status`) IN ('running', 'pending_retry') THEN COALESCE(`finished_at`, UTC_TIMESTAMP(6))
@@ -66,7 +78,11 @@ SET job.`source_code` = COALESCE(NULLIF(schedule.`source_site`, ''), 'pkmp4'),
 UPDATE `crawler_schedule`
 SET `enabled` = 0,
     `next_run_time` = NULL,
-    `status` = 'idle';
+    `status` = 'idle',
+    `last_run_time` = CASE
+      WHEN `last_run_time` IS NULL THEN NULL
+      ELSE DATE_SUB(`last_run_time`, INTERVAL 8 HOUR)
+    END;
 
 ALTER TABLE `crawler_task_log`
   MODIFY COLUMN `queued_at` datetime(6) NOT NULL,
