@@ -9,7 +9,7 @@ import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
-import com.filmforest.resource.mapper.ResourceSourceMapper;
+import com.filmforest.crawler.source.SourceAdapterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -65,7 +65,7 @@ class CrawlerControllerTest {
     private CrawlerTaskLogMapper taskLogMapper;
 
     @MockBean
-    private ResourceSourceMapper resourceSourceMapper;
+    private SourceAdapterRegistry sourceAdapterRegistry;
 
     // ========== TC-600: GET /api/crawler/schedules ==========
 

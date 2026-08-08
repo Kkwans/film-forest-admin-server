@@ -3,6 +3,7 @@ package com.filmforest.crawler.controller;
 import com.filmforest.common.dto.Result;
 import com.filmforest.common.dto.PageResult;
 import com.filmforest.crawler.dto.CrawlerOperationsStats;
+import com.filmforest.crawler.dto.CrawlerSourceDescriptor;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
@@ -10,8 +11,7 @@ import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
-import com.filmforest.resource.entity.ResourceSource;
-import com.filmforest.resource.mapper.ResourceSourceMapper;
+import com.filmforest.crawler.source.SourceAdapterRegistry;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,16 +32,16 @@ public class CrawlerController {
     private final CrawlerScheduleService scheduleService;
     private final CrawlerOperationsQueryService operationsQueryService;
     private final CrawlerTaskLogMapper taskLogMapper;
-    private final ResourceSourceMapper resourceSourceMapper;
+    private final SourceAdapterRegistry sourceAdapterRegistry;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
                              CrawlerTaskLogMapper taskLogMapper,
-                             ResourceSourceMapper resourceSourceMapper) {
+                             SourceAdapterRegistry sourceAdapterRegistry) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
-        this.resourceSourceMapper = resourceSourceMapper;
+        this.sourceAdapterRegistry = sourceAdapterRegistry;
     }
 
     /** 获取所有定时配置 */
@@ -138,12 +138,10 @@ public class CrawlerController {
 
     /** 获取资源来源列表（爬虫配置用） */
     @GetMapping("/sources")
-    public Result<List<ResourceSource>> listSources() {
-        return Result.ok(resourceSourceMapper.selectList(
-            new LambdaQueryWrapper<ResourceSource>()
-                .eq(ResourceSource::getEnabled, 1)
-                .orderByAsc(ResourceSource::getSort)
-        ));
+    public Result<List<CrawlerSourceDescriptor>> listSources() {
+        return Result.ok(sourceAdapterRegistry.availableAdapters().stream()
+                .map(adapter -> new CrawlerSourceDescriptor(adapter.sourceCode(), adapter.displayName()))
+                .toList());
     }
 
     /** 获取爬虫每日运行趋势（近7天） */

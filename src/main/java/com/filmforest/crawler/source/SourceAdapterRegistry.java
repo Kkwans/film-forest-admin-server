@@ -6,11 +6,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Comparator;
 
 @Component
 public class SourceAdapterRegistry {
 
     private final Map<String, CrawlerSourceAdapter> adapters;
+    private final List<CrawlerSourceAdapter> primaryAdapters;
 
     public SourceAdapterRegistry(List<CrawlerSourceAdapter> sourceAdapters) {
         Map<String, CrawlerSourceAdapter> registered = new HashMap<>();
@@ -19,6 +21,9 @@ public class SourceAdapterRegistry {
             adapter.aliases().forEach(alias -> register(registered, alias, adapter));
         }
         this.adapters = Map.copyOf(registered);
+        this.primaryAdapters = sourceAdapters.stream()
+                .sorted(Comparator.comparing(CrawlerSourceAdapter::sourceCode))
+                .toList();
     }
 
     public CrawlerSourceAdapter require(String sourceSite) {
@@ -28,6 +33,10 @@ public class SourceAdapterRegistry {
             throw new IllegalArgumentException("Unsupported crawler source: " + sourceSite);
         }
         return adapter;
+    }
+
+    public List<CrawlerSourceAdapter> availableAdapters() {
+        return primaryAdapters;
     }
 
     private static void register(Map<String, CrawlerSourceAdapter> target, String key,

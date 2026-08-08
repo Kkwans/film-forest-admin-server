@@ -33,6 +33,11 @@ public class Pkmp4SourceAdapter implements CrawlerSourceAdapter {
     }
 
     @Override
+    public String displayName() {
+        return "七味网";
+    }
+
+    @Override
     public Set<String> aliases() {
         return Set.of("七味网", "pkmp4.xyz", "www.pkmp4.xyz");
     }

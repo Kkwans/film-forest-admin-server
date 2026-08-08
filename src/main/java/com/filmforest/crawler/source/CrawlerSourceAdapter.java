@@ -12,6 +12,10 @@ public interface CrawlerSourceAdapter {
 
     String sourceCode();
 
+    default String displayName() {
+        return sourceCode();
+    }
+
     Set<String> aliases();
 
     URI listUri(ContentType contentType, int page);

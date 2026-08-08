@@ -24,6 +24,8 @@ class SourceAdapterRegistryTest {
         assertThat(registry.require("pkmp4")).isSameAs(adapter);
         assertThat(registry.require("七味网")).isSameAs(adapter);
         assertThat(registry.require("PKMP4.XYZ")).isSameAs(adapter);
+        assertThat(registry.availableAdapters()).containsExactly(adapter);
+        assertThat(adapter.displayName()).isEqualTo("七味网");
     }
 
     @Test
