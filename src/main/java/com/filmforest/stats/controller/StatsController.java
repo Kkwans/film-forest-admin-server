@@ -1,9 +1,10 @@
 package com.filmforest.stats.controller;
 
 import com.filmforest.common.dto.Result;
+import com.filmforest.common.exception.BusinessException;
+import com.filmforest.common.type.ContentType;
 import com.filmforest.stats.service.StatsService;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
@@ -22,8 +23,11 @@ import java.util.Map;
 @RequestMapping("/api/stats")
 public class StatsController {
 
-    @Autowired
-    private StatsService statsService;
+    private final StatsService statsService;
+
+    public StatsController(StatsService statsService) {
+        this.statsService = statsService;
+    }
 
     /**
      * 数据概览
@@ -136,16 +140,18 @@ public class StatsController {
     public void exportContent(
             @RequestParam(required = false) String type,
             HttpServletResponse response) throws IOException {
+        ContentType contentType = parseContentType(type);
         String date = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         response.setContentType("text/csv; charset=UTF-8");
         response.setCharacterEncoding("UTF-8");
         response.setHeader("Content-Disposition",
-                "attachment; filename=film-forest-content-" + (type != null ? type : "all") + "-" + date + ".csv");
+                "attachment; filename=film-forest-content-"
+                        + (contentType != null ? contentType.value() : "all") + "-" + date + ".csv");
         response.getOutputStream().write(0xEF);
         response.getOutputStream().write(0xBB);
         response.getOutputStream().write(0xBF);
 
-        List<Map<String, Object>> rows = statsService.getContentList(type);
+        List<Map<String, Object>> rows = statsService.getContentList(contentType);
         PrintWriter writer = response.getWriter();
         writer.println("ID,类型,标题,年份,豆瓣评分,IMDB评分,状态,创建时间");
         Map<String, String> labels = Map.of(
@@ -154,14 +160,14 @@ public class StatsController {
         for (Map<String, Object> row : rows) {
             String rowType = String.valueOf(row.getOrDefault("type", ""));
             writer.printf("%s,%s,%s,%s,%s,%s,%s,%s%n",
-                    row.getOrDefault("id", ""),
-                    labels.getOrDefault(rowType, rowType),
-                    escapeCsv(String.valueOf(row.getOrDefault("title", ""))),
-                    row.getOrDefault("year", ""),
-                    row.getOrDefault("score_douban", ""),
-                    row.getOrDefault("score_imdb", ""),
-                    row.getOrDefault("status", ""),
-                    row.getOrDefault("created_at", ""));
+                    CsvCellSanitizer.escape(row.get("id")),
+                    CsvCellSanitizer.escape(labels.getOrDefault(rowType, rowType)),
+                    CsvCellSanitizer.escape(row.get("title")),
+                    CsvCellSanitizer.escape(row.get("year")),
+                    CsvCellSanitizer.escape(row.get("score_douban")),
+                    CsvCellSanitizer.escape(row.get("score_imdb")),
+                    CsvCellSanitizer.escape(row.get("status")),
+                    CsvCellSanitizer.escape(row.get("created_at")));
         }
         writer.flush();
     }
@@ -191,19 +197,18 @@ public class StatsController {
         for (Map<String, Object> item : keywords) {
             writer.printf("%d,%s,%s,%s%n",
                     rank++,
-                    escapeCsv(String.valueOf(item.getOrDefault("keyword", ""))),
-                    item.getOrDefault("count", ""),
-                    item.getOrDefault("lastSearchAt", ""));
+                    CsvCellSanitizer.escape(item.get("keyword")),
+                    CsvCellSanitizer.escape(item.get("count")),
+                    CsvCellSanitizer.escape(item.get("lastSearchAt")));
         }
         writer.flush();
     }
 
-    /** CSV 字段转义 */
-    private String escapeCsv(String value) {
-        if (value == null) return "";
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
+    private ContentType parseContentType(String type) {
+        if (type == null || type.isBlank()) {
+            return null;
         }
-        return value;
+        return ContentType.fromValue(type)
+                .orElseThrow(() -> new BusinessException(400, "不支持的内容类型"));
     }
 }

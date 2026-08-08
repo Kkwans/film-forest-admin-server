@@ -1,5 +1,7 @@
 package com.filmforest.stats.service;
 
+import com.filmforest.common.type.ContentType;
+
 import java.util.List;
 import java.util.Map;
 
@@ -37,5 +39,5 @@ public interface StatsService {
      * 获取内容列表（导出用）
      * @param type 内容类型，null 表示全部
      */
-    List<Map<String, Object>> getContentList(String type);
+    List<Map<String, Object>> getContentList(ContentType type);
 }

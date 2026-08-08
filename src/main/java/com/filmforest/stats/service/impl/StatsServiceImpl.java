@@ -1,5 +1,6 @@
 package com.filmforest.stats.service.impl;
 
+import com.filmforest.common.type.ContentType;
 import com.filmforest.stats.service.StatsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -358,9 +359,9 @@ public class StatsServiceImpl implements StatsService {
     }
 
     @Override
-    public List<Map<String, Object>> getContentList(String type) {
+    public List<Map<String, Object>> getContentList(ContentType type) {
         List<Map<String, Object>> result = new ArrayList<>();
-        String[] tables = type != null ? new String[]{type} : CONTENT_TABLES;
+        String[] tables = type != null ? new String[]{type.value()} : CONTENT_TABLES;
         for (String table : tables) {
             try {
                 List<Map<String, Object>> rows = jdbcTemplate.queryForList(
