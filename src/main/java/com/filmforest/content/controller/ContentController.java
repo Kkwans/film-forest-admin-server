@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.dto.Result;
+import com.filmforest.common.dto.PageResult;
+import com.filmforest.content.dto.AdminContentItem;
 import com.filmforest.content.entity.*;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +38,7 @@ public class ContentController {
     @Autowired private AnimeService animeService;
     @Autowired private ShortDramaService shortDramaService;
     @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private AdminContentQueryService adminContentQueryService;
 
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
@@ -396,98 +399,19 @@ public class ContentController {
      * 返回精简的摘要信息，用于管理端列表展示
      */
     @GetMapping("/all")
-    public Result<List<Map<String, Object>>> listAll(
+    public Result<PageResult<AdminContentItem>> listAll(
             @RequestParam(required = false) String type,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "updatedAt") String sort,
+            @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size) {
-
-        List<Map<String, Object>> results = new ArrayList<>();
-
-        // type=null 时查询所有类型，否则只查询指定类型
-        boolean queryAll = (type == null || type.isEmpty());
-
-        if (queryAll || "movie".equals(type)) {
-            IPage<Movie> p = movieService.pageList(page, size, null, null, null);
-            for (Movie m : p.getRecords()) {
-                results.add(toSummaryMap(m.getId(), "movie", m.getTitle(),
-                        m.getPosterUrl(), m.getYear(), m.getScoreDouban(), 
-                        m.getStatus() != null ? String.valueOf(m.getStatus()) : null, m.getCreatedAt()));
-            }
+        try {
+            return Result.ok(adminContentQueryService.search(
+                    type, status, keyword, sort, sortDir, page, size));
+        } catch (IllegalArgumentException exception) {
+            return Result.fail(400, exception.getMessage());
         }
-        if (queryAll || "drama".equals(type)) {
-            IPage<Drama> p = dramaService.pageList(page, size, null, null, null);
-            for (Drama d : p.getRecords()) {
-                results.add(toSummaryMap(d.getId(), "drama", d.getTitle(),
-                        d.getPosterUrl(), d.getYear(), d.getScoreDouban(), 
-                        d.getStatus() != null ? String.valueOf(d.getStatus()) : null, d.getCreatedAt()));
-            }
-        }
-        if (queryAll || "variety".equals(type)) {
-            IPage<Variety> p = varietyService.pageList(page, size, null, null, null);
-            for (Variety v : p.getRecords()) {
-                results.add(toSummaryMap(v.getId(), "variety", v.getTitle(),
-                        v.getPosterUrl(), v.getYear(), v.getScoreDouban(), 
-                        v.getStatus() != null ? String.valueOf(v.getStatus()) : null, v.getCreatedAt()));
-            }
-        }
-        if (queryAll || "anime".equals(type)) {
-            IPage<Anime> p = animeService.pageList(page, size, null, null, null);
-            for (Anime a : p.getRecords()) {
-                results.add(toSummaryMap(a.getId(), "anime", a.getTitle(),
-                        a.getPosterUrl(), a.getYear(), a.getScoreDouban(), 
-                        a.getStatus() != null ? String.valueOf(a.getStatus()) : null, a.getCreatedAt()));
-            }
-        }
-        if (queryAll || "short_drama".equals(type) || "short".equals(type)) {
-            IPage<ShortDrama> p = shortDramaService.pageList(page, size, null, null, null);
-            for (ShortDrama s : p.getRecords()) {
-                results.add(toSummaryMap(s.getId(), "short_drama", s.getTitle(),
-                        s.getPosterUrl(), s.getYear(), s.getScoreDouban(), 
-                        s.getStatus() != null ? String.valueOf(s.getStatus()) : null, s.getCreatedAt()));
-            }
-        }
-
-        // 按创建时间降序排序
-        results.sort((a, b) -> {
-            Object ca = a.get("createdAt");
-            Object cb = b.get("createdAt");
-            if (ca == null && cb == null) return 0;
-            if (ca == null) return 1;
-            if (cb == null) return -1;
-            return cb.toString().compareTo(ca.toString());
-        });
-
-        return Result.ok(results);
-    }
-
-    // ==================== 内部工具方法 ====================
-
-    /**
-     * 将内容记录转换为摘要 Map（用于合并列表接口）
-     *
-     * @param id        内容 ID
-     * @param type      内容类型标识
-     * @param title     标题
-     * @param posterUrl 海报 URL
-     * @param year      年份
-     * @param scoreDouban 豆瓣评分（可为 null）
-     * @param status    状态
-     * @param createdAt 创建时间
-     * @return 摘要 Map
-     */
-    private Map<String, Object> toSummaryMap(Long id, String type, String title,
-                                              String posterUrl, Integer year,
-                                              Object scoreDouban, String status,
-                                              Object createdAt) {
-        Map<String, Object> item = new HashMap<>();
-        item.put("id", id);
-        item.put("title", title);
-        item.put("type", type);
-        item.put("posterUrl", posterUrl);
-        item.put("year", year);
-        item.put("scoreDouban", scoreDouban);
-        item.put("status", status);
-        item.put("createdAt", createdAt);
-        return item;
     }
 }
