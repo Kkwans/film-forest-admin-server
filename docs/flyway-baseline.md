@@ -21,6 +21,15 @@
 - 首次生产迁移前必须确认 `user` 表尚不存在 `role`、`password_algorithm`、`must_change_password` 三列及 V2 中的三个同名约束。
 - 若实际 schema 与 V1 结构漂移、已有同名列/约束、或共享 MySQL 使用方受影响，停止迁移并升级确认。
 
+## 隔离演练验证器
+
+- `FlywayRestoreDrillIT` 不进入默认 Surefire 测试集合，只能通过 `-Dtest=FlywayRestoreDrillIT` 显式运行。
+- 验证器只接受 `127.0.0.1`/`localhost`、非 3306 端口，以及 `film_forest_phase0_restore` 或 `film_forest_phase0_empty` schema。
+- 运行前必须设置 `FILM_FOREST_DRILL_CONFIRM=isolated-restore-only`，连接用户名和密码只通过环境变量注入。
+- `RESTORED` 模式要求迁移前已有 18 张业务表、没有 Flyway history 和安全字段；迁移后验证 V1 baseline、V2、三列、三个约束、用户总数、哈希分类和管理员回填。
+- `EMPTY` 模式要求迁移前为空；迁移后验证 V1、V2、18 张业务表和空用户表。
+- 实际演练必须按两个模式分别运行一次；编译成功不能代替真实隔离 MySQL 验证。
+
 ## 首次发布顺序
 
 1. 在 V2 完成前保持 client-server 与 admin-server 停止；两端新代码都按新增安全字段映射 `user` 表，不能先于迁移发布。
