@@ -1,6 +1,7 @@
 package com.filmforest.content.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -17,10 +18,12 @@ public class User {
     private String username;
     private String email;
     private String phone;
+    @JsonIgnore
     private String passwordHash;
     private String nickname;
     private String avatarUrl;
     private Integer status;
+    private UserRole role;
 
     @TableLogic
     @TableField("is_deleted")

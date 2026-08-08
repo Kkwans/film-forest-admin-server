@@ -3,6 +3,7 @@ package com.filmforest.common.auth;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.User;
+import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -54,9 +55,14 @@ public class AuthController {
             return Result.fail("密码错误");
         }
 
-        if (user.getStatus() != null && user.getStatus() == 0) {
+        if (!Integer.valueOf(1).equals(user.getStatus())) {
             log.warn("登录失败: 账号已禁用, userId={}", user.getId());
             return Result.fail("账号已被禁用");
+        }
+
+        if (user.getRole() != UserRole.ADMIN) {
+            log.warn("管理端登录拒绝: userId={}, role={}", user.getId(), user.getRole());
+            return Result.fail(403, "当前账号没有管理权限");
         }
 
         String token = jwtUtil.generateToken(user.getId(), user.getUsername());
@@ -67,7 +73,8 @@ public class AuthController {
         data.put("user", Map.of(
             "id", user.getId(),
             "username", user.getUsername(),
-            "nickname", user.getNickname() != null ? user.getNickname() : user.getUsername()
+            "nickname", user.getNickname() != null ? user.getNickname() : user.getUsername(),
+            "role", user.getRole().name()
         ));
 
         return Result.ok(data);
@@ -113,6 +120,7 @@ public class AuthController {
         data.put("email", user.getEmail());
         data.put("phone", user.getPhone());
         data.put("avatarUrl", user.getAvatarUrl());
+        data.put("role", user.getRole());
         return Result.ok(data);
     }
 

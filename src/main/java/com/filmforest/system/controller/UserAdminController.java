@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.User;
+import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -83,6 +84,7 @@ public class UserAdminController {
         user.setEmail(req.getEmail());
         user.setPhone(req.getPhone());
         user.setStatus(req.getStatus() != null ? req.getStatus() : 1);
+        user.setRole(UserRole.USER);
         userMapper.insert(user);
 
         user.setPasswordHash(null);
