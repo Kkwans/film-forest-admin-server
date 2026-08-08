@@ -4,7 +4,6 @@ import com.filmforest.common.dto.Result;
 import com.filmforest.settings.service.SystemSettingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.sql.DataSource;
@@ -23,11 +22,13 @@ public class SettingsController {
 
     private static final Logger log = LoggerFactory.getLogger(SettingsController.class);
 
-    @Autowired
-    private SystemSettingService settingService;
+    private final SystemSettingService settingService;
+    private final DataSource dataSource;
 
-    @Autowired
-    private DataSource dataSource;
+    public SettingsController(SystemSettingService settingService, DataSource dataSource) {
+        this.settingService = settingService;
+        this.dataSource = dataSource;
+    }
 
     /** 获取所有设置 */
     @GetMapping
@@ -57,14 +58,14 @@ public class SettingsController {
         Map<String, String> info = new LinkedHashMap<>();
         try (Connection conn = dataSource.getConnection()) {
             DatabaseMetaData meta = conn.getMetaData();
-            info.put("url", meta.getURL());
+            info.put("connected", "true");
             info.put("productName", meta.getDatabaseProductName());
             info.put("productVersion", meta.getDatabaseProductVersion());
             info.put("driverName", meta.getDriverName());
             info.put("driverVersion", meta.getDriverVersion());
         } catch (SQLException e) {
             log.warn("获取数据库元信息失败", e);
-            info.put("error", "无法获取数据库信息");
+            info.put("connected", "false");
         }
         return Result.ok(info);
     }
