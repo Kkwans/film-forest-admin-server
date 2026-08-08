@@ -23,12 +23,16 @@
 
 ## 隔离演练验证器
 
+- 管理端显式锁定 Flyway 13.0.0；该版本已在 NAS 当前 MySQL 8.4 隔离实例中完成双路径验证。
 - `FlywayRestoreDrillIT` 不进入默认 Surefire 测试集合，只能通过 `-Dtest=FlywayRestoreDrillIT` 显式运行。
 - 验证器只接受 `127.0.0.1`/`localhost`、非 3306 端口，以及 `film_forest_phase0_restore` 或 `film_forest_phase0_empty` schema。
 - 运行前必须设置 `FILM_FOREST_DRILL_CONFIRM=isolated-restore-only`，连接用户名和密码只通过环境变量注入。
 - `RESTORED` 模式要求迁移前已有 18 张业务表、没有 Flyway history 和安全字段；迁移后验证 V1 baseline、V2、三列、三个约束、用户总数、哈希分类和管理员回填。
 - `EMPTY` 模式要求迁移前为空；迁移后验证 V1、V2、18 张业务表和空用户表。
-- 实际演练必须按两个模式分别运行一次；编译成功不能代替真实隔离 MySQL 验证。
+- 2026-08-08 已按两个模式分别实际运行一次：恢复路径得到 V1 `BASELINE` + V2 `SQL`，空库路径得到 V1 `SQL` + V2 `SQL`；两次均为 1 test、0 failure、0 error。
+- 两个 schema 均验证为 18 张业务表、3 个安全字段和 3 个 CHECK；恢复路径额外验证 2 个用户、1 BCrypt、1 legacy 与 1 个 `ADMIN`，空库用户数为 0。
+- V1 在空库创建时报告 7 组重复列索引警告；这些索引经只读比对确认与生产现状一致，故 baseline 保持忠实。索引优化不得回改 V1，必须另建版本化迁移并单独验证回滚。
+- 演练 dump、容器、临时 schema、数据目录和凭据文件已在验证后精确删除；生产 `film_forest` 未执行 Flyway。
 
 ## 首次发布顺序
 
