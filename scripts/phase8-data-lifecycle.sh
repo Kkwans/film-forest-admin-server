@@ -9,6 +9,7 @@ readonly RESTORE_CONFIRMATION="restore-film-forest-phase8-isolated-copy"
 
 readonly -a CLEAR_SCOPE_TABLES=(
   crawler_schedule_genre
+  crawler_job_item_failure
   crawler_task_log
   crawler_source_item
   crawler_content_identity
