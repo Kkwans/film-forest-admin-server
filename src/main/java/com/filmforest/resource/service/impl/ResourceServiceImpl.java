@@ -13,6 +13,7 @@ import com.filmforest.resource.mapper.ResourceCloudMapper;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import com.filmforest.resource.service.ResourceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
@@ -103,10 +104,11 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
 
     @Override
     public boolean setOnlineEnabled(Long id, boolean enabled) {
-        ResourceOnline resource = new ResourceOnline();
-        resource.setId(id);
-        resource.setEnabled(enabled ? 1 : 0);
-        return updateById(resource);
+        UpdateWrapper<ResourceOnline> update = new UpdateWrapper<ResourceOnline>()
+                .eq("id", id)
+                .set("enabled", enabled ? 1 : 0);
+        if (enabled) update.set("removed_at", null);
+        return update(update);
     }
 
     // ===== 磁力资源 =====
@@ -170,10 +172,11 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
 
     @Override
     public boolean setMagnetEnabled(Long id, boolean enabled) {
-        ResourceMagnet resource = new ResourceMagnet();
-        resource.setId(id);
-        resource.setEnabled(enabled ? 1 : 0);
-        return magnetMapper.updateById(resource) > 0;
+        UpdateWrapper<ResourceMagnet> update = new UpdateWrapper<ResourceMagnet>()
+                .eq("id", id)
+                .set("enabled", enabled ? 1 : 0);
+        if (enabled) update.set("removed_at", null);
+        return magnetMapper.update(null, update) > 0;
     }
 
     // ===== 网盘资源 =====
@@ -237,10 +240,11 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
 
     @Override
     public boolean setCloudEnabled(Long id, boolean enabled) {
-        ResourceCloud resource = new ResourceCloud();
-        resource.setId(id);
-        resource.setEnabled(enabled ? 1 : 0);
-        return cloudMapper.updateById(resource) > 0;
+        UpdateWrapper<ResourceCloud> update = new UpdateWrapper<ResourceCloud>()
+                .eq("id", id)
+                .set("enabled", enabled ? 1 : 0);
+        if (enabled) update.set("removed_at", null);
+        return cloudMapper.update(null, update) > 0;
     }
 
     // ===== 资源来源 =====

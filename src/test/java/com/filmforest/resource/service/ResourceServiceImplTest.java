@@ -102,19 +102,21 @@ class ResourceServiceImplTest {
     }
 
     @Test
-    void insertDefaultsToEnabledAndTogglePersistsExplicitState() {
+    void insertDefaultsToEnabledAndRestoreClearsRemovedMarker() {
         ResourceMagnet resource = new ResourceMagnet();
         when(magnetMapper.insert(resource)).thenReturn(1);
-        when(magnetMapper.updateById(any(ResourceMagnet.class))).thenReturn(1);
+        when(magnetMapper.update(any(), any())).thenReturn(1);
 
         service.saveMagnetResource(resource);
         assertThat(resource.getEnabled()).isEqualTo(1);
-        assertThat(service.setMagnetEnabled(7L, false)).isTrue();
+        assertThat(service.setMagnetEnabled(7L, true)).isTrue();
 
-        ArgumentCaptor<ResourceMagnet> patch = ArgumentCaptor.forClass(ResourceMagnet.class);
-        verify(magnetMapper).updateById(patch.capture());
-        assertThat(patch.getValue().getId()).isEqualTo(7L);
-        assertThat(patch.getValue().getEnabled()).isZero();
+        ArgumentCaptor<Wrapper<ResourceMagnet>> update = ArgumentCaptor.forClass(Wrapper.class);
+        verify(magnetMapper).update(any(), update.capture());
+        assertThat(update.getValue().getSqlSegment()).contains("id");
+        assertThat(((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceMagnet>) update.getValue()).getSqlSet())
+                .contains("enabled", "removed_at");
+        assertThat(parameters(update.getValue())).contains(7L, 1, null);
     }
 
     @Test
