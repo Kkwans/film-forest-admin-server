@@ -271,8 +271,8 @@ public class StatsServiceImpl implements StatsService {
         try {
             Map<String, Object> efficiency = jdbcTemplate.queryForMap(
                     "SELECT COUNT(*) AS total_runs, " +
-                    "SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) AS success_runs, " +
-                    "SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed_runs, " +
+                    "COALESCE(SUM(CASE WHEN status='success' THEN 1 ELSE 0 END), 0) AS success_runs, " +
+                    "COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0) AS failed_runs, " +
                     "COALESCE(SUM(items_crawled), 0) AS total_items, " +
                     "COALESCE(SUM(items_added), 0) AS total_added, " +
                     "COALESCE(SUM(items_updated), 0) AS total_updated, " +
@@ -280,15 +280,15 @@ public class StatsServiceImpl implements StatsService {
                     "FROM crawler_task_log WHERE started_at >= ? AND started_at < ?",
                     startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay());
             Map<String, Object> crawlerEfficiency = new LinkedHashMap<>();
-            long totalRuns = ((Number) efficiency.getOrDefault("total_runs", 0)).longValue();
-            long successRuns = ((Number) efficiency.getOrDefault("success_runs", 0)).longValue();
+            long totalRuns = numberAsLong(efficiency, "total_runs");
+            long successRuns = numberAsLong(efficiency, "success_runs");
             crawlerEfficiency.put("totalRuns", totalRuns);
             crawlerEfficiency.put("successRuns", successRuns);
-            crawlerEfficiency.put("failedRuns", ((Number) efficiency.getOrDefault("failed_runs", 0)).longValue());
-            crawlerEfficiency.put("totalItems", ((Number) efficiency.getOrDefault("total_items", 0)).longValue());
-            crawlerEfficiency.put("totalAdded", ((Number) efficiency.getOrDefault("total_added", 0)).longValue());
-            crawlerEfficiency.put("totalUpdated", ((Number) efficiency.getOrDefault("total_updated", 0)).longValue());
-            crawlerEfficiency.put("avgDurationMs", Math.round(((Number) efficiency.getOrDefault("avg_duration", 0)).doubleValue()));
+            crawlerEfficiency.put("failedRuns", numberAsLong(efficiency, "failed_runs"));
+            crawlerEfficiency.put("totalItems", numberAsLong(efficiency, "total_items"));
+            crawlerEfficiency.put("totalAdded", numberAsLong(efficiency, "total_added"));
+            crawlerEfficiency.put("totalUpdated", numberAsLong(efficiency, "total_updated"));
+            crawlerEfficiency.put("avgDurationMs", Math.round(numberAsDouble(efficiency, "avg_duration")));
             crawlerEfficiency.put("successRate", totalRuns > 0 ? Math.round(successRuns * 1000.0 / totalRuns) / 10.0 : 0);
             report.put("crawlerEfficiency", crawlerEfficiency);
         } catch (Exception e) {
@@ -302,20 +302,20 @@ public class StatsServiceImpl implements StatsService {
                 try {
                     Map<String, Object> row = jdbcTemplate.queryForMap(
                             "SELECT COUNT(*) AS total, " +
-                            "SUM(CASE WHEN score_douban >= 8 THEN 1 ELSE 0 END) AS high_score, " +
-                            "SUM(CASE WHEN score_douban >= 5 AND score_douban < 8 THEN 1 ELSE 0 END) AS mid_score, " +
-                            "SUM(CASE WHEN score_douban > 0 AND score_douban < 5 THEN 1 ELSE 0 END) AS low_score, " +
+                            "COALESCE(SUM(CASE WHEN score_douban >= 8 THEN 1 ELSE 0 END), 0) AS high_score, " +
+                            "COALESCE(SUM(CASE WHEN score_douban >= 5 AND score_douban < 8 THEN 1 ELSE 0 END), 0) AS mid_score, " +
+                            "COALESCE(SUM(CASE WHEN score_douban > 0 AND score_douban < 5 THEN 1 ELSE 0 END), 0) AS low_score, " +
                             "COALESCE(AVG(CASE WHEN score_douban > 0 THEN score_douban END), 0) AS avg_score " +
                             "FROM " + table + " WHERE is_deleted = 0",
                             (Object[]) null);
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("type", table);
                     item.put("label", TYPE_LABELS.getOrDefault(table, table));
-                    item.put("total", ((Number) row.getOrDefault("total", 0)).longValue());
-                    item.put("highScore", ((Number) row.getOrDefault("high_score", 0)).longValue());
-                    item.put("midScore", ((Number) row.getOrDefault("mid_score", 0)).longValue());
-                    item.put("lowScore", ((Number) row.getOrDefault("low_score", 0)).longValue());
-                    item.put("avgScore", Math.round(((Number) row.getOrDefault("avg_score", 0)).doubleValue() * 10) / 10.0);
+                    item.put("total", numberAsLong(row, "total"));
+                    item.put("highScore", numberAsLong(row, "high_score"));
+                    item.put("midScore", numberAsLong(row, "mid_score"));
+                    item.put("lowScore", numberAsLong(row, "low_score"));
+                    item.put("avgScore", Math.round(numberAsDouble(row, "avg_score") * 10) / 10.0);
                     qualityStats.add(item);
                 } catch (Exception e) {
                     log.warn("[Report] 查询 {} 质量统计失败", table, e);
@@ -356,6 +356,16 @@ public class StatsServiceImpl implements StatsService {
         report.put("startDate", startDate.toString());
         report.put("endDate", endDate.toString());
         return report;
+    }
+
+    private static long numberAsLong(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private static double numberAsDouble(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 
     @Override
