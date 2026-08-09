@@ -44,7 +44,7 @@ readonly -a PRESERVED_TABLES=(
 
 usage() {
   printf '%s\n' \
-    '用法：scripts/phase8-data-lifecycle.sh backup|verify|restore-drill|clear' \
+    '用法：scripts/phase8-data-lifecycle.sh safety-backup|backup|verify|restore-drill|clear' \
     '' \
     '生产连接（容器模式）：' \
     '  FILM_FOREST_MYSQL_CONTAINER  MySQL 容器名' \
@@ -52,7 +52,7 @@ usage() {
     '  FILM_FOREST_DB_PASSWORD      优先使用；仅通过 docker exec 环境传递' \
     '  FILM_FOREST_CONTAINER_PASSWORD_ENV  未提供上项时回退，默认 MYSQL_ROOT_PASSWORD' \
     '' \
-    'backup：' \
+    'safety-backup（迁移前原始库安全快照）/ backup（Phase 8 清空前正式归档）：' \
     '  FILM_FOREST_ARCHIVE_DIR      必须位于 deploy/archives/phase8 下' \
     '' \
     'restore-drill：' \
@@ -219,6 +219,48 @@ verify_archive() {
   )
 }
 
+archive_format() {
+  local archive_dir="$1"
+  awk -F '=' '$1 == "format" { print $2; exit }' "$archive_dir/manifest.txt"
+}
+
+safety_backup() {
+  require_command docker
+  require_command gzip
+  require_command sha256sum
+  production_container
+  local container="$PRODUCTION_CONTAINER"
+  require_archive_dir
+  local archive_dir="$ARCHIVE_DIR"
+  [[ ! -e "$archive_dir" ]] || die '归档目录已存在，拒绝覆盖'
+  mkdir -p "$archive_dir"
+
+  local schema_version
+  schema_version=$(mysql_in_container "$container" "$PRODUCTION_DATABASE" --execute="
+    SELECT COALESCE(
+      (SELECT version FROM flyway_schema_history WHERE success = 1 ORDER BY installed_rank DESC LIMIT 1),
+      'unknown'
+    );
+  ")
+  count_all_tables "$container" "$PRODUCTION_DATABASE" "$archive_dir/all-table-counts.tsv"
+  mysqldump_in_container "$container" "$PRODUCTION_DATABASE" \
+    | gzip -9 > "$archive_dir/film_forest.sql.gz"
+  {
+    printf 'format=film-forest-pre-migration-archive-v1\n'
+    printf 'created_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'database=%s\n' "$PRODUCTION_DATABASE"
+    printf 'flyway_schema_version=%s\n' "$schema_version"
+    printf 'source_container=%s\n' "$container"
+  } > "$archive_dir/manifest.txt"
+  (
+    cd "$archive_dir"
+    sha256sum film_forest.sql.gz all-table-counts.tsv manifest.txt > SHA256SUMS
+    sha256sum --check --strict SHA256SUMS
+  )
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$archive_dir/READY"
+  printf '迁移前安全快照已完成：%s\n' "$archive_dir"
+}
+
 backup() {
   require_command docker
   require_command gzip
@@ -297,23 +339,34 @@ restore_drill() {
   gzip --decompress --stdout "$archive_dir/film_forest.sql.gz" \
     | mysql_in_container "$target_container" "$restore_database"
 
-  assert_required_tables "$target_container" "$restore_database"
-
-  count_tables "$target_container" "$restore_database" \
-    "$archive_dir/restore-clear-scope-counts.tsv" "${CLEAR_SCOPE_TABLES[@]}"
-  count_tables "$target_container" "$restore_database" \
-    "$archive_dir/restore-preserved-counts.tsv" "${PRESERVED_TABLES[@]}"
   count_all_tables "$target_container" "$restore_database" \
     "$archive_dir/restore-all-table-counts.tsv"
-  diff -u "$archive_dir/clear-scope-counts.tsv" "$archive_dir/restore-clear-scope-counts.tsv"
-  diff -u "$archive_dir/preserved-counts.tsv" "$archive_dir/restore-preserved-counts.tsv"
   diff -u "$archive_dir/all-table-counts.tsv" "$archive_dir/restore-all-table-counts.tsv"
-  (
-    cd "$archive_dir"
-    sha256sum restore-clear-scope-counts.tsv restore-preserved-counts.tsv \
-      restore-all-table-counts.tsv > RESTORE_SHA256SUMS
-    sha256sum --check --strict RESTORE_SHA256SUMS
-  )
+  local format
+  format=$(archive_format "$archive_dir")
+  if [[ "$format" = 'film-forest-phase8-archive-v1' ]]; then
+    assert_required_tables "$target_container" "$restore_database"
+    count_tables "$target_container" "$restore_database" \
+      "$archive_dir/restore-clear-scope-counts.tsv" "${CLEAR_SCOPE_TABLES[@]}"
+    count_tables "$target_container" "$restore_database" \
+      "$archive_dir/restore-preserved-counts.tsv" "${PRESERVED_TABLES[@]}"
+    diff -u "$archive_dir/clear-scope-counts.tsv" "$archive_dir/restore-clear-scope-counts.tsv"
+    diff -u "$archive_dir/preserved-counts.tsv" "$archive_dir/restore-preserved-counts.tsv"
+    (
+      cd "$archive_dir"
+      sha256sum restore-clear-scope-counts.tsv restore-preserved-counts.tsv \
+        restore-all-table-counts.tsv > RESTORE_SHA256SUMS
+      sha256sum --check --strict RESTORE_SHA256SUMS
+    )
+  elif [[ "$format" = 'film-forest-pre-migration-archive-v1' ]]; then
+    (
+      cd "$archive_dir"
+      sha256sum restore-all-table-counts.tsv > RESTORE_SHA256SUMS
+      sha256sum --check --strict RESTORE_SHA256SUMS
+    )
+  else
+    die "不支持的归档格式：$format"
+  fi
   date -u +%Y-%m-%dT%H:%M:%SZ > "$archive_dir/RESTORE_VERIFIED"
   printf '隔离恢复核对通过：%s\n' "$target_container"
 }
@@ -329,6 +382,8 @@ clear_archived_data() {
   require_archive_dir
   local archive_dir="$ARCHIVE_DIR"
   verify_archive "$archive_dir"
+  [[ "$(archive_format "$archive_dir")" = 'film-forest-phase8-archive-v1' ]] \
+    || die '清空只接受 Phase 8 正式归档，拒绝使用迁移前安全快照'
   [[ -f "$archive_dir/RESTORE_VERIFIED" ]] || die '隔离恢复演练尚未通过，禁止清空'
   [[ -f "$archive_dir/RESTORE_SHA256SUMS" ]] || die '隔离恢复演练缺少校验清单，禁止清空'
   (
@@ -415,6 +470,7 @@ clear_archived_data() {
 }
 
 case "${1:-}" in
+  safety-backup) safety_backup ;;
   backup) backup ;;
   verify)
     require_command sha256sum
