@@ -13,11 +13,15 @@ public interface TagService extends IService<Tag> {
 
     List<Tag> resolveSourceGenres(String sourceCode, String contentType, List<String> sourceGenres);
 
+    List<Tag> requireStandardGenres(String contentType, List<Long> tagIds);
+
     Tag createTag(String name, String color);
 
     Tag updateTag(Long id, String name, String color);
 
     void setContentTags(Long contentId, String contentType, List<Long> tagIds);
+
+    void setContentGenres(Long contentId, String contentType, List<Long> tagIds);
 
     List<Tag> getContentTags(Long contentId, String contentType);
 }

@@ -27,7 +27,7 @@ public class CrawlerGenreService {
 
     public void replaceContentGenres(long contentId, ContentType contentType,
                                      ResolvedGenres genres) {
-        tagService.setContentTags(contentId, contentType.value(), genres.tagIds());
+        tagService.setContentGenres(contentId, contentType.value(), genres.tagIds());
     }
 
     public record ResolvedGenres(List<Long> tagIds, List<String> names) {

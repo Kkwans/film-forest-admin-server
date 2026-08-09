@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("variety")
@@ -26,6 +27,8 @@ public class Variety {
     private String writer;                  // 编剧（JSON数组）
     private String actor;
     private String genre;
+    @TableField(exist = false)
+    private List<Long> genreTagIds;
     private String region;
     private String language;
     private String releaseDate;

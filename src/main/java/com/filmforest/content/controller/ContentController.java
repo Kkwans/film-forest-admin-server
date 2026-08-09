@@ -38,6 +38,7 @@ public class ContentController {
     @Autowired private ShortDramaService shortDramaService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private AdminContentQueryService adminContentQueryService;
+    @Autowired private AdminContentMutationService adminContentMutationService;
     @Autowired private TagService tagService;
 
     /** 内容类型 → 数据库表名映射 */
@@ -110,8 +111,7 @@ public class ContentController {
     @PostMapping("/movies")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Movie> createMovie(@Valid @RequestBody Movie movie) {
-        if (movie.getStatus() == null) movie.setStatus(ContentStatus.DRAFT.code());
-        movieService.save(movie);
+        movie = adminContentMutationService.createMovie(movie);
         log.info("创建电影: id={}, title={}", movie.getId(), movie.getTitle());
         return Result.ok(movie);
     }
@@ -119,9 +119,7 @@ public class ContentController {
     @PutMapping("/movies/{id}")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Movie> updateMovie(@PathVariable Long id, @Valid @RequestBody Movie movie) {
-        movie.setId(id);
-        movieService.updateById(movie);
-        Movie updated = movieService.getDetail(id);
+        Movie updated = adminContentMutationService.updateMovie(id, movie);
         log.info("更新电影: id={}, title={}", id, movie.getTitle());
         return Result.ok(updated);
     }
@@ -155,8 +153,7 @@ public class ContentController {
     @PostMapping("/dramas")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Drama> createDrama(@Valid @RequestBody Drama drama) {
-        if (drama.getStatus() == null) drama.setStatus(ContentStatus.DRAFT.code());
-        dramaService.save(drama);
+        drama = adminContentMutationService.createDrama(drama);
         log.info("创建剧集: id={}, title={}", drama.getId(), drama.getTitle());
         return Result.ok(drama);
     }
@@ -164,9 +161,7 @@ public class ContentController {
     @PutMapping("/dramas/{id}")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Drama> updateDrama(@PathVariable Long id, @Valid @RequestBody Drama drama) {
-        drama.setId(id);
-        dramaService.updateById(drama);
-        Drama updated = dramaService.getDetail(id);
+        Drama updated = adminContentMutationService.updateDrama(id, drama);
         log.info("更新剧集: id={}, title={}", id, drama.getTitle());
         return Result.ok(updated);
     }
@@ -200,8 +195,7 @@ public class ContentController {
     @PostMapping("/varieties")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Variety> createVariety(@Valid @RequestBody Variety variety) {
-        if (variety.getStatus() == null) variety.setStatus(ContentStatus.DRAFT.code());
-        varietyService.save(variety);
+        variety = adminContentMutationService.createVariety(variety);
         log.info("创建综艺: id={}, title={}", variety.getId(), variety.getTitle());
         return Result.ok(variety);
     }
@@ -209,9 +203,7 @@ public class ContentController {
     @PutMapping("/varieties/{id}")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Variety> updateVariety(@PathVariable Long id, @Valid @RequestBody Variety variety) {
-        variety.setId(id);
-        varietyService.updateById(variety);
-        Variety updated = varietyService.getDetail(id);
+        Variety updated = adminContentMutationService.updateVariety(id, variety);
         log.info("更新综艺: id={}, title={}", id, variety.getTitle());
         return Result.ok(updated);
     }
@@ -245,8 +237,7 @@ public class ContentController {
     @PostMapping("/animes")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Anime> createAnime(@Valid @RequestBody Anime anime) {
-        if (anime.getStatus() == null) anime.setStatus(ContentStatus.DRAFT.code());
-        animeService.save(anime);
+        anime = adminContentMutationService.createAnime(anime);
         log.info("创建动漫: id={}, title={}", anime.getId(), anime.getTitle());
         return Result.ok(anime);
     }
@@ -254,9 +245,7 @@ public class ContentController {
     @PutMapping("/animes/{id}")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Anime> updateAnime(@PathVariable Long id, @Valid @RequestBody Anime anime) {
-        anime.setId(id);
-        animeService.updateById(anime);
-        Anime updated = animeService.getDetail(id);
+        Anime updated = adminContentMutationService.updateAnime(id, anime);
         log.info("更新动漫: id={}, title={}", id, anime.getTitle());
         return Result.ok(updated);
     }
@@ -290,8 +279,7 @@ public class ContentController {
     @PostMapping("/short-dramas")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<ShortDrama> createShortDrama(@Valid @RequestBody ShortDrama shortDrama) {
-        if (shortDrama.getStatus() == null) shortDrama.setStatus(ContentStatus.DRAFT.code());
-        shortDramaService.save(shortDrama);
+        shortDrama = adminContentMutationService.createShortDrama(shortDrama);
         log.info("创建短剧: id={}, title={}", shortDrama.getId(), shortDrama.getTitle());
         return Result.ok(shortDrama);
     }
@@ -299,9 +287,7 @@ public class ContentController {
     @PutMapping("/short-dramas/{id}")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<ShortDrama> updateShortDrama(@PathVariable Long id, @Valid @RequestBody ShortDrama shortDrama) {
-        shortDrama.setId(id);
-        shortDramaService.updateById(shortDrama);
-        ShortDrama updated = shortDramaService.getDetail(id);
+        ShortDrama updated = adminContentMutationService.updateShortDrama(id, shortDrama);
         log.info("更新短剧: id={}, title={}", id, shortDrama.getTitle());
         return Result.ok(updated);
     }

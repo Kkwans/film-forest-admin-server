@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 电影表
@@ -25,6 +26,8 @@ public class Movie {
     private String writer;                  // 编剧中（JSON数组）
     private String actor;                   // 演员（JSON数组）
     private String genre;                   // 类型（JSON数组）
+    @TableField(exist = false)
+    private List<Long> genreTagIds;         // 管理端提交的系统标准题材 ID
     private String region;                  // 地区（JSON数组）
     private String language;                // 语言（JSON数组）
     private String releaseDate;            // 上映日期

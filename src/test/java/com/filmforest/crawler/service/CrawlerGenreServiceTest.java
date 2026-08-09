@@ -27,7 +27,7 @@ class CrawlerGenreServiceTest {
         assertThat(resolved.tagIds()).containsExactly(5L);
         assertThat(resolved.names()).containsExactly("科幻");
         service.replaceContentGenres(42L, ContentType.MOVIE, resolved);
-        verify(tags).setContentTags(42L, "movie", List.of(5L));
+        verify(tags).setContentGenres(42L, "movie", List.of(5L));
     }
 
     private static Tag tag(long id, String name) {

@@ -88,6 +88,22 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     }
 
     @Override
+    public List<Tag> requireStandardGenres(String contentType, List<Long> tagIds) {
+        String canonicalType = canonicalContentType(contentType);
+        List<Long> normalizedIds = tagIds == null ? List.of() : tagIds.stream().distinct().toList();
+        if (normalizedIds.isEmpty()) {
+            return List.of();
+        }
+        List<Tag> allowed = getStandardGenres(canonicalType);
+        Set<Long> requested = new LinkedHashSet<>(normalizedIds);
+        Set<Long> allowedIds = allowed.stream().map(Tag::getId).collect(Collectors.toSet());
+        if (!allowedIds.containsAll(requested)) {
+            throw new IllegalArgumentException("题材必须来自当前内容类型的系统标准选项");
+        }
+        return allowed.stream().filter(tag -> requested.contains(tag.getId())).toList();
+    }
+
+    @Override
     @Transactional
     public Tag createTag(String name, String color) {
         Tag existing = getOne(new LambdaQueryWrapper<Tag>().eq(Tag::getName, name));
@@ -149,6 +165,32 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
             contentTagMapper.insert(ct);
         }
         // 更新使用次数
+        updateAllUsageCounts();
+    }
+
+    @Override
+    @Transactional
+    public void setContentGenres(Long contentId, String contentType, List<Long> tagIds) {
+        String canonicalType = canonicalContentType(contentType);
+        List<Tag> selectedGenres = requireStandardGenres(canonicalType, tagIds);
+        List<Long> allSystemTagIds = list(new LambdaQueryWrapper<Tag>()
+                        .eq(Tag::getSystem, 1))
+                .stream()
+                .map(Tag::getId)
+                .toList();
+        if (!allSystemTagIds.isEmpty()) {
+            contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>()
+                    .eq(ContentTag::getContentId, contentId)
+                    .eq(ContentTag::getContentType, canonicalType)
+                    .in(ContentTag::getTagId, allSystemTagIds));
+        }
+        for (Tag genre : selectedGenres) {
+            ContentTag contentTag = new ContentTag();
+            contentTag.setContentId(contentId);
+            contentTag.setContentType(canonicalType);
+            contentTag.setTagId(genre.getId());
+            contentTagMapper.insert(contentTag);
+        }
         updateAllUsageCounts();
     }
 

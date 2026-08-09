@@ -36,6 +36,13 @@ public class GlobalExceptionHandler {
         return Result.fail(HttpStatus.BAD_REQUEST.value(), "缺少参数: " + e.getParameterName());
     }
 
+    /** 业务入参语义不合法，例如自由文本题材、未知状态或不适用的标准题材。 */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public Result<?> handleIllegalArgument(IllegalArgumentException e) {
+        log.warn("非法请求参数: {}", e.getMessage());
+        return Result.fail(HttpStatus.BAD_REQUEST.value(), e.getMessage());
+    }
+
     /** 资源不存在（404） */
     @ExceptionHandler(NoResourceFoundException.class)
     public Result<?> handleNotFound(NoResourceFoundException e) {
