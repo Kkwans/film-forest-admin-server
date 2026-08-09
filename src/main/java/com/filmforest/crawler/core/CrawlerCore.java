@@ -15,6 +15,7 @@ import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.SourceFingerprint;
@@ -41,6 +42,7 @@ public class CrawlerCore {
     private final SourceAdapterRegistry sourceAdapterRegistry;
     private final HttpFetcher httpFetcher;
     private final CrawlerContentPersistence contentPersistence;
+    private final CrawlerGenreService genreService;
     private final CrawlerSourceItemService sourceItemService;
     private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
@@ -51,6 +53,7 @@ public class CrawlerCore {
                        SourceAdapterRegistry sourceAdapterRegistry,
                        HttpFetcher httpFetcher,
                        CrawlerContentPersistence contentPersistence,
+                       CrawlerGenreService genreService,
                        CrawlerSourceItemService sourceItemService,
                        CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper) {
@@ -59,6 +62,7 @@ public class CrawlerCore {
         this.sourceAdapterRegistry = sourceAdapterRegistry;
         this.httpFetcher = httpFetcher;
         this.contentPersistence = contentPersistence;
+        this.genreService = genreService;
         this.sourceItemService = sourceItemService;
         this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
@@ -232,6 +236,8 @@ public class CrawlerCore {
             return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic, false);
         }
         stats.parseSucceeded++;
+        CrawlerGenreService.ResolvedGenres resolvedGenres = genreService.resolve(
+                adapter.sourceCode(), contentType, parsed.genres());
         String detailFingerprint = SourceFingerprint.forDetail(parsed);
         boolean detailUnchanged = detailFingerprint.equals(observation.previousDetailFingerprint());
         if (detailUnchanged && "filtered".equals(observation.previousParseStatus())) {
@@ -247,7 +253,7 @@ public class CrawlerCore {
             stats.unchanged++;
             return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
         }
-        if (!matchesGenreFilter(parsed.genres(), genreFilter)) {
+        if (!matchesGenreFilter(resolvedGenres.names(), genreFilter)) {
             sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
                     item.externalId(), detailFingerprint);
             stats.filtered++;
@@ -255,7 +261,7 @@ public class CrawlerCore {
         }
         try {
             CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
-                    adapter.sourceCode(), parsed);
+                    adapter.sourceCode(), parsed, resolvedGenres);
             long internalContentId = persisted.contentId() > 0
                     ? persisted.contentId() : Long.parseLong(parsed.externalId());
             sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),

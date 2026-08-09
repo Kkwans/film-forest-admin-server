@@ -13,6 +13,7 @@ import com.filmforest.content.service.MovieService;
 import com.filmforest.content.service.ShortDramaService;
 import com.filmforest.content.service.VarietyService;
 import com.filmforest.crawler.model.ParsedContent;
+import com.filmforest.crawler.service.CrawlerGenreService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,12 +28,14 @@ public class CrawlerContentPersistence {
     private final AnimeService animeService;
     private final ShortDramaService shortDramaService;
     private final CrawlerResourceDiffService resourceDiffService;
+    private final CrawlerGenreService genreService;
     private final ObjectMapper objectMapper;
 
     public CrawlerContentPersistence(MovieService movieService, DramaService dramaService,
                                      VarietyService varietyService, AnimeService animeService,
                                      ShortDramaService shortDramaService,
                                      CrawlerResourceDiffService resourceDiffService,
+                                     CrawlerGenreService genreService,
                                      ObjectMapper objectMapper) {
         this.movieService = movieService;
         this.dramaService = dramaService;
@@ -40,25 +43,34 @@ public class CrawlerContentPersistence {
         this.animeService = animeService;
         this.shortDramaService = shortDramaService;
         this.resourceDiffService = resourceDiffService;
+        this.genreService = genreService;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public PersistResult persist(String sourceCode, ParsedContent parsed) {
+        return persist(sourceCode, parsed,
+                genreService.resolve(sourceCode, parsed.contentType(), parsed.genres()));
+    }
+
+    @Transactional
+    public PersistResult persist(String sourceCode, ParsedContent parsed,
+                                 CrawlerGenreService.ResolvedGenres genres) {
         long contentId = numericExternalId(parsed.externalId());
         boolean isNew = switch (parsed.contentType()) {
-            case MOVIE -> persistMovie(contentId, parsed);
-            case DRAMA -> persistDrama(contentId, parsed);
-            case VARIETY -> persistVariety(contentId, parsed);
-            case ANIME -> persistAnime(contentId, parsed);
-            case SHORT_DRAMA -> persistShortDrama(contentId, parsed);
+            case MOVIE -> persistMovie(contentId, parsed, genres.names());
+            case DRAMA -> persistDrama(contentId, parsed, genres.names());
+            case VARIETY -> persistVariety(contentId, parsed, genres.names());
+            case ANIME -> persistAnime(contentId, parsed, genres.names());
+            case SHORT_DRAMA -> persistShortDrama(contentId, parsed, genres.names());
         };
+        genreService.replaceContentGenres(contentId, parsed.contentType(), genres);
         CrawlerResourceDiffService.ResourceDiffResult resourceDiff = resourceDiffService.apply(
                 sourceCode, parsed.contentType().value(), contentId, parsed.resources());
         return new PersistResult(contentId, isNew, !isNew, false, resourceDiff);
     }
 
-    private boolean persistMovie(long id, ParsedContent parsed) {
+    private boolean persistMovie(long id, ParsedContent parsed, List<String> genres) {
         boolean isNew = movieService.getById(id) == null;
         Movie entity = new Movie();
         entity.setId(id);
@@ -69,7 +81,7 @@ public class CrawlerContentPersistence {
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
-        entity.setGenre(json(parsed.genres(), isNew));
+        entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));
         entity.setLanguage(json(parsed.languages(), isNew));
         entity.setReleaseDate(firstNonBlank(parsed.rawReleaseDate()));
@@ -77,21 +89,22 @@ public class CrawlerContentPersistence {
         entity.setStoryline(firstNonBlank(parsed.storyline()));
         entity.setScoreDouban(parsed.doubanScore());
         entity.setScoreImdb(parsed.imdbScore());
-        entity.setStatus(1);
+        entity.setScoreRt(parsed.rottenTomatoesScore());
+        if (isNew) entity.setStatus(0);
         saveOrUpdate(movieService, entity, isNew);
         return isNew;
     }
 
-    private boolean persistDrama(long id, ParsedContent parsed) {
+    private boolean persistDrama(long id, ParsedContent parsed, List<String> genres) {
         boolean isNew = dramaService.getById(id) == null;
         Drama entity = new Drama();
         entity.setId(id);
-        applySeries(entity, parsed, isNew);
+        applySeries(entity, parsed, genres, isNew);
         saveOrUpdate(dramaService, entity, isNew);
         return isNew;
     }
 
-    private boolean persistVariety(long id, ParsedContent parsed) {
+    private boolean persistVariety(long id, ParsedContent parsed, List<String> genres) {
         boolean isNew = varietyService.getById(id) == null;
         Variety entity = new Variety();
         entity.setId(id);
@@ -102,7 +115,7 @@ public class CrawlerContentPersistence {
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
-        entity.setGenre(json(parsed.genres(), isNew));
+        entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));
         entity.setLanguage(json(parsed.languages(), isNew));
         entity.setReleaseDate(firstNonBlank(parsed.rawReleaseDate()));
@@ -111,12 +124,12 @@ public class CrawlerContentPersistence {
         entity.setStoryline(firstNonBlank(parsed.storyline()));
         entity.setScoreDouban(parsed.doubanScore());
         entity.setScoreImdb(parsed.imdbScore());
-        entity.setStatus(1);
+        if (isNew) entity.setStatus(0);
         saveOrUpdate(varietyService, entity, isNew);
         return isNew;
     }
 
-    private boolean persistAnime(long id, ParsedContent parsed) {
+    private boolean persistAnime(long id, ParsedContent parsed, List<String> genres) {
         boolean isNew = animeService.getById(id) == null;
         Anime entity = new Anime();
         entity.setId(id);
@@ -127,7 +140,7 @@ public class CrawlerContentPersistence {
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
-        entity.setGenre(json(parsed.genres(), isNew));
+        entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));
         entity.setLanguage(json(parsed.languages(), isNew));
         entity.setReleaseDate(firstNonBlank(parsed.rawReleaseDate()));
@@ -136,12 +149,12 @@ public class CrawlerContentPersistence {
         entity.setStoryline(firstNonBlank(parsed.storyline()));
         entity.setScoreDouban(parsed.doubanScore());
         entity.setScoreImdb(parsed.imdbScore());
-        entity.setStatus(1);
+        if (isNew) entity.setStatus(0);
         saveOrUpdate(animeService, entity, isNew);
         return isNew;
     }
 
-    private boolean persistShortDrama(long id, ParsedContent parsed) {
+    private boolean persistShortDrama(long id, ParsedContent parsed, List<String> genres) {
         boolean isNew = shortDramaService.getById(id) == null;
         ShortDrama entity = new ShortDrama();
         entity.setId(id);
@@ -151,7 +164,7 @@ public class CrawlerContentPersistence {
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
-        entity.setGenre(json(parsed.genres(), isNew));
+        entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));
         entity.setLanguage(json(parsed.languages(), isNew));
         entity.setReleaseDate(firstNonBlank(parsed.rawReleaseDate()));
@@ -160,12 +173,12 @@ public class CrawlerContentPersistence {
         entity.setStoryline(firstNonBlank(parsed.storyline()));
         entity.setScoreDouban(parsed.doubanScore());
         entity.setScoreImdb(parsed.imdbScore());
-        entity.setStatus(1);
+        if (isNew) entity.setStatus(0);
         saveOrUpdate(shortDramaService, entity, isNew);
         return isNew;
     }
 
-    private void applySeries(Drama entity, ParsedContent parsed, boolean isNew) {
+    private void applySeries(Drama entity, ParsedContent parsed, List<String> genres, boolean isNew) {
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
         entity.setPosterUrl(parsed.sourcePosterUrl());
@@ -173,7 +186,7 @@ public class CrawlerContentPersistence {
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
-        entity.setGenre(json(parsed.genres(), isNew));
+        entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));
         entity.setLanguage(json(parsed.languages(), isNew));
         entity.setReleaseDate(firstNonBlank(parsed.rawReleaseDate()));
@@ -182,7 +195,7 @@ public class CrawlerContentPersistence {
         entity.setStoryline(firstNonBlank(parsed.storyline()));
         entity.setScoreDouban(parsed.doubanScore());
         entity.setScoreImdb(parsed.imdbScore());
-        entity.setStatus(1);
+        if (isNew) entity.setStatus(0);
     }
 
     private String json(List<String> values, boolean isNew) {

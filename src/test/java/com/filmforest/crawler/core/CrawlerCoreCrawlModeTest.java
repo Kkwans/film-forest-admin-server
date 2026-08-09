@@ -13,6 +13,7 @@ import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
@@ -29,6 +30,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,6 +47,7 @@ class CrawlerCoreCrawlModeTest {
     @Mock private SourceAdapterRegistry registry;
     @Mock private HttpFetcher fetcher;
     @Mock private CrawlerContentPersistence persistence;
+    @Mock private CrawlerGenreService genres;
     @Mock private CrawlerSourceItemService sourceItems;
     @Mock private CrawlerSourceAdapter adapter;
 
@@ -56,7 +59,7 @@ class CrawlerCoreCrawlModeTest {
         properties = new CrawlerExecutionProperties();
         properties.setLatestConsecutiveUnchanged(20);
         properties.setLatestRecentPages(2);
-        crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
+        crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
                 sourceItems, properties, new ObjectMapper());
     }
 
@@ -85,7 +88,7 @@ class CrawlerCoreCrawlModeTest {
         assertThat(summary.fetchSucceeded()).isEqualTo(1);
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.unchanged()).isEqualTo(1);
-        verify(persistence, never()).persist(eq("pkmp4"), eq(parsed));
+        verify(persistence, never()).persist(eq("pkmp4"), eq(parsed), any());
         verify(sourceItems).recordParsed("pkmp4", ContentType.MOVIE, "7", 7L,
                 SourceFingerprint.forDetail(parsed));
     }
@@ -119,7 +122,9 @@ class CrawlerCoreCrawlModeTest {
         when(fetcher.fetch(eq(detailOne), anyMap(), anyInt(), same(cancellation)))
                 .thenReturn(success(detailOne, "detail"));
         when(adapter.parseDetail(ContentType.MOVIE, "detail", detailOne)).thenReturn(parsed);
-        when(persistence.persist("pkmp4", parsed)).thenReturn(
+        var resolved = new CrawlerGenreService.ResolvedGenres(List.of(), List.of());
+        when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
+        when(persistence.persist("pkmp4", parsed, resolved)).thenReturn(
                 new CrawlerContentPersistence.PersistResult(true, false, false));
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
@@ -155,6 +160,11 @@ class CrawlerCoreCrawlModeTest {
         when(jobs.selectById(9L)).thenReturn(job);
         when(registry.require("pkmp4")).thenReturn(adapter);
         org.mockito.Mockito.lenient().when(adapter.sourceCode()).thenReturn("pkmp4");
+        org.mockito.Mockito.lenient().when(genres.resolve(
+                org.mockito.ArgumentMatchers.eq("pkmp4"),
+                org.mockito.ArgumentMatchers.any(ContentType.class),
+                org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(new CrawlerGenreService.ResolvedGenres(List.of(), List.of()));
     }
 
     private static CrawlerSchedule latestSchedule(int batchSize) {

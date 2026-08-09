@@ -13,6 +13,7 @@ import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
@@ -46,9 +47,10 @@ class CrawlerCoreAdapterRoutingTest {
         SourceAdapterRegistry registry = mock(SourceAdapterRegistry.class);
         HttpFetcher fetcher = mock(HttpFetcher.class);
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
+        CrawlerGenreService genres = mock(CrawlerGenreService.class);
         CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
-        CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
+        CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
                 sourceItems, executionProperties(), new ObjectMapper());
 
         CrawlerSchedule schedule = new CrawlerSchedule();
@@ -57,6 +59,7 @@ class CrawlerCoreAdapterRoutingTest {
         schedule.setContentType("movie");
         schedule.setBatchSize(1);
         schedule.setRateLimitMs(0);
+        schedule.setGenreFilter("[\"科幻\"]");
         CrawlerTaskLog job = new CrawlerTaskLog();
         job.setId(9L);
         job.setCurrentPage(1);
@@ -79,7 +82,9 @@ class CrawlerCoreAdapterRoutingTest {
                 .thenReturn(success(detailUri, "detail"));
         ParsedContent parsed = parsedMovie(detailUri);
         when(adapter.parseDetail(ContentType.MOVIE, "detail", detailUri)).thenReturn(parsed);
-        when(persistence.persist("pkmp4", parsed)).thenReturn(
+        var resolved = new CrawlerGenreService.ResolvedGenres(List.of(5L), List.of("科幻"));
+        when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
+        when(persistence.persist("pkmp4", parsed, resolved)).thenReturn(
                 new CrawlerContentPersistence.PersistResult(true, false, false));
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
@@ -89,7 +94,7 @@ class CrawlerCoreAdapterRoutingTest {
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.added()).isEqualTo(1);
         verify(registry).require("pkmp4");
-        verify(persistence).persist("pkmp4", parsed);
+        verify(persistence).persist("pkmp4", parsed, resolved);
     }
 
     @Test
@@ -99,9 +104,10 @@ class CrawlerCoreAdapterRoutingTest {
         SourceAdapterRegistry registry = mock(SourceAdapterRegistry.class);
         HttpFetcher fetcher = mock(HttpFetcher.class);
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
+        CrawlerGenreService genres = mock(CrawlerGenreService.class);
         CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
-        CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence,
+        CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
                 sourceItems, executionProperties(), new ObjectMapper());
         CrawlerSchedule schedule = new CrawlerSchedule();
         schedule.setId(1L);
@@ -135,7 +141,7 @@ class CrawlerCoreAdapterRoutingTest {
                 .isInstanceOf(CrawlerSourceStructureException.class)
                 .hasMessageContaining("consecutiveFailures=3", "source=pkmp4")
                 .hasMessageNotContaining("<html");
-        verify(persistence, never()).persist(anyString(), any());
+        verify(persistence, never()).persist(anyString(), any(), any());
     }
 
     private static FetchResult success(URI uri, String body) {
@@ -145,7 +151,7 @@ class CrawlerCoreAdapterRoutingTest {
 
     private static ParsedContent parsedMovie(URI uri) {
         return new ParsedContent("7", ContentType.MOVIE, uri.toString(), "Title", null,
-                2024, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                2024, List.of(), List.of("科幻片"), List.of(), List.of(), List.of(), List.of(),
                 null, null, null, List.of(), null, null, null, "", null, List.of(),
                 new ParseDiagnostics(List.of("h1"), List.of(), List.of(), "fingerprint", Map.of()));
     }
