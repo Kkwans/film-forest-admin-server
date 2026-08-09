@@ -312,6 +312,7 @@ backup() {
 }
 
 restore_drill() {
+  require_command awk
   require_command docker
   require_command diff
   require_command gzip
