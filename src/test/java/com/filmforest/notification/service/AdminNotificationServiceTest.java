@@ -9,8 +9,12 @@ import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
 import com.filmforest.notification.entity.AdminNotification;
 import com.filmforest.notification.entity.AdminNotificationPreference;
+import com.filmforest.notification.entity.MailOutbox;
+import com.filmforest.notification.entity.SmtpSetting;
 import com.filmforest.notification.mapper.AdminNotificationMapper;
 import com.filmforest.notification.mapper.AdminNotificationPreferenceMapper;
+import com.filmforest.notification.mapper.MailOutboxMapper;
+import com.filmforest.notification.mapper.SmtpSettingMapper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +37,8 @@ class AdminNotificationServiceTest {
 
     @Mock private AdminNotificationMapper notificationMapper;
     @Mock private AdminNotificationPreferenceMapper preferenceMapper;
+    @Mock private MailOutboxMapper outboxMapper;
+    @Mock private SmtpSettingMapper smtpSettingMapper;
     @Mock private UserMapper userMapper;
     private AdminNotificationService service;
 
@@ -41,7 +47,8 @@ class AdminNotificationServiceTest {
         initializeTableInfo(AdminNotification.class);
         initializeTableInfo(AdminNotificationPreference.class);
         initializeTableInfo(User.class);
-        service = new AdminNotificationService(notificationMapper, preferenceMapper, userMapper);
+        service = new AdminNotificationService(notificationMapper, preferenceMapper, outboxMapper,
+                smtpSettingMapper, userMapper);
     }
 
     @Test
@@ -107,6 +114,41 @@ class AdminNotificationServiceTest {
                 "CRAWLER_JOB", 8L, "crawler-job:8:success"));
 
         assertThat(created).isZero();
+    }
+
+    @Test
+    void enabledEmailSubscriptionCreatesOneOutboxMessageWithoutExposingCredentials() {
+        User admin = admin(1L);
+        admin.setEmail("admin@example.test");
+        when(userMapper.selectList(any())).thenReturn(List.of(admin));
+        AdminNotificationPreference preference = new AdminNotificationPreference();
+        preference.setUserId(1L);
+        preference.setEmailEnabled(1);
+        preference.setCrawlerFailure(1);
+        preference.setCrawlerRecovery(1);
+        preference.setDataAnomaly(1);
+        preference.setCrawlerSuccess(0);
+        when(preferenceMapper.selectById(1L)).thenReturn(preference);
+        SmtpSetting smtp = new SmtpSetting();
+        smtp.setEnabled(1);
+        smtp.setHost("smtp.example.test");
+        smtp.setFromEmail("forest@example.test");
+        when(smtpSettingMapper.selectById(1)).thenReturn(smtp);
+        when(notificationMapper.insert(any(AdminNotification.class))).thenAnswer(invocation -> {
+            ((AdminNotification) invocation.getArgument(0)).setId(88L);
+            return 1;
+        });
+
+        service.publishToAdmins(new AdminNotificationService.NotificationEvent(
+                "CRAWLER_FAILED", "ERROR", "爬虫失败", "任务执行失败", "/crawler",
+                "CRAWLER_JOB", 8L, "crawler-job:8:failed"));
+
+        ArgumentCaptor<MailOutbox> outbox = ArgumentCaptor.forClass(MailOutbox.class);
+        verify(outboxMapper).insert(outbox.capture());
+        assertThat(outbox.getValue().getRecipient()).isEqualTo("admin@example.test");
+        assertThat(outbox.getValue().getNotificationId()).isEqualTo(88L);
+        assertThat(outbox.getValue().getIdempotencyKey()).isEqualTo("notification:88:email");
+        assertThat(outbox.getValue().getBody()).doesNotContain("smtp.example.test");
     }
 
     private static User admin(long id) {

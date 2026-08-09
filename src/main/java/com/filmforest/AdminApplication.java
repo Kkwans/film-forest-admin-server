@@ -11,7 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @ConfigurationPropertiesScan
-@MapperScan({"com.filmforest.crawler.mapper", "com.filmforest.content.mapper", "com.filmforest.resource.mapper", "com.filmforest.settings.mapper", "com.filmforest.system.mapper"})
+@MapperScan({"com.filmforest.crawler.mapper", "com.filmforest.content.mapper", "com.filmforest.notification.mapper", "com.filmforest.resource.mapper", "com.filmforest.settings.mapper", "com.filmforest.system.mapper"})
 @EnableAsync
 @EnableScheduling
 @EnableCaching

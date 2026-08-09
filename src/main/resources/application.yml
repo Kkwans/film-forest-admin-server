@@ -65,6 +65,8 @@ jwt:
   issuer: ${FILM_FOREST_ADMIN_JWT_ISSUER:film-forest-admin}
 
 app:
+  security:
+    credential-encryption-key: ${FILM_FOREST_POSTER_CREDENTIAL_KEY:}
   cors:
     allowed-origins: ${FILM_FOREST_ADMIN_CORS_ORIGINS:http://localhost:3001}
   crawler:

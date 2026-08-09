@@ -9,8 +9,12 @@ import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
 import com.filmforest.notification.entity.AdminNotification;
 import com.filmforest.notification.entity.AdminNotificationPreference;
+import com.filmforest.notification.entity.MailOutbox;
+import com.filmforest.notification.entity.SmtpSetting;
 import com.filmforest.notification.mapper.AdminNotificationMapper;
 import com.filmforest.notification.mapper.AdminNotificationPreferenceMapper;
+import com.filmforest.notification.mapper.MailOutboxMapper;
+import com.filmforest.notification.mapper.SmtpSettingMapper;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,13 +27,19 @@ public class AdminNotificationService {
 
     private final AdminNotificationMapper notificationMapper;
     private final AdminNotificationPreferenceMapper preferenceMapper;
+    private final MailOutboxMapper outboxMapper;
+    private final SmtpSettingMapper smtpSettingMapper;
     private final UserMapper userMapper;
 
     public AdminNotificationService(AdminNotificationMapper notificationMapper,
                                     AdminNotificationPreferenceMapper preferenceMapper,
+                                    MailOutboxMapper outboxMapper,
+                                    SmtpSettingMapper smtpSettingMapper,
                                     UserMapper userMapper) {
         this.notificationMapper = notificationMapper;
         this.preferenceMapper = preferenceMapper;
+        this.outboxMapper = outboxMapper;
+        this.smtpSettingMapper = smtpSettingMapper;
         this.userMapper = userMapper;
     }
 
@@ -86,10 +96,24 @@ public class AdminNotificationService {
 
     @Transactional
     public int publishToAdmins(NotificationEvent event) {
+        return publish(event, true);
+    }
+
+    @Transactional
+    public int publishStationOnlyToAdmins(NotificationEvent event) {
+        return publish(event, false);
+    }
+
+    private int publish(NotificationEvent event, boolean emailEligible) {
         List<User> admins = userMapper.selectList(new LambdaQueryWrapper<User>()
                 .eq(User::getRole, UserRole.ADMIN)
                 .eq(User::getStatus, 1)
                 .eq(User::getIsDeleted, 0));
+        SmtpSetting smtp = emailEligible ? smtpSettingMapper.selectById(1) : null;
+        boolean smtpReady = smtp != null && smtp.getEnabled() != null && smtp.getEnabled() == 1
+                && smtp.getHost() != null && smtp.getFromEmail() != null
+                && ((smtp.getUsername() == null || smtp.getUsername().isBlank())
+                || (smtp.getPasswordCiphertext() != null && smtp.getPasswordIv() != null));
         int created = 0;
         for (User admin : admins) {
             AdminNotificationPreference preference = getPreference(admin.getId());
@@ -107,12 +131,34 @@ public class AdminNotificationService {
             notification.setCreatedAt(LocalDateTime.now());
             try {
                 notificationMapper.insert(notification);
+                if (smtpReady && preference.getEmailEnabled() == 1
+                        && admin.getEmail() != null && !admin.getEmail().isBlank()) {
+                    enqueueEmail(notification, admin.getEmail());
+                }
                 created++;
             } catch (DuplicateKeyException ignored) {
                 // 同一用户、同一业务事件只创建一次通知。
             }
         }
         return created;
+    }
+
+    private void enqueueEmail(AdminNotification notification, String recipient) {
+        MailOutbox outbox = new MailOutbox();
+        outbox.setNotificationId(notification.getId());
+        outbox.setRecipient(recipient.trim());
+        outbox.setSubject("[影视森林] " + notification.getTitle());
+        outbox.setBody(notification.getMessage() + "\n\n请登录影视森林管理端查看详情。");
+        outbox.setStatus("PENDING");
+        outbox.setAttemptCount(0);
+        outbox.setNextAttemptAt(LocalDateTime.now());
+        outbox.setIdempotencyKey("notification:" + notification.getId() + ":email");
+        outbox.setCreatedAt(LocalDateTime.now());
+        try {
+            outboxMapper.insert(outbox);
+        } catch (DuplicateKeyException ignored) {
+            // 通知邮件同样遵守幂等边界。
+        }
     }
 
     private static AdminNotificationPreference defaultPreference(long userId) {
