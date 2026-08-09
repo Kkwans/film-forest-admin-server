@@ -23,7 +23,7 @@ public class VarietyServiceImpl extends ServiceImpl<VarietyMapper, Variety> impl
         wrapper.eq(year != null, Variety::getYear, year);
         if (StringUtils.isNotBlank(genre)) wrapper.like(Variety::getGenre, genre);
         if (StringUtils.isNotBlank(keyword)) wrapper.like(Variety::getTitle, keyword);
-        wrapper.orderByDesc(Variety::getCreatedAt);
+        wrapper.orderByDesc(Variety::getCreatedAt, Variety::getId);
         return page(page, wrapper);
     }
 

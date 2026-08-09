@@ -23,7 +23,7 @@ public class ShortDramaServiceImpl extends ServiceImpl<ShortDramaMapper, ShortDr
         wrapper.eq(year != null, ShortDrama::getYear, year);
         if (StringUtils.isNotBlank(genre)) wrapper.like(ShortDrama::getGenre, genre);
         if (StringUtils.isNotBlank(keyword)) wrapper.like(ShortDrama::getTitle, keyword);
-        wrapper.orderByDesc(ShortDrama::getCreatedAt);
+        wrapper.orderByDesc(ShortDrama::getCreatedAt, ShortDrama::getId);
         return page(page, wrapper);
     }
 

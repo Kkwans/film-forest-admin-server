@@ -24,7 +24,7 @@ public class AnimeServiceImpl extends ServiceImpl<AnimeMapper, Anime> implements
         wrapper.eq(year != null, Anime::getYear, year);
         if (StringUtils.isNotBlank(genre)) wrapper.like(Anime::getGenre, genre);
         if (StringUtils.isNotBlank(keyword)) wrapper.like(Anime::getTitle, keyword);
-        wrapper.orderByDesc(Anime::getCreatedAt);
+        wrapper.orderByDesc(Anime::getCreatedAt, Anime::getId);
         return page(page, wrapper);
     }
 

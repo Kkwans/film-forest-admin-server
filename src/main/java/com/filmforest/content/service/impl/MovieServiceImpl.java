@@ -27,7 +27,7 @@ public class MovieServiceImpl extends ServiceImpl<MovieMapper, Movie> implements
         if (StringUtils.isNotBlank(keyword)) {
             wrapper.like(Movie::getTitle, keyword);
         }
-        wrapper.orderByDesc(Movie::getCreatedAt);
+        wrapper.orderByDesc(Movie::getCreatedAt, Movie::getId);
         return page(page, wrapper);
     }
 

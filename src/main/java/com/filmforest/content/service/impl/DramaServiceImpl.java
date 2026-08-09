@@ -29,7 +29,7 @@ public class DramaServiceImpl extends ServiceImpl<DramaMapper, Drama> implements
         if (StringUtils.hasText(keyword)) {
             wrapper.like(Drama::getTitle, keyword);
         }
-        wrapper.orderByDesc(Drama::getCreatedAt);
+        wrapper.orderByDesc(Drama::getCreatedAt, Drama::getId);
         return page(new Page<>(pageNum, pageSize), wrapper);
     }
 
