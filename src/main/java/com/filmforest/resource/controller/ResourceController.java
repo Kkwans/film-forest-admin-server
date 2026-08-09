@@ -5,6 +5,7 @@ import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceSource;
+import com.filmforest.resource.dto.ResourcePageQuery;
 import com.filmforest.resource.service.ResourceService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,10 +29,8 @@ public class ResourceController {
 
     // ===== 在线资源 =====
     @GetMapping("/online")
-    public Result<List<ResourceOnline>> listOnline(
-            @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) Long contentId) {
-        return Result.ok(resourceService.listOnlineResources(contentType, contentId));
+    public Result<IPage<ResourceOnline>> listOnline(@Valid @ModelAttribute ResourcePageQuery query) {
+        return Result.ok(resourceService.pageOnline(query));
     }
 
     @PostMapping("/online")
@@ -47,6 +46,11 @@ public class ResourceController {
         return Result.ok(resourceService.deleteOnlineResource(id));
     }
 
+    @PostMapping("/online/{id}/toggle")
+    public Result<Boolean> toggleOnline(@PathVariable Long id, @RequestParam boolean enabled) {
+        return Result.ok(resourceService.setOnlineEnabled(id, enabled));
+    }
+
     @GetMapping("/online/stats")
     public Result<Map<String, Object>> statsOnline() {
         Map<String, Object> stats = new HashMap<>();
@@ -59,12 +63,8 @@ public class ResourceController {
     // ===== 磁力资源 =====
     @GetMapping("/magnet")
     public Result<IPage<ResourceMagnet>> listMagnet(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) Long contentId,
-            @RequestParam(required = false) String keyword) {
-        return Result.ok(resourceService.pageMagnet(page, size, contentType, contentId, keyword));
+            @Valid @ModelAttribute ResourcePageQuery query) {
+        return Result.ok(resourceService.pageMagnet(query));
     }
 
     @PostMapping("/magnet")
@@ -80,15 +80,16 @@ public class ResourceController {
         return Result.ok(resourceService.deleteMagnetResource(id));
     }
 
+    @PostMapping("/magnet/{id}/toggle")
+    public Result<Boolean> toggleMagnet(@PathVariable Long id, @RequestParam boolean enabled) {
+        return Result.ok(resourceService.setMagnetEnabled(id, enabled));
+    }
+
     // ===== 网盘资源 =====
     @GetMapping("/cloud")
     public Result<IPage<ResourceCloud>> listCloud(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String contentType,
-            @RequestParam(required = false) Long contentId,
-            @RequestParam(required = false) String keyword) {
-        return Result.ok(resourceService.pageCloud(page, size, contentType, contentId, keyword));
+            @Valid @ModelAttribute ResourcePageQuery query) {
+        return Result.ok(resourceService.pageCloud(query));
     }
 
     @PostMapping("/cloud")
@@ -102,6 +103,11 @@ public class ResourceController {
     public Result<Boolean> deleteCloud(@PathVariable Long id) {
         log.info("删除网盘资源: id={}", id);
         return Result.ok(resourceService.deleteCloudResource(id));
+    }
+
+    @PostMapping("/cloud/{id}/toggle")
+    public Result<Boolean> toggleCloud(@PathVariable Long id, @RequestParam boolean enabled) {
+        return Result.ok(resourceService.setCloudEnabled(id, enabled));
     }
 
     // ===== 资源来源 =====

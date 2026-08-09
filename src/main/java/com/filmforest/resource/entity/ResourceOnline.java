@@ -27,6 +27,7 @@ public class ResourceOnline {
     private String rawText;
     private LocalDateTime lastSeenAt;
     private LocalDateTime removedAt;
+    private Integer enabled;
 
     // 剧集信息（替代原 episode 表）
     private Integer season;          // 季，默认1

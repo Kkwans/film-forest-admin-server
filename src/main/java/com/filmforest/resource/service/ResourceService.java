@@ -4,6 +4,7 @@ import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceSource;
+import com.filmforest.resource.dto.ResourcePageQuery;
 import com.baomidou.mybatisplus.spring.service.IService;
 import java.util.List;
 
@@ -11,8 +12,10 @@ public interface ResourceService {
 
     // ===== 在线资源 =====
     List<ResourceOnline> listOnlineResources(String contentType, Long contentId);
+    com.baomidou.mybatisplus.core.metadata.IPage<ResourceOnline> pageOnline(ResourcePageQuery query);
     ResourceOnline saveOnlineResource(ResourceOnline resource);
     boolean deleteOnlineResource(Long id);
+    boolean setOnlineEnabled(Long id, boolean enabled);
     List<ResourceOnline> listOnlineByContentType(String contentType);
 
     // ===== 磁力资源 =====
@@ -20,14 +23,16 @@ public interface ResourceService {
     ResourceMagnet saveMagnetResource(ResourceMagnet resource);
     boolean deleteMagnetResource(Long id);
     List<ResourceMagnet> listMagnetByContentType(String contentType);
-    com.baomidou.mybatisplus.core.metadata.IPage<ResourceMagnet> pageMagnet(int pageNum, int pageSize, String contentType, Long contentId, String keyword);
+    com.baomidou.mybatisplus.core.metadata.IPage<ResourceMagnet> pageMagnet(ResourcePageQuery query);
+    boolean setMagnetEnabled(Long id, boolean enabled);
 
     // ===== 网盘资源 =====
     List<ResourceCloud> listCloudResources(String contentType, Long contentId);
     ResourceCloud saveCloudResource(ResourceCloud resource);
     boolean deleteCloudResource(Long id);
     List<ResourceCloud> listCloudByContentType(String contentType);
-    com.baomidou.mybatisplus.core.metadata.IPage<ResourceCloud> pageCloud(int pageNum, int pageSize, String contentType, Long contentId, String keyword);
+    com.baomidou.mybatisplus.core.metadata.IPage<ResourceCloud> pageCloud(ResourcePageQuery query);
+    boolean setCloudEnabled(Long id, boolean enabled);
 
     // ===== 资源来源 =====
     List<ResourceSource> listSources();

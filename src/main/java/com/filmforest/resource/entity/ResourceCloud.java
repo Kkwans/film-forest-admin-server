@@ -27,6 +27,7 @@ public class ResourceCloud {
     private String rawText;
     private LocalDateTime lastSeenAt;
     private LocalDateTime removedAt;
+    private Integer enabled;
 
     private String diskType;         // baidu/quark/thunder/uc/123
     private String title;            // 资源标题

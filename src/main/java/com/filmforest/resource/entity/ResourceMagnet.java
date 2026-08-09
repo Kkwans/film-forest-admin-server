@@ -27,6 +27,7 @@ public class ResourceMagnet {
     private String rawText;
     private LocalDateTime lastSeenAt;
     private LocalDateTime removedAt;
+    private Integer enabled;
 
     private String title;            // 资源标题（如"HD高清"）
 
