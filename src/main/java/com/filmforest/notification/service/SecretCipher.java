@@ -1,6 +1,7 @@
 package com.filmforest.notification.service;
 
 import com.filmforest.notification.config.SecretEncryptionProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Cipher;
@@ -17,6 +18,7 @@ public class SecretCipher {
     private final SecretEncryptionProperties properties;
     private final SecureRandom secureRandom;
 
+    @Autowired
     public SecretCipher(SecretEncryptionProperties properties) {
         this(properties, new SecureRandom());
     }
