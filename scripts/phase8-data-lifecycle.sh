@@ -154,7 +154,7 @@ mysqldump_in_container() {
     shift
     exec mysqldump "$@"
   ' phase8-dump "$password_env" --user="$username" \
-    --single-transaction --quick --routines --triggers --events --hex-blob \
+    --single-transaction --quick --no-tablespaces --skip-triggers --hex-blob \
     --set-gtid-purged=OFF --default-character-set=utf8mb4 "$database"
 }
 

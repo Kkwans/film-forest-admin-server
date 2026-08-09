@@ -23,6 +23,7 @@ class Phase8DataLifecycleScriptContractTest {
                 "safety-backup) safety_backup",
                 "PHASE8_MYSQL_PASSWORD",
                 "docker exec -i -e PHASE8_MYSQL_PASSWORD",
+                "--no-tablespaces --skip-triggers",
                 "assert_required_tables",
                 "restore-all-table-counts.tsv",
                 "all-table-counts.tsv\" \"$archive_dir/restore-all-table-counts.tsv",
@@ -35,6 +36,7 @@ class Phase8DataLifecycleScriptContractTest {
                 "COMMIT;");
         assertThat(script).doesNotContain(
                 "TRUNCATE ", "DROP TABLE", "FOREIGN_KEY_CHECKS=0",
+                "--routines", "--events",
                 "docker run", "docker rm", "docker compose");
 
         String clearScope = between(script, "readonly -a CLEAR_SCOPE_TABLES=(", ")");
