@@ -169,6 +169,18 @@ public class CrawlerJobLifecycleService {
         }
         jobMapper.updateById(job);
         scheduleMapper.recordJobFinished(job.getScheduleId(), summary.discovered());
+        eventPublisher.publishEvent(new CrawlerJobTerminalEvent(
+                job.getId(),
+                job.getScheduleId(),
+                job.getScheduleName(),
+                job.getSourceCode(),
+                job.getContentType(),
+                terminal,
+                job.getRetryOfJobId(),
+                summary.discovered(),
+                summary.added(),
+                summary.updated(),
+                summary.failed()));
     }
 
     private CrawlerStatus terminalStatus(CrawlExecutionSummary summary, boolean cancellationRequested,

@@ -195,6 +195,11 @@ class CrawlerJobLifecycleServiceTest {
         assertThat(captor.getValue().getItemsAdded()).isEqualTo(2);
         assertThat(captor.getValue().getDurationMs()).isPositive();
         verify(scheduleMapper).recordJobFinished(1L, 5);
+        ArgumentCaptor<CrawlerJobTerminalEvent> eventCaptor =
+                ArgumentCaptor.forClass(CrawlerJobTerminalEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().status()).isEqualTo(CrawlerStatus.PARTIAL_SUCCESS);
+        assertThat(eventCaptor.getValue().failed()).isEqualTo(1);
     }
 
     @Test
