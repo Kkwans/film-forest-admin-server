@@ -5,19 +5,23 @@ import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
+import com.filmforest.system.service.DefaultUserListProvisioner;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class UserAdminControllerTest {
 
     private final UserMapper userMapper = mock(UserMapper.class);
     private final PasswordService passwordService = mock(PasswordService.class);
-    private final UserAdminController controller = new UserAdminController(userMapper, passwordService);
+    private final DefaultUserListProvisioner defaultListProvisioner = mock(DefaultUserListProvisioner.class);
+    private final UserAdminController controller = new UserAdminController(
+            userMapper, passwordService, defaultListProvisioner);
 
     @Test
     void createsUserWithTemporaryBcryptPassword() {
@@ -32,6 +36,7 @@ class UserAdminControllerTest {
         assertThat(user.getRole()).isEqualTo(UserRole.USER);
         assertThat(user.getPasswordAlgorithm()).isEqualTo(PasswordAlgorithm.BCRYPT);
         assertThat(user.getMustChangePassword()).isTrue();
+        verify(defaultListProvisioner).createFor(user.getId());
     }
 
     @Test

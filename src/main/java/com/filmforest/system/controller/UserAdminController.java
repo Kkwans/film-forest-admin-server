@@ -8,6 +8,7 @@ import com.filmforest.content.entity.PasswordAlgorithm;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
+import com.filmforest.system.service.DefaultUserListProvisioner;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -15,6 +16,7 @@ import jakarta.validation.constraints.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Objects;
 
@@ -29,10 +31,13 @@ public class UserAdminController {
 
     private final UserMapper userMapper;
     private final PasswordService passwordService;
+    private final DefaultUserListProvisioner defaultListProvisioner;
 
-    public UserAdminController(UserMapper userMapper, PasswordService passwordService) {
+    public UserAdminController(UserMapper userMapper, PasswordService passwordService,
+                               DefaultUserListProvisioner defaultListProvisioner) {
         this.userMapper = userMapper;
         this.passwordService = passwordService;
+        this.defaultListProvisioner = defaultListProvisioner;
     }
 
     /** 分页查询用户列表 */
@@ -76,6 +81,7 @@ public class UserAdminController {
 
     /** 创建用户 */
     @PostMapping
+    @Transactional(rollbackFor = Exception.class)
     public Result<User> create(@Valid @RequestBody CreateUserRequest req) {
         // 检查用户名唯一
         Long count = userMapper.selectCount(
@@ -94,6 +100,7 @@ public class UserAdminController {
         user.setStatus(req.getStatus() != null ? req.getStatus() : 1);
         user.setRole(UserRole.USER);
         userMapper.insert(user);
+        defaultListProvisioner.createFor(user.getId());
 
         user.setPasswordHash(null);
         log.info("创建用户: id={}, username={}", user.getId(), user.getUsername());
