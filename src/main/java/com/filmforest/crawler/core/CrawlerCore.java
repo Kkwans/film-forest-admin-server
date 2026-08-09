@@ -11,6 +11,7 @@ import com.filmforest.crawler.http.FetchCategory;
 import com.filmforest.crawler.http.FetchResult;
 import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import com.filmforest.crawler.model.CrawlerCheckpoint;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
@@ -83,8 +84,9 @@ public class CrawlerCore {
                 schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode());
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(job.getCrawlMode() == null
                 ? schedule.getCrawlMode() : job.getCrawlMode());
-        int startPage = crawlMode == CrawlerCrawlMode.FULL && job.getCurrentPage() != null
-                ? Math.max(1, job.getCurrentPage()) : 1;
+        CrawlerCheckpoint checkpoint = crawlMode == CrawlerCrawlMode.FULL
+                ? readCheckpoint(job) : CrawlerCheckpoint.atPage(1);
+        int startPage = checkpoint.nextPage();
         int maxItems = crawlMode == CrawlerCrawlMode.FULL ? Integer.MAX_VALUE
                 : schedule.getBatchSize() == null ? 20 : Math.max(1, schedule.getBatchSize());
         int rateLimitMs = schedule.getRateLimitMs() == null
@@ -94,7 +96,7 @@ public class CrawlerCore {
         executingJobId.set(logId);
         try {
             return crawl(scheduleId, adapter, contentType, crawlMode, startPage, maxItems,
-                    rateLimitMs, genreFilter, cancellation);
+                    rateLimitMs, genreFilter, checkpoint, cancellation);
         } finally {
             executingJobId.remove();
         }
@@ -103,7 +105,8 @@ public class CrawlerCore {
     private CrawlExecutionSummary crawl(Long scheduleId, CrawlerSourceAdapter adapter,
                                         ContentType contentType, CrawlerCrawlMode crawlMode,
                                         int startPage, int maxItems, int rateLimitMs,
-                                        Set<String> genreFilter, AtomicBoolean cancellation) {
+                                        Set<String> genreFilter, CrawlerCheckpoint resumeCheckpoint,
+                                        AtomicBoolean cancellation) {
         MutableStats stats = new MutableStats();
         int page = startPage;
         int consecutiveStructureFailures = 0;
@@ -112,6 +115,8 @@ public class CrawlerCore {
                 executionProperties.getLatestConsecutiveUnchanged());
         int latestRecentPages = Math.max(1, executionProperties.getLatestRecentPages());
         boolean latestBoundaryReached = false;
+        CrawlerCheckpoint checkpoint = resumeCheckpoint;
+        String lastCommittedExternalId = checkpoint.lastCommittedExternalId();
         while (stats.discovered < maxItems && !isCancellationRequested(cancellation)) {
             URI listUri = adapter.listUri(contentType, page);
             FetchResult listFetch = httpFetcher.fetch(listUri, Map.of(), rateLimitMs, cancellation);
@@ -127,7 +132,10 @@ public class CrawlerCore {
             }
 
             boolean pageCompleted = true;
-            for (SourceListItem item : items) {
+            int firstItemIndex = page == checkpoint.nextPage()
+                    ? checkpoint.resumeItemIndex(items) : 0;
+            for (int itemIndex = firstItemIndex; itemIndex < items.size(); itemIndex++) {
+                SourceListItem item = items.get(itemIndex);
                 if (stats.discovered >= maxItems || isCancellationRequested(cancellation)) {
                     pageCompleted = false;
                     break;
@@ -135,13 +143,16 @@ public class CrawlerCore {
                 CrawlerSourceItemService.Observation observation = sourceItemService.observeListItem(
                         adapter.sourceCode(), contentType, item);
                 stats.discovered++;
-                recordProgress(page, item.sourceUrl(), stats);
+                CrawlerCheckpoint beforeItem = CrawlerCheckpoint.beforeItem(page, itemIndex,
+                        item.externalId(), lastCommittedExternalId);
+                recordProgress(beforeItem, item.sourceUrl(), stats);
                 ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
                         genreFilter, cancellation, stats, observation,
                         crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
                 if (result.outcome() == ItemOutcome.STRUCTURE_FAILURE) {
                     consecutiveStructureFailures++;
                     if (consecutiveStructureFailures >= STRUCTURE_FAILURE_THRESHOLD) {
+                        recordProgress(beforeItem, item.sourceUrl(), stats);
                         throw new CrawlerSourceStructureException(adapter.sourceCode(),
                                 consecutiveStructureFailures, result.diagnostic());
                     }
@@ -150,8 +161,18 @@ public class CrawlerCore {
                         || result.outcome() == ItemOutcome.FILTERED) {
                     consecutiveStructureFailures = 0;
                 }
+                if (result.outcome() == ItemOutcome.CANCELLED) {
+                    pageCompleted = false;
+                    checkpoint = beforeItem;
+                    recordProgress(checkpoint, item.sourceUrl(), stats);
+                    break;
+                }
+                if (isCommitted(result.outcome())) {
+                    lastCommittedExternalId = item.externalId();
+                }
+                checkpoint = checkpointAfter(items, page, itemIndex, lastCommittedExternalId);
                 consecutiveOldItems = result.oldItem() ? consecutiveOldItems + 1 : 0;
-                recordProgress(page, item.sourceUrl(), stats);
+                recordProgress(checkpoint, nextItemUrl(items, itemIndex), stats);
                 if (crawlMode == CrawlerCrawlMode.LATEST && page >= latestRecentPages
                         && consecutiveOldItems >= latestStopThreshold) {
                     pageCompleted = false;
@@ -159,7 +180,11 @@ public class CrawlerCore {
                     break;
                 }
             }
-            recordProgress(pageCompleted ? page + 1 : page, null, stats);
+            if (pageCompleted) {
+                checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION,
+                        page + 1, 0, null, lastCommittedExternalId);
+                recordProgress(checkpoint, null, stats);
+            }
             if (!pageCompleted) {
                 break;
             }
@@ -170,7 +195,7 @@ public class CrawlerCore {
                     scheduleId, page, consecutiveOldItems);
         }
         if (isCancellationRequested(cancellation)) {
-            recordProgress(page, null, stats);
+            recordProgress(checkpoint, null, stats);
         }
         return stats.toSummary();
     }
@@ -289,19 +314,55 @@ public class CrawlerCore {
         }
     }
 
-    private void recordProgress(int currentPage, String currentItem, MutableStats stats) {
+    private void recordProgress(CrawlerCheckpoint checkpoint, String currentItem, MutableStats stats) {
         Long jobId = executingJobId.get();
         if (jobId == null) return;
         try {
-            String checkpoint = objectMapper.writeValueAsString(Map.of("nextPage", currentPage));
-            taskLogMapper.updateProgress(jobId, currentPage, currentItem,
+            String checkpointJson = objectMapper.writeValueAsString(checkpoint);
+            taskLogMapper.updateProgress(jobId, checkpoint.nextPage(), currentItem,
                     stats.discovered, stats.fetchSucceeded, stats.parseSucceeded,
                     stats.added, stats.updated, stats.unchanged, stats.filtered, stats.failed,
-                    checkpoint, CrawlerTime.nowUtc());
+                    checkpointJson, CrawlerTime.nowUtc());
         } catch (Exception error) {
             log.warn("Failed to update crawler progress: jobId={}, error={}",
                     jobId, error.getClass().getSimpleName());
         }
+    }
+
+    private CrawlerCheckpoint readCheckpoint(CrawlerTaskLog job) {
+        int fallbackPage = job.getCurrentPage() == null ? 1 : Math.max(1, job.getCurrentPage());
+        if (job.getCheckpoint() == null || job.getCheckpoint().isBlank()) {
+            return CrawlerCheckpoint.atPage(fallbackPage);
+        }
+        try {
+            return objectMapper.readValue(job.getCheckpoint(), CrawlerCheckpoint.class)
+                    .normalized(fallbackPage);
+        } catch (Exception invalidCheckpoint) {
+            log.warn("Ignoring invalid crawler checkpoint: jobId={}, error={}",
+                    job.getId(), invalidCheckpoint.getClass().getSimpleName());
+            return CrawlerCheckpoint.atPage(fallbackPage);
+        }
+    }
+
+    private static CrawlerCheckpoint checkpointAfter(List<SourceListItem> items, int page,
+                                                      int itemIndex, String lastCommittedExternalId) {
+        int nextIndex = itemIndex + 1;
+        if (nextIndex < items.size()) {
+            return new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page, nextIndex,
+                    items.get(nextIndex).externalId(), lastCommittedExternalId);
+        }
+        return new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page + 1, 0,
+                null, lastCommittedExternalId);
+    }
+
+    private static String nextItemUrl(List<SourceListItem> items, int itemIndex) {
+        int nextIndex = itemIndex + 1;
+        return nextIndex < items.size() ? items.get(nextIndex).sourceUrl() : null;
+    }
+
+    private static boolean isCommitted(ItemOutcome outcome) {
+        return outcome == ItemOutcome.SUCCESS || outcome == ItemOutcome.UNCHANGED
+                || outcome == ItemOutcome.FILTERED;
     }
 
     private Set<String> parseGenreFilter(String value) {

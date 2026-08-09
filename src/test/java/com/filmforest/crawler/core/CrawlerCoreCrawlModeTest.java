@@ -11,6 +11,7 @@ import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
+import com.filmforest.crawler.model.CrawlerCheckpoint;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
@@ -36,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -155,6 +157,72 @@ class CrawlerCoreCrawlModeTest {
         verify(adapter).listUri(ContentType.MOVIE, 7);
     }
 
+    @Test
+    void fullResumeUsesNextExternalIdInsteadOfReplayingCompletedPagePrefix() throws Exception {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(1);
+        schedule.setCrawlMode("full");
+        CrawlerTaskLog job = job("full", 7);
+        job.setCheckpoint(new ObjectMapper().writeValueAsString(
+                new CrawlerCheckpoint(1, 7, 1, "b", "a")));
+        URI listSeven = URI.create("https://source.test/list/7");
+        URI listEight = URI.create("https://source.test/list/8");
+        SourceListItem itemA = item("a");
+        SourceListItem itemB = item("b");
+        SourceListItem itemC = item("c");
+        ParsedContent parsedB = parsed(URI.create(itemB.sourceUrl()), "b");
+        ParsedContent parsedC = parsed(URI.create(itemC.sourceUrl()), "c");
+        prepare(schedule, job, cancellation);
+        when(adapter.listUri(ContentType.MOVIE, 7)).thenReturn(listSeven);
+        when(adapter.listUri(ContentType.MOVIE, 8)).thenReturn(listEight);
+        when(fetcher.fetch(eq(listSeven), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listSeven, "page-seven"));
+        when(fetcher.fetch(eq(listEight), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listEight, "empty"));
+        when(adapter.parseList("page-seven", listSeven)).thenReturn(List.of(itemA, itemB, itemC));
+        when(adapter.parseList("empty", listEight)).thenReturn(List.of());
+        when(sourceItems.observeListItem(eq("pkmp4"), eq(ContentType.MOVIE), any()))
+                .thenReturn(new CrawlerSourceItemService.Observation(
+                        1L, false, true, null, null, "discovered"));
+        when(fetcher.fetch(eq(URI.create(itemB.sourceUrl())), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(URI.create(itemB.sourceUrl()), "detail-b"));
+        when(fetcher.fetch(eq(URI.create(itemC.sourceUrl())), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(URI.create(itemC.sourceUrl()), "detail-c"));
+        when(adapter.parseDetail(ContentType.MOVIE, "detail-b", URI.create(itemB.sourceUrl())))
+                .thenReturn(parsedB);
+        when(adapter.parseDetail(ContentType.MOVIE, "detail-c", URI.create(itemC.sourceUrl())))
+                .thenReturn(parsedC);
+        when(persistence.persist(eq("pkmp4"), eq(parsedB), any(), any()))
+                .thenReturn(persisted(101L, "key-b"));
+        when(persistence.persist(eq("pkmp4"), eq(parsedC), any(), any()))
+                .thenReturn(persisted(102L, "key-c"));
+
+        var summary = crawler.executeCrawl(1L, 9L, cancellation);
+
+        assertThat(summary.discovered()).isEqualTo(2);
+        assertThat(summary.added()).isEqualTo(2);
+        verify(fetcher, never()).fetch(eq(URI.create(itemA.sourceUrl())),
+                anyMap(), anyInt(), same(cancellation));
+        List<String> checkpoints = mockingDetails(jobs).getInvocations().stream()
+                .filter(invocation -> invocation.getMethod().getName().equals("updateProgress"))
+                .map(invocation -> (String) invocation.getArgument(11))
+                .toList();
+        assertThat(checkpoints).isNotEmpty();
+        CrawlerCheckpoint last = new ObjectMapper().readValue(
+                checkpoints.get(checkpoints.size() - 1), CrawlerCheckpoint.class);
+        assertThat(last.nextPage()).isEqualTo(8);
+        assertThat(last.nextItemIndex()).isZero();
+        assertThat(last.lastCommittedExternalId()).isEqualTo("c");
+        assertThat(checkpoints).anySatisfy(json -> {
+            try {
+                assertThat(new ObjectMapper().readValue(json, CrawlerCheckpoint.class)
+                        .nextExternalId()).isEqualTo("b");
+            } catch (Exception error) {
+                throw new AssertionError(error);
+            }
+        });
+    }
+
     private void prepare(CrawlerSchedule schedule, CrawlerTaskLog job,
                          AtomicBoolean cancellation) {
         when(schedules.getSchedule(1L)).thenReturn(schedule);
@@ -192,6 +260,19 @@ class CrawlerCoreCrawlModeTest {
                 2026, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
                 null, null, null, List.of(), null, null, null, "", null, List.of(),
                 new ParseDiagnostics(List.of("h1"), List.of(), List.of(), "page", Map.of()));
+    }
+
+    private static SourceListItem item(String externalId) {
+        return new SourceListItem(externalId,
+                "https://source.test/mv/" + externalId + ".html", "Title " + externalId,
+                null, 0);
+    }
+
+    private static CrawlerContentPersistence.PersistResult persisted(long contentId,
+                                                                      String canonicalKey) {
+        return new CrawlerContentPersistence.PersistResult(contentId, canonicalKey,
+                true, false, false,
+                new CrawlerResourceDiffService.ResourceDiffResult(0, 0, 0, 0, false));
     }
 
     private static FetchResult success(URI uri, String body) {
