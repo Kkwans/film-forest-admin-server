@@ -83,6 +83,7 @@ app:
       queue-capacity: ${FILM_FOREST_CRAWLER_QUEUE_CAPACITY:4}
       heartbeat-interval-ms: ${FILM_FOREST_CRAWLER_HEARTBEAT_INTERVAL_MS:15000}
       stale-heartbeat-ms: ${FILM_FOREST_CRAWLER_STALE_HEARTBEAT_MS:120000}
+      stalled-progress-ms: ${FILM_FOREST_CRAWLER_STALLED_PROGRESS_MS:300000}
       recovery-interval-ms: ${FILM_FOREST_CRAWLER_RECOVERY_INTERVAL_MS:60000}
       queue-dispatch-interval-ms: ${FILM_FOREST_CRAWLER_QUEUE_DISPATCH_INTERVAL_MS:5000}
       latest-consecutive-unchanged: ${FILM_FOREST_CRAWLER_LATEST_UNCHANGED_STOP:20}

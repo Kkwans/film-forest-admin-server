@@ -13,6 +13,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -60,10 +61,49 @@ public class CrawlerJobMaintenance {
     @Scheduled(fixedDelayString = "${app.crawler.execution.recovery-interval-ms:60000}")
     public void recoverStaleJobs() {
         LocalDateTime now = CrawlerTime.nowUtc();
-        LocalDateTime staleBefore = now.minusNanos(Math.max(1, properties.getStaleHeartbeatMs()) * 1_000_000);
-        int interrupted = jobMapper.interruptStaleJobs(staleBefore, now);
-        if (interrupted > 0) {
-            log.warn("已将 {} 个心跳过期的爬虫 Job 标记为 interrupted", interrupted);
+        LocalDateTime heartbeatBefore = now.minusNanos(
+                Math.max(1, properties.getStaleHeartbeatMs()) * 1_000_000);
+        LocalDateTime progressBefore = now.minusNanos(
+                Math.max(1, properties.getStalledProgressMs()) * 1_000_000);
+        Set<Long> runningJobIds = coordinator.runningJobIds();
+        int heartbeatExpired = interruptHeartbeatExpiredJobs(
+                heartbeatBefore, now, runningJobIds);
+        int progressStalled = cancelProgressStalledJobs(progressBefore, runningJobIds);
+        if (heartbeatExpired > 0) {
+            log.warn("已将 {} 个心跳过期的爬虫 Job 标记为 interrupted", heartbeatExpired);
+        }
+        if (progressStalled > 0) {
+            log.warn("已请求取消 {} 个进度停滞的爬虫 Job", progressStalled);
+        }
+    }
+
+    private int interruptHeartbeatExpiredJobs(LocalDateTime staleBefore, LocalDateTime now,
+                                              Set<Long> runningJobIds) {
+        int interrupted = 0;
+        for (Long jobId : jobMapper.selectHeartbeatExpiredJobIds(staleBefore)) {
+            if (jobMapper.interruptHeartbeatExpiredJob(jobId, staleBefore, now) == 1) {
+                interrupted++;
+                signalRunningWorker(jobId, runningJobIds);
+            }
+        }
+        return interrupted;
+    }
+
+    private int cancelProgressStalledJobs(LocalDateTime stalledBefore,
+                                          Set<Long> runningJobIds) {
+        int cancellationRequested = 0;
+        for (Long jobId : jobMapper.selectProgressStalledJobIds(stalledBefore)) {
+            if (jobMapper.requestProgressStalledCancellation(jobId, stalledBefore) == 1) {
+                cancellationRequested++;
+                signalRunningWorker(jobId, runningJobIds);
+            }
+        }
+        return cancellationRequested;
+    }
+
+    private void signalRunningWorker(Long jobId, Set<Long> runningJobIds) {
+        if (runningJobIds.contains(jobId)) {
+            coordinator.requestCancellation(jobId);
         }
     }
 }

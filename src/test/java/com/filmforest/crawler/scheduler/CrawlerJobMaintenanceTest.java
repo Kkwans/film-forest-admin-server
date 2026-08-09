@@ -34,6 +34,7 @@ class CrawlerJobMaintenanceTest {
     void setUp() {
         CrawlerExecutionProperties properties = new CrawlerExecutionProperties();
         properties.setStaleHeartbeatMs(120_000);
+        properties.setStalledProgressMs(300_000);
         maintenance = new CrawlerJobMaintenance(jobMapper, coordinator, dispatcher, properties);
     }
 
@@ -49,14 +50,25 @@ class CrawlerJobMaintenanceTest {
     }
 
     @Test
-    @DisplayName("心跳过期的 running/cancel_requested Job 会迁移为 interrupted")
-    void recoverStaleJobs_shouldInterruptExpiredJobs() {
-        when(jobMapper.interruptStaleJobs(any(LocalDateTime.class), any(LocalDateTime.class)))
-                .thenReturn(2);
+    @DisplayName("心跳过期 Job 中断，进度停滞 Job 安全请求取消")
+    void recoverStaleJobs_shouldInterruptExpiredAndStalledJobs() {
+        when(coordinator.runningJobIds()).thenReturn(Set.of(32L));
+        when(jobMapper.selectHeartbeatExpiredJobIds(any(LocalDateTime.class)))
+                .thenReturn(List.of(31L));
+        when(jobMapper.interruptHeartbeatExpiredJob(eq(31L), any(LocalDateTime.class),
+                any(LocalDateTime.class))).thenReturn(1);
+        when(jobMapper.selectProgressStalledJobIds(any(LocalDateTime.class)))
+                .thenReturn(List.of(32L));
+        when(jobMapper.requestProgressStalledCancellation(eq(32L), any(LocalDateTime.class)))
+                .thenReturn(1);
 
         maintenance.recoverStaleJobs();
 
-        verify(jobMapper).interruptStaleJobs(any(LocalDateTime.class), any(LocalDateTime.class));
+        verify(jobMapper).interruptHeartbeatExpiredJob(eq(31L), any(LocalDateTime.class),
+                any(LocalDateTime.class));
+        verify(jobMapper).requestProgressStalledCancellation(eq(32L), any(LocalDateTime.class));
+        verify(coordinator).requestCancellation(32L);
+        verify(coordinator, never()).requestCancellation(31L);
     }
 
     @Test

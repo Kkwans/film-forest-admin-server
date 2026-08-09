@@ -91,10 +91,18 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
 
     @Update("""
             UPDATE crawler_task_log
-            SET heartbeat_at = #{now}, progress_updated_at = #{now}
+            SET heartbeat_at = #{now}
             WHERE id = #{jobId} AND status IN ('running', 'cancel_requested')
             """)
     int touchHeartbeat(@Param("jobId") Long jobId, @Param("now") LocalDateTime now);
+
+    @Select("""
+            SELECT id FROM crawler_task_log
+            WHERE status IN ('running', 'cancel_requested')
+              AND (heartbeat_at IS NULL OR heartbeat_at < #{staleBefore})
+            ORDER BY id ASC
+            """)
+    List<Long> selectHeartbeatExpiredJobIds(@Param("staleBefore") LocalDateTime staleBefore);
 
     @Update("""
             UPDATE crawler_task_log
@@ -105,11 +113,35 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                 END,
                 error_summary = COALESCE(error_summary, 'Job heartbeat expired'),
                 error_message = COALESCE(error_message, 'Job heartbeat expired')
-            WHERE status IN ('running', 'cancel_requested')
+            WHERE id = #{jobId}
+              AND status IN ('running', 'cancel_requested')
               AND (heartbeat_at IS NULL OR heartbeat_at < #{staleBefore})
             """)
-    int interruptStaleJobs(@Param("staleBefore") LocalDateTime staleBefore,
-                           @Param("now") LocalDateTime now);
+    int interruptHeartbeatExpiredJob(@Param("jobId") Long jobId,
+                                     @Param("staleBefore") LocalDateTime staleBefore,
+                                     @Param("now") LocalDateTime now);
+
+    @Select("""
+            SELECT id FROM crawler_task_log
+            WHERE status = 'running'
+              AND cancel_requested = 0
+              AND (progress_updated_at IS NULL OR progress_updated_at < #{stalledBefore})
+            ORDER BY id ASC
+            """)
+    List<Long> selectProgressStalledJobIds(@Param("stalledBefore") LocalDateTime stalledBefore);
+
+    @Update("""
+            UPDATE crawler_task_log
+            SET status = 'cancel_requested', cancel_requested = 1,
+                error_summary = COALESCE(error_summary, 'Job progress stalled'),
+                error_message = COALESCE(error_message, 'Job progress stalled')
+            WHERE id = #{jobId}
+              AND status = 'running'
+              AND cancel_requested = 0
+              AND (progress_updated_at IS NULL OR progress_updated_at < #{stalledBefore})
+            """)
+    int requestProgressStalledCancellation(@Param("jobId") Long jobId,
+                                           @Param("stalledBefore") LocalDateTime stalledBefore);
 
     @Select("""
             SELECT * FROM crawler_task_log
