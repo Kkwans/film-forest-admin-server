@@ -26,8 +26,8 @@ class TagMappingContractTest {
         TableInfo tableInfo = TableInfoHelper.getTableInfo(Tag.class);
 
         assertThat(tableInfo.getAllSqlSelect())
-                .contains("is_system AS system_flag")
-                .doesNotContain("is_system AS system,");
+                .contains("is_system AS systemFlag")
+                .doesNotContain("is_system AS system,", "is_system AS system ");
     }
 
     @Test
