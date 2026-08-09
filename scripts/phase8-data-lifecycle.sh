@@ -49,7 +49,8 @@ usage() {
     '生产连接（容器模式）：' \
     '  FILM_FOREST_MYSQL_CONTAINER  MySQL 容器名' \
     '  FILM_FOREST_DB_USERNAME      默认 root' \
-    '  FILM_FOREST_CONTAINER_PASSWORD_ENV  默认 MYSQL_ROOT_PASSWORD' \
+    '  FILM_FOREST_DB_PASSWORD      优先使用；仅通过 docker exec 环境传递' \
+    '  FILM_FOREST_CONTAINER_PASSWORD_ENV  未提供上项时回退，默认 MYSQL_ROOT_PASSWORD' \
     '' \
     'backup：' \
     '  FILM_FOREST_ARCHIVE_DIR      必须位于 deploy/archives/phase8 下' \
@@ -105,8 +106,10 @@ mysql_in_container() {
   validate_identifier "$database"
   validate_identifier "$username"
   validate_identifier "$password_env"
-  docker exec -i "$container" sh -c '
-    password_value=$(printenv "$1")
+  PHASE8_MYSQL_PASSWORD="${FILM_FOREST_DB_PASSWORD:-}" \
+  docker exec -i -e PHASE8_MYSQL_PASSWORD "$container" sh -c '
+    password_value=$(printenv PHASE8_MYSQL_PASSWORD)
+    [ -n "$password_value" ] || password_value=$(printenv "$1")
     [ -n "$password_value" ] || { echo "容器密码环境变量为空" >&2; exit 64; }
     export MYSQL_PWD="$password_value"
     shift
@@ -122,8 +125,10 @@ mysql_admin_in_container() {
   validate_identifier "$container"
   validate_identifier "$username"
   validate_identifier "$password_env"
-  docker exec -i "$container" sh -c '
-    password_value=$(printenv "$1")
+  PHASE8_MYSQL_PASSWORD="${FILM_FOREST_DB_PASSWORD:-}" \
+  docker exec -i -e PHASE8_MYSQL_PASSWORD "$container" sh -c '
+    password_value=$(printenv PHASE8_MYSQL_PASSWORD)
+    [ -n "$password_value" ] || password_value=$(printenv "$1")
     [ -n "$password_value" ] || { echo "容器密码环境变量为空" >&2; exit 64; }
     export MYSQL_PWD="$password_value"
     shift
@@ -140,8 +145,10 @@ mysqldump_in_container() {
   validate_identifier "$database"
   validate_identifier "$username"
   validate_identifier "$password_env"
-  docker exec -i "$container" sh -c '
-    password_value=$(printenv "$1")
+  PHASE8_MYSQL_PASSWORD="${FILM_FOREST_DB_PASSWORD:-}" \
+  docker exec -i -e PHASE8_MYSQL_PASSWORD "$container" sh -c '
+    password_value=$(printenv PHASE8_MYSQL_PASSWORD)
+    [ -n "$password_value" ] || password_value=$(printenv "$1")
     [ -n "$password_value" ] || { echo "容器密码环境变量为空" >&2; exit 64; }
     export MYSQL_PWD="$password_value"
     shift
