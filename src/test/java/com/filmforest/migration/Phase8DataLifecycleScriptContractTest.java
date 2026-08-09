@@ -38,7 +38,8 @@ class Phase8DataLifecycleScriptContractTest {
                 "movie", "drama", "variety", "anime", "short_drama",
                 "content_poster_match", "content_tag", "user_movie_list_item",
                 "resource_online", "resource_magnet", "resource_cloud",
-                "crawler_schedule", "crawler_task_log", "crawler_source_item");
+                "crawler_schedule", "crawler_task_log", "crawler_source_item",
+                "crawler_content_identity");
         assertThat(clearScope).doesNotContain(
                 "system_setting", "resource_source", "user_poster_setting", "user_movie_list\n");
 

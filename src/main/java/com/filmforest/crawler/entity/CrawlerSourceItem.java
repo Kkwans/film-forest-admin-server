@@ -18,6 +18,7 @@ public class CrawlerSourceItem {
     private String externalId;
     private String sourceUrl;
     private Long internalContentId;
+    private String canonicalKey;
     private String listFingerprint;
     private String detailFingerprint;
     private LocalDateTime firstSeenAt;

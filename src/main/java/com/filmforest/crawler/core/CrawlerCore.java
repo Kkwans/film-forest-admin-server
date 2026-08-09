@@ -249,7 +249,9 @@ public class CrawlerCore {
         if (detailUnchanged && "parsed".equals(observation.previousParseStatus())
                 && observation.internalContentId() != null) {
             sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
-                    observation.internalContentId(), detailFingerprint);
+                    observation.internalContentId(),
+                    SourceFingerprint.forCanonicalContent(contentType, parsed.title(), parsed.year()),
+                    detailFingerprint);
             stats.unchanged++;
             return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
         }
@@ -261,11 +263,14 @@ public class CrawlerCore {
         }
         try {
             CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
-                    adapter.sourceCode(), parsed, resolvedGenres);
+                    adapter.sourceCode(), parsed, resolvedGenres, observation.internalContentId());
             long internalContentId = persisted.contentId() > 0
                     ? persisted.contentId() : Long.parseLong(parsed.externalId());
+            String canonicalKey = persisted.canonicalKey() == null
+                    ? SourceFingerprint.forCanonicalContent(contentType, parsed.title(), parsed.year())
+                    : persisted.canonicalKey();
             sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
-                    internalContentId, detailFingerprint);
+                    internalContentId, canonicalKey, detailFingerprint);
             if (persisted.added()) stats.added++;
             if (persisted.updated()) stats.updated++;
             if (persisted.unchanged()) stats.unchanged++;

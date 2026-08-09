@@ -13,6 +13,7 @@ import com.filmforest.content.service.MovieService;
 import com.filmforest.content.service.ShortDramaService;
 import com.filmforest.content.service.VarietyService;
 import com.filmforest.crawler.model.ParsedContent;
+import com.filmforest.crawler.service.CrawlerContentIdentityService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ public class CrawlerContentPersistence {
     private final ShortDramaService shortDramaService;
     private final CrawlerResourceDiffService resourceDiffService;
     private final CrawlerGenreService genreService;
+    private final CrawlerContentIdentityService identityService;
     private final ObjectMapper objectMapper;
 
     public CrawlerContentPersistence(MovieService movieService, DramaService dramaService,
@@ -36,6 +38,7 @@ public class CrawlerContentPersistence {
                                      ShortDramaService shortDramaService,
                                      CrawlerResourceDiffService resourceDiffService,
                                      CrawlerGenreService genreService,
+                                     CrawlerContentIdentityService identityService,
                                      ObjectMapper objectMapper) {
         this.movieService = movieService;
         this.dramaService = dramaService;
@@ -44,19 +47,23 @@ public class CrawlerContentPersistence {
         this.shortDramaService = shortDramaService;
         this.resourceDiffService = resourceDiffService;
         this.genreService = genreService;
+        this.identityService = identityService;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public PersistResult persist(String sourceCode, ParsedContent parsed) {
         return persist(sourceCode, parsed,
-                genreService.resolve(sourceCode, parsed.contentType(), parsed.genres()));
+                genreService.resolve(sourceCode, parsed.contentType(), parsed.genres()), null);
     }
 
     @Transactional
     public PersistResult persist(String sourceCode, ParsedContent parsed,
-                                 CrawlerGenreService.ResolvedGenres genres) {
-        long contentId = numericExternalId(parsed.externalId());
+                                 CrawlerGenreService.ResolvedGenres genres,
+                                 Long knownInternalContentId) {
+        CrawlerContentIdentityService.Identity identity = identityService.resolve(
+                parsed, knownInternalContentId);
+        long contentId = identity.contentId();
         boolean isNew = switch (parsed.contentType()) {
             case MOVIE -> persistMovie(contentId, parsed, genres.names());
             case DRAMA -> persistDrama(contentId, parsed, genres.names());
@@ -67,7 +74,7 @@ public class CrawlerContentPersistence {
         genreService.replaceContentGenres(contentId, parsed.contentType(), genres);
         CrawlerResourceDiffService.ResourceDiffResult resourceDiff = resourceDiffService.apply(
                 sourceCode, parsed.contentType().value(), contentId, parsed.resources());
-        return new PersistResult(contentId, isNew, !isNew, false, resourceDiff);
+        return new PersistResult(contentId, identity.canonicalKey(), isNew, !isNew, false, resourceDiff);
     }
 
     private boolean persistMovie(long id, ParsedContent parsed, List<String> genres) {
@@ -207,14 +214,6 @@ public class CrawlerContentPersistence {
         }
     }
 
-    private static long numericExternalId(String externalId) {
-        try {
-            return Long.parseLong(externalId);
-        } catch (NumberFormatException invalid) {
-            throw new IllegalArgumentException("Source external ID is not numeric: " + externalId, invalid);
-        }
-    }
-
     private static String firstNonBlank(String value) {
         return value == null || value.isBlank() ? null : value;
     }
@@ -239,10 +238,11 @@ public class CrawlerContentPersistence {
         if (isNew) service.save(entity); else service.updateById(entity);
     }
 
-    public record PersistResult(long contentId, boolean added, boolean updated, boolean unchanged,
+    public record PersistResult(long contentId, String canonicalKey,
+                                boolean added, boolean updated, boolean unchanged,
                                 CrawlerResourceDiffService.ResourceDiffResult resourceDiff) {
         public PersistResult(boolean added, boolean updated, boolean unchanged) {
-            this(-1L, added, updated, unchanged,
+            this(-1L, null, added, updated, unchanged,
                     new CrawlerResourceDiffService.ResourceDiffResult(0, 0, 0, 0, false));
         }
     }

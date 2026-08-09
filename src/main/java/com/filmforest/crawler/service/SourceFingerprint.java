@@ -1,5 +1,6 @@
 package com.filmforest.crawler.service;
 
+import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.ParsedResource;
 import com.filmforest.crawler.model.SourceListItem;
@@ -9,10 +10,17 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.text.Normalizer;
 import java.time.temporal.TemporalAccessor;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 public final class SourceFingerprint {
+
+    private static final Pattern TRAILING_YEAR = Pattern.compile(
+            "[\\s\\[【(（]*(?:19|20)\\d{2}[\\s\\]】)）]*$");
+    private static final Pattern TITLE_SEPARATORS = Pattern.compile("[\\p{P}\\p{S}\\s]+");
 
     private SourceFingerprint() {
     }
@@ -68,6 +76,31 @@ public final class SourceFingerprint {
             digest.add(resource.rawText());
         }
         return digest.hex();
+    }
+
+    public static String forCanonicalContent(ContentType contentType, String title, Integer year) {
+        Digest digest = new Digest();
+        digest.add(contentType.value());
+        digest.add(normalizeTitle(title));
+        digest.add(year);
+        return digest.hex();
+    }
+
+    public static String normalizeTitle(String title) {
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("title must not be blank");
+        }
+        String normalized = Normalizer.normalize(title, Normalizer.Form.NFKC)
+                .toLowerCase(Locale.ROOT).trim();
+        String withoutTrailingYear = TRAILING_YEAR.matcher(normalized).replaceFirst("");
+        if (!withoutTrailingYear.isBlank()) {
+            normalized = withoutTrailingYear;
+        }
+        normalized = TITLE_SEPARATORS.matcher(normalized).replaceAll("");
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("title has no canonical characters");
+        }
+        return normalized;
     }
 
     private static final class Digest {

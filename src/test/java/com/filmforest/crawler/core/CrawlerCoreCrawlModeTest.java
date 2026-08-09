@@ -88,8 +88,9 @@ class CrawlerCoreCrawlModeTest {
         assertThat(summary.fetchSucceeded()).isEqualTo(1);
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.unchanged()).isEqualTo(1);
-        verify(persistence, never()).persist(eq("pkmp4"), eq(parsed), any());
+        verify(persistence, never()).persist(eq("pkmp4"), eq(parsed), any(), any());
         verify(sourceItems).recordParsed("pkmp4", ContentType.MOVIE, "7", 7L,
+                SourceFingerprint.forCanonicalContent(ContentType.MOVIE, parsed.title(), parsed.year()),
                 SourceFingerprint.forDetail(parsed));
     }
 
@@ -124,7 +125,7 @@ class CrawlerCoreCrawlModeTest {
         when(adapter.parseDetail(ContentType.MOVIE, "detail", detailOne)).thenReturn(parsed);
         var resolved = new CrawlerGenreService.ResolvedGenres(List.of(), List.of());
         when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
-        when(persistence.persist("pkmp4", parsed, resolved)).thenReturn(
+        when(persistence.persist("pkmp4", parsed, resolved, null)).thenReturn(
                 new CrawlerContentPersistence.PersistResult(true, false, false));
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);

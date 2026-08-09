@@ -11,6 +11,7 @@ readonly -a CLEAR_SCOPE_TABLES=(
   crawler_schedule_genre
   crawler_task_log
   crawler_source_item
+  crawler_content_identity
   poster_enrichment_job
   content_poster_match
   content_tag

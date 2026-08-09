@@ -47,6 +47,7 @@ public interface CrawlerSourceItemMapper extends BaseMapper<CrawlerSourceItem> {
     @Update("""
             UPDATE crawler_source_item
             SET internal_content_id = COALESCE(#{internalContentId}, internal_content_id),
+                canonical_key = COALESCE(#{canonicalKey}, canonical_key),
                 detail_fingerprint = COALESCE(#{detailFingerprint}, detail_fingerprint),
                 last_fetched_at = COALESCE(#{fetchedAt}, last_fetched_at),
                 last_parse_status = #{parseStatus},
@@ -59,6 +60,7 @@ public interface CrawlerSourceItemMapper extends BaseMapper<CrawlerSourceItem> {
                       @Param("contentType") String contentType,
                       @Param("externalId") String externalId,
                       @Param("internalContentId") Long internalContentId,
+                      @Param("canonicalKey") String canonicalKey,
                       @Param("detailFingerprint") String detailFingerprint,
                       @Param("fetchedAt") LocalDateTime fetchedAt,
                       @Param("parseStatus") String parseStatus,

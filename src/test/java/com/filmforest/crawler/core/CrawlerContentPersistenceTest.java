@@ -11,6 +11,7 @@ import com.filmforest.content.service.VarietyService;
 import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.service.CrawlerGenreService;
+import com.filmforest.crawler.service.CrawlerContentIdentityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +37,7 @@ class CrawlerContentPersistenceTest {
     @Mock private ShortDramaService shortDramaService;
     @Mock private CrawlerResourceDiffService resourceDiffService;
     @Mock private CrawlerGenreService genreService;
+    @Mock private CrawlerContentIdentityService identityService;
 
     private CrawlerContentPersistence persistence;
 
@@ -43,7 +45,7 @@ class CrawlerContentPersistenceTest {
     void setUp() {
         persistence = new CrawlerContentPersistence(movieService, dramaService, varietyService,
                 animeService, shortDramaService, resourceDiffService, genreService,
-                new ObjectMapper());
+                identityService, new ObjectMapper());
         when(resourceDiffService.apply("pkmp4", "movie", 42L, List.of()))
                 .thenReturn(new CrawlerResourceDiffService.ResourceDiffResult(0, 0, 0, 0, false));
     }
@@ -51,8 +53,10 @@ class CrawlerContentPersistenceTest {
     @Test
     void newCrawlerContentUsesDraftAndStandardGenreProjection() {
         var genres = new CrawlerGenreService.ResolvedGenres(List.of(5L), List.of("科幻"));
+        when(identityService.resolve(parsed(), null)).thenReturn(
+                new CrawlerContentIdentityService.Identity(42L, "canonical-key", "示例电影", 2026));
 
-        persistence.persist("pkmp4", parsed(), genres);
+        persistence.persist("pkmp4", parsed(), genres, null);
 
         ArgumentCaptor<Movie> captor = ArgumentCaptor.forClass(Movie.class);
         verify(movieService).save(captor.capture());
@@ -70,8 +74,10 @@ class CrawlerContentPersistenceTest {
         existing.setStatus(2);
         when(movieService.getById(42L)).thenReturn(existing);
 
+        when(identityService.resolve(parsed(), 42L)).thenReturn(
+                new CrawlerContentIdentityService.Identity(42L, "canonical-key", "示例电影", 2026));
         persistence.persist("pkmp4", parsed(),
-                new CrawlerGenreService.ResolvedGenres(List.of(), List.of()));
+                new CrawlerGenreService.ResolvedGenres(List.of(), List.of()), 42L);
 
         ArgumentCaptor<Movie> captor = ArgumentCaptor.forClass(Movie.class);
         verify(movieService).updateById(captor.capture());

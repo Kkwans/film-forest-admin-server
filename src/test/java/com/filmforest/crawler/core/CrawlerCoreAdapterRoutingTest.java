@@ -84,7 +84,7 @@ class CrawlerCoreAdapterRoutingTest {
         when(adapter.parseDetail(ContentType.MOVIE, "detail", detailUri)).thenReturn(parsed);
         var resolved = new CrawlerGenreService.ResolvedGenres(List.of(5L), List.of("科幻"));
         when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
-        when(persistence.persist("pkmp4", parsed, resolved)).thenReturn(
+        when(persistence.persist("pkmp4", parsed, resolved, null)).thenReturn(
                 new CrawlerContentPersistence.PersistResult(true, false, false));
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
@@ -94,7 +94,7 @@ class CrawlerCoreAdapterRoutingTest {
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.added()).isEqualTo(1);
         verify(registry).require("pkmp4");
-        verify(persistence).persist("pkmp4", parsed, resolved);
+        verify(persistence).persist("pkmp4", parsed, resolved, null);
     }
 
     @Test
@@ -141,7 +141,7 @@ class CrawlerCoreAdapterRoutingTest {
                 .isInstanceOf(CrawlerSourceStructureException.class)
                 .hasMessageContaining("consecutiveFailures=3", "source=pkmp4")
                 .hasMessageNotContaining("<html");
-        verify(persistence, never()).persist(anyString(), any(), any());
+        verify(persistence, never()).persist(anyString(), any(), any(), any());
     }
 
     private static FetchResult success(URI uri, String body) {

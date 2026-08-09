@@ -40,41 +40,43 @@ public class CrawlerSourceItemService {
     }
 
     public void recordParsed(String sourceCode, ContentType contentType, String externalId,
-                             long internalContentId, String detailFingerprint) {
+                             long internalContentId, String canonicalKey, String detailFingerprint) {
         record(sourceCode, contentType, externalId, internalContentId,
+                requireText(canonicalKey, "canonicalKey"),
                 requireText(detailFingerprint, "detailFingerprint"), "parsed", null, true);
     }
 
     public void recordFiltered(String sourceCode, ContentType contentType, String externalId,
                                String detailFingerprint) {
-        record(sourceCode, contentType, externalId, null,
+        record(sourceCode, contentType, externalId, null, null,
                 requireText(detailFingerprint, "detailFingerprint"), "filtered", null, true);
     }
 
     public void recordFetchFailure(String sourceCode, ContentType contentType, String externalId,
                                    String errorCategory) {
-        record(sourceCode, contentType, externalId, null, null,
+        record(sourceCode, contentType, externalId, null, null, null,
                 "fetch_failed", requireText(errorCategory, "errorCategory"), true);
     }
 
     public void recordParseFailure(String sourceCode, ContentType contentType, String externalId,
                                    String errorCategory) {
-        record(sourceCode, contentType, externalId, null, null,
+        record(sourceCode, contentType, externalId, null, null, null,
                 "parse_failed", requireText(errorCategory, "errorCategory"), true);
     }
 
     public void recordPersistFailure(String sourceCode, ContentType contentType, String externalId,
                                      String detailFingerprint, String errorCategory) {
-        record(sourceCode, contentType, externalId, null, detailFingerprint,
+        record(sourceCode, contentType, externalId, null, null, detailFingerprint,
                 "persist_failed", requireText(errorCategory, "errorCategory"), true);
     }
 
     private void record(String sourceCode, ContentType contentType, String externalId,
-                        Long internalContentId, String detailFingerprint, String status,
+                        Long internalContentId, String canonicalKey, String detailFingerprint, String status,
                         String errorCategory, boolean fetched) {
         mapper.recordOutcome(requireText(sourceCode, "sourceCode"), contentType.value(),
-                requireText(externalId, "externalId"), internalContentId, detailFingerprint,
-                fetched ? CrawlerTime.nowUtc() : null, status, limit(errorCategory, 64));
+                requireText(externalId, "externalId"), internalContentId, canonicalKey,
+                detailFingerprint, fetched ? CrawlerTime.nowUtc() : null, status,
+                limit(errorCategory, 64));
     }
 
     private static String requireText(String value, String field) {

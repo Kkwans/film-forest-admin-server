@@ -53,7 +53,7 @@ class CrawlerSourceItemServiceTest {
         service.recordFetchFailure("pkmp4", ContentType.DRAMA, "9", "HTTP_503");
 
         org.mockito.Mockito.verify(mapper).recordOutcome(eq("pkmp4"), eq("drama"), eq("9"),
-                isNull(), isNull(), any(), eq("fetch_failed"), eq("HTTP_503"));
+                isNull(), isNull(), isNull(), any(), eq("fetch_failed"), eq("HTTP_503"));
     }
 
     private static CrawlerSourceItem sourceItem(Long id, String listFingerprint,

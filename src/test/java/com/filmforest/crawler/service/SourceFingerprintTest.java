@@ -40,6 +40,19 @@ class SourceFingerprintTest {
                 .isNotEqualTo(SourceFingerprint.forDetail(changed));
     }
 
+    @Test
+    void canonicalFingerprintNormalizesWidthCasePunctuationAndTrailingYear() {
+        String first = SourceFingerprint.forCanonicalContent(
+                ContentType.MOVIE, "示例电影：Forest (2026)", 2026);
+        String equivalent = SourceFingerprint.forCanonicalContent(
+                ContentType.MOVIE, "示例电影 Forest（2026）", 2026);
+
+        assertThat(SourceFingerprint.normalizeTitle("示例电影：Forest (2026)"))
+                .isEqualTo("示例电影forest");
+        assertThat(first).isEqualTo(equivalent).hasSize(64);
+        assertThat(SourceFingerprint.normalizeTitle("2026")).isEqualTo("2026");
+    }
+
     private static ParsedContent content(BigDecimal score, String genre) {
         return new ParsedContent("42", ContentType.MOVIE, "https://source.test/mv/42.html",
                 "片名", null, 2026, List.of("中国"), List.of(genre), List.of(),
