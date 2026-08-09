@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -60,6 +61,21 @@ class MailOutboxServiceTest {
         verify(notificationService).publishStationOnlyToAdmins(event.capture());
         assertThat(event.getValue().eventType()).isEqualTo("DATA_ANOMALY");
         assertThat(event.getValue().message()).doesNotContain("admin@example.test");
+    }
+
+    @Test
+    void stationAlertFailureDoesNotRequeueFinalFailure() {
+        MailOutbox failed = mail(4L, 4);
+        doThrow(new SmtpService.SmtpDeliveryException("PERMANENT_REJECTED", "永久拒绝"))
+                .when(smtpService).deliver(failed);
+        doThrow(new IllegalStateException("notification table unavailable"))
+                .when(notificationService).publishStationOnlyToAdmins(any());
+
+        assertThatCode(() -> service.dispatchOne(failed)).doesNotThrowAnyException();
+
+        assertThat(failed.getStatus()).isEqualTo("FAILED");
+        assertThat(failed.getAttemptCount()).isEqualTo(5);
+        verify(mapper).updateById(failed);
     }
 
     private static MailOutbox mail(long id, int attempts) {

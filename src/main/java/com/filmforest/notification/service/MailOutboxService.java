@@ -50,16 +50,26 @@ public class MailOutboxService {
             mail.setLastError(exception.category() + ": " + exception.getMessage());
             if (attempt >= MAX_ATTEMPTS) {
                 mail.setStatus("FAILED");
-                notificationService.publishStationOnlyToAdmins(new AdminNotificationService.NotificationEvent(
-                        "DATA_ANOMALY", "ERROR", "邮件投递最终失败",
-                        "收件人 " + maskEmail(mail.getRecipient()) + " 在 5 次尝试后仍未投递成功。",
-                        "/settings", "MAIL_OUTBOX", mail.getId(), "mail-outbox:" + mail.getId() + ":failed"));
+                mapper.updateById(mail);
+                publishFinalFailureAlert(mail);
             } else {
                 mail.setStatus("RETRY");
                 mail.setNextAttemptAt(LocalDateTime.now().plusMinutes(1L << (attempt - 1)));
+                mapper.updateById(mail);
             }
-            mapper.updateById(mail);
             log.warn("邮件 Outbox 投递失败: id={}, attempt={}, category={}", mail.getId(), attempt, exception.category());
+        }
+    }
+
+    private void publishFinalFailureAlert(MailOutbox mail) {
+        try {
+            notificationService.publishStationOnlyToAdmins(new AdminNotificationService.NotificationEvent(
+                    "DATA_ANOMALY", "ERROR", "邮件投递最终失败",
+                    "收件人 " + maskEmail(mail.getRecipient()) + " 在 5 次尝试后仍未投递成功。",
+                    "/settings", "MAIL_OUTBOX", mail.getId(), "mail-outbox:" + mail.getId() + ":failed"));
+        } catch (RuntimeException error) {
+            // 邮件终态已经持久化；告警写入失败不能使同一封邮件重新投递。
+            log.error("邮件最终失败告警创建失败: outboxId={}", mail.getId(), error);
         }
     }
 
