@@ -18,10 +18,12 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
@@ -86,13 +88,34 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     }
 
     @Override
+    @Transactional
     public ResourceOnline saveOnlineResource(ResourceOnline resource) {
+        resource.setContentType(normalizeContentType(resource.getContentType()));
+        resource.setSourceCode(normalizeSourceCode(resource.getSourceCode()));
+        validateEnabled(resource.getEnabled());
         if (resource.getId() == null) {
             if (resource.getEnabled() == null) resource.setEnabled(1);
+            if (resource.getSort() == null) resource.setSort(0);
+            clearCrawlerMetadata(resource);
             resource.setCreatedAt(LocalDateTime.now());
             save(resource);
         } else {
-            updateById(resource);
+            ResourceOnline stored = requireOnline(resource.getId());
+            if (resource.getSourceCode() == null) resource.setSourceCode(stored.getSourceCode());
+            UpdateWrapper<ResourceOnline> update = new UpdateWrapper<ResourceOnline>()
+                    .eq("id", resource.getId())
+                    .set("content_type", resource.getContentType())
+                    .set("content_id", resource.getContentId())
+                    .set("source_code", resource.getSourceCode())
+                    .set("season", resource.getSeason())
+                    .set("episode_number", resource.getEpisodeNumber())
+                    .set("episode_title", trimToNull(resource.getEpisodeTitle()))
+                    .set("source_name", trimToNull(resource.getSourceName()))
+                    .set("source_url", resource.getSourceUrl().trim())
+                    .set("sort", resource.getSort() == null ? 0 : resource.getSort())
+                    .set(resource.getEnabled() != null, "enabled", resource.getEnabled())
+                    .set("updated_at", LocalDateTime.now());
+            update(update);
         }
         return resource;
     }
@@ -133,13 +156,34 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     }
 
     @Override
+    @Transactional
     public ResourceMagnet saveMagnetResource(ResourceMagnet resource) {
+        resource.setContentType(normalizeContentType(resource.getContentType()));
+        resource.setSourceCode(normalizeSourceCode(resource.getSourceCode()));
+        validateEnabled(resource.getEnabled());
         if (resource.getId() == null) {
             if (resource.getEnabled() == null) resource.setEnabled(1);
+            if (resource.getSort() == null) resource.setSort(0);
+            clearCrawlerMetadata(resource);
             resource.setCreatedAt(LocalDateTime.now());
             magnetMapper.insert(resource);
         } else {
-            magnetMapper.updateById(resource);
+            ResourceMagnet stored = requireMagnet(resource.getId());
+            if (resource.getSourceCode() == null) resource.setSourceCode(stored.getSourceCode());
+            UpdateWrapper<ResourceMagnet> update = new UpdateWrapper<ResourceMagnet>()
+                    .eq("id", resource.getId())
+                    .set("content_type", resource.getContentType())
+                    .set("content_id", resource.getContentId())
+                    .set("source_code", resource.getSourceCode())
+                    .set("title", trimToNull(resource.getTitle()))
+                    .set("magnet_url", resource.getMagnetUrl().trim())
+                    .set("resolution", trimToNull(resource.getResolution()))
+                    .set("has_subtitle", Boolean.TRUE.equals(resource.getHasSubtitle()) ? 1 : 0)
+                    .set("is_special_sub", Boolean.TRUE.equals(resource.getIsSpecialSub()) ? 1 : 0)
+                    .set("sort", resource.getSort() == null ? 0 : resource.getSort())
+                    .set(resource.getEnabled() != null, "enabled", resource.getEnabled())
+                    .set("updated_at", LocalDateTime.now());
+            magnetMapper.update(null, update);
         }
         return resource;
     }
@@ -201,13 +245,33 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     }
 
     @Override
+    @Transactional
     public ResourceCloud saveCloudResource(ResourceCloud resource) {
+        resource.setContentType(normalizeContentType(resource.getContentType()));
+        resource.setSourceCode(normalizeSourceCode(resource.getSourceCode()));
+        validateEnabled(resource.getEnabled());
         if (resource.getId() == null) {
             if (resource.getEnabled() == null) resource.setEnabled(1);
+            if (resource.getSort() == null) resource.setSort(0);
+            clearCrawlerMetadata(resource);
             resource.setCreatedAt(LocalDateTime.now());
             cloudMapper.insert(resource);
         } else {
-            cloudMapper.updateById(resource);
+            ResourceCloud stored = requireCloud(resource.getId());
+            if (resource.getSourceCode() == null) resource.setSourceCode(stored.getSourceCode());
+            UpdateWrapper<ResourceCloud> update = new UpdateWrapper<ResourceCloud>()
+                    .eq("id", resource.getId())
+                    .set("content_type", resource.getContentType())
+                    .set("content_id", resource.getContentId())
+                    .set("source_code", resource.getSourceCode())
+                    .set("disk_type", trimToNull(resource.getDiskType()))
+                    .set("title", trimToNull(resource.getTitle()))
+                    .set("url", resource.getUrl().trim())
+                    .set("password", trimToNull(resource.getPassword()))
+                    .set("sort", resource.getSort() == null ? 0 : resource.getSort())
+                    .set(resource.getEnabled() != null, "enabled", resource.getEnabled())
+                    .set("updated_at", LocalDateTime.now());
+            cloudMapper.update(null, update);
         }
         return resource;
     }
@@ -255,19 +319,45 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     }
 
     @Override
+    @Transactional
     public ResourceSource saveSource(ResourceSource source) {
+        String normalizedCode = normalizeRequiredSourceCode(source.getCode());
+        source.setCode(normalizedCode);
+        validateEnabled(source.getEnabled());
         if (source.getId() == null) {
+            if (source.getEnabled() == null) source.setEnabled(0);
+            if (source.getSort() == null) source.setSort(0);
             source.setCreatedAt(LocalDateTime.now());
             sourceMapper.insert(source);
         } else {
-            sourceMapper.updateById(source);
+            ResourceSource stored = requireSource(source.getId());
+            if (!stored.getCode().equals(normalizedCode)) {
+                throw new IllegalArgumentException("来源编码保存后不可修改");
+            }
+            UpdateWrapper<ResourceSource> update = new UpdateWrapper<ResourceSource>()
+                    .eq("id", source.getId())
+                    .set("name", source.getName().trim())
+                    .set("url", source.getUrl().trim())
+                    .set("enabled", source.getEnabled() == null ? stored.getEnabled() : source.getEnabled())
+                    .set("sort", source.getSort() == null ? 0 : source.getSort())
+                    .set("updated_at", LocalDateTime.now());
+            sourceMapper.update(null, update);
         }
         return source;
     }
 
     @Override
+    @Transactional
     public boolean deleteSource(Long id) {
-        return sourceMapper.deleteById(id) > 0;
+        ResourceSource source = requireSource(id);
+        if ("pkmp4".equals(source.getCode())) {
+            throw new IllegalArgumentException("七味网生产来源不可删除，可按需禁用");
+        }
+        try {
+            return sourceMapper.deleteById(id) > 0;
+        } catch (DataIntegrityViolationException exception) {
+            throw new IllegalArgumentException("来源已被爬虫适配器、计划或资源引用，无法删除", exception);
+        }
     }
 
     @Override
@@ -356,6 +446,73 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
 
     private static String trimToNull(String value) {
         return StringUtils.isBlank(value) ? null : value.trim();
+    }
+
+    private static String normalizeSourceCode(String value) {
+        String normalized = trimToNull(value);
+        return normalized == null ? null : normalized.toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeRequiredSourceCode(String value) {
+        String normalized = normalizeSourceCode(value);
+        if (normalized == null || !normalized.matches("[a-z0-9][a-z0-9_-]{1,49}")) {
+            throw new IllegalArgumentException("来源编码需为 2-50 位小写字母、数字、下划线或短横线");
+        }
+        return normalized;
+    }
+
+    private static void validateEnabled(Integer enabled) {
+        if (enabled != null && enabled != 0 && enabled != 1) {
+            throw new IllegalArgumentException("启用状态只允许 0 或 1");
+        }
+    }
+
+    private ResourceOnline requireOnline(Long id) {
+        ResourceOnline stored = getById(id);
+        if (stored == null) throw new IllegalArgumentException("在线资源不存在: " + id);
+        return stored;
+    }
+
+    private ResourceMagnet requireMagnet(Long id) {
+        ResourceMagnet stored = magnetMapper.selectById(id);
+        if (stored == null) throw new IllegalArgumentException("磁力资源不存在: " + id);
+        return stored;
+    }
+
+    private ResourceCloud requireCloud(Long id) {
+        ResourceCloud stored = cloudMapper.selectById(id);
+        if (stored == null) throw new IllegalArgumentException("网盘资源不存在: " + id);
+        return stored;
+    }
+
+    private ResourceSource requireSource(Long id) {
+        ResourceSource source = sourceMapper.selectById(id);
+        if (source == null) throw new IllegalArgumentException("资源来源不存在: " + id);
+        return source;
+    }
+
+    private static void clearCrawlerMetadata(ResourceOnline resource) {
+        resource.setResourceKey(null);
+        resource.setRawText(null);
+        resource.setLastSeenAt(null);
+        resource.setRemovedAt(null);
+        resource.setDeleted(null);
+    }
+
+    private static void clearCrawlerMetadata(ResourceMagnet resource) {
+        resource.setResourceKey(null);
+        resource.setRawText(null);
+        resource.setLastSeenAt(null);
+        resource.setRemovedAt(null);
+        resource.setDeleted(null);
+    }
+
+    private static void clearCrawlerMetadata(ResourceCloud resource) {
+        resource.setResourceKey(null);
+        resource.setRawText(null);
+        resource.setLastSeenAt(null);
+        resource.setRemovedAt(null);
+        resource.setDeleted(null);
     }
 
     private static boolean ascending(ResourcePageQuery query) {

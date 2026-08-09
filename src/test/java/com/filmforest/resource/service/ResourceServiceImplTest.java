@@ -9,6 +9,7 @@ import com.filmforest.resource.dto.ResourcePageQuery;
 import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.entity.ResourceOnline;
+import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceCloudMapper;
 import com.filmforest.resource.mapper.ResourceMagnetMapper;
 import com.filmforest.resource.mapper.ResourceOnlineMapper;
@@ -21,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.List;
 
@@ -117,6 +119,134 @@ class ResourceServiceImplTest {
         assertThat(((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceMagnet>) update.getValue()).getSqlSet())
                 .contains("enabled", "removed_at");
         assertThat(parameters(update.getValue())).contains(7L, 1, null);
+    }
+
+    @Test
+    void adminOnlineUpdateClearsOptionalFieldsWithoutOverwritingCrawlerMetadata() {
+        ResourceOnline stored = new ResourceOnline();
+        stored.setId(41L);
+        stored.setSourceCode("pkmp4");
+        when(onlineMapper.selectById(41L)).thenReturn(stored);
+        when(onlineMapper.update(any(), any())).thenReturn(1);
+
+        ResourceOnline update = new ResourceOnline();
+        update.setId(41L);
+        update.setContentType("short");
+        update.setContentId(9L);
+        update.setSourceUrl(" https://example.test/play ");
+        update.setSourceName(" ");
+        update.setEpisodeTitle("");
+        update.setEnabled(1);
+        update.setRawText("不得覆盖");
+        update.setResourceKey("不得覆盖");
+        update.setRemovedAt(java.time.LocalDateTime.now());
+
+        service.saveOnlineResource(update);
+
+        ArgumentCaptor<Wrapper<ResourceOnline>> wrapper = ArgumentCaptor.forClass(Wrapper.class);
+        verify(onlineMapper).update(any(), wrapper.capture());
+        var sqlSet = ((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceOnline>) wrapper.getValue())
+                .getSqlSet();
+        assertThat(sqlSet)
+                .contains("content_type", "source_code", "episode_title", "source_name", "source_url")
+                .doesNotContain("raw_text", "resource_key", "removed_at", "last_seen_at");
+        assertThat(parameters(wrapper.getValue())).contains("short_drama", "pkmp4", null, "https://example.test/play");
+    }
+
+    @Test
+    void adminMagnetAndCloudUpdatesCanClearOptionalFields() {
+        ResourceMagnet storedMagnet = new ResourceMagnet();
+        storedMagnet.setId(51L);
+        storedMagnet.setSourceCode("legacy");
+        when(magnetMapper.selectById(51L)).thenReturn(storedMagnet);
+        when(magnetMapper.update(any(), any())).thenReturn(1);
+
+        ResourceMagnet magnet = new ResourceMagnet();
+        magnet.setId(51L);
+        magnet.setContentType("movie");
+        magnet.setContentId(1L);
+        magnet.setMagnetUrl(" magnet:?xt=urn:btih:abc ");
+        magnet.setTitle("");
+        magnet.setResolution(" ");
+        service.saveMagnetResource(magnet);
+
+        ArgumentCaptor<Wrapper<ResourceMagnet>> magnetUpdate = ArgumentCaptor.forClass(Wrapper.class);
+        verify(magnetMapper).update(any(), magnetUpdate.capture());
+        assertThat(((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceMagnet>) magnetUpdate.getValue())
+                .getSqlSet()).contains("title", "resolution").doesNotContain("raw_text", "resource_key");
+        assertThat(parameters(magnetUpdate.getValue())).contains("legacy", null, "magnet:?xt=urn:btih:abc");
+
+        ResourceCloud storedCloud = new ResourceCloud();
+        storedCloud.setId(61L);
+        storedCloud.setSourceCode("legacy");
+        when(cloudMapper.selectById(61L)).thenReturn(storedCloud);
+        when(cloudMapper.update(any(), any())).thenReturn(1);
+
+        ResourceCloud cloud = new ResourceCloud();
+        cloud.setId(61L);
+        cloud.setContentType("movie");
+        cloud.setContentId(1L);
+        cloud.setUrl(" https://example.test/share ");
+        cloud.setPassword("");
+        cloud.setTitle(" ");
+        service.saveCloudResource(cloud);
+
+        ArgumentCaptor<Wrapper<ResourceCloud>> cloudUpdate = ArgumentCaptor.forClass(Wrapper.class);
+        verify(cloudMapper).update(any(), cloudUpdate.capture());
+        assertThat(((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceCloud>) cloudUpdate.getValue())
+                .getSqlSet()).contains("title", "password").doesNotContain("raw_text", "resource_key");
+        assertThat(parameters(cloudUpdate.getValue())).contains("legacy", null, "https://example.test/share");
+    }
+
+    @Test
+    void sourceCodeIsNormalizedOnCreateAndImmutableAfterwards() {
+        ResourceSource created = new ResourceSource();
+        created.setCode(" Source-X ");
+        created.setName("扩展来源");
+        created.setUrl("https://example.test");
+        when(sourceMapper.insert(created)).thenReturn(1);
+
+        service.saveSource(created);
+
+        assertThat(created.getCode()).isEqualTo("source-x");
+        assertThat(created.getEnabled()).isZero();
+        assertThat(created.getSort()).isZero();
+
+        ResourceSource stored = new ResourceSource();
+        stored.setId(3L);
+        stored.setCode("source-x");
+        when(sourceMapper.selectById(3L)).thenReturn(stored);
+        ResourceSource renamed = new ResourceSource();
+        renamed.setId(3L);
+        renamed.setCode("other-code");
+        renamed.setName("扩展来源");
+        renamed.setUrl("https://example.test");
+
+        assertThatThrownBy(() -> service.saveSource(renamed))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("不可修改");
+    }
+
+    @Test
+    void productionOrReferencedSourcesCannotBeDeleted() {
+        ResourceSource production = new ResourceSource();
+        production.setId(1L);
+        production.setCode("pkmp4");
+        when(sourceMapper.selectById(1L)).thenReturn(production);
+
+        assertThatThrownBy(() -> service.deleteSource(1L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("生产来源不可删除");
+
+        ResourceSource referenced = new ResourceSource();
+        referenced.setId(2L);
+        referenced.setCode("source-x");
+        when(sourceMapper.selectById(2L)).thenReturn(referenced);
+        when(sourceMapper.deleteById(2L)).thenThrow(new DataIntegrityViolationException("fk"));
+
+        assertThatThrownBy(() -> service.deleteSource(2L))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("已被爬虫适配器、计划或资源引用");
     }
 
     @Test
