@@ -1,5 +1,6 @@
 package com.filmforest.crawler.mapper;
 
+import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 import org.junit.jupiter.api.Test;
 
@@ -28,8 +29,27 @@ class CrawlerTaskLogMapperContractTest {
         assertThat(sql).doesNotContain("status = 'interrupted'", "finished_at");
     }
 
+    @Test
+    void plainSelectAnnotationsMustUseRawComparisonOperators() throws Exception {
+        for (String methodName : new String[]{
+                "selectOperationsSummary", "selectDailyOperations", "selectSourceHealth"
+        }) {
+            String sql = selectSql(methodName, LocalDateTime.class, LocalDateTime.class);
+
+            assertThat(sql)
+                    .as(methodName)
+                    .contains(">= #{from}", "< #{to}")
+                    .doesNotContain("&gt;", "&lt;");
+        }
+    }
+
     private static String updateSql(String name, Class<?>... parameterTypes) throws Exception {
         Method method = CrawlerTaskLogMapper.class.getMethod(name, parameterTypes);
         return String.join("\n", method.getAnnotation(Update.class).value());
+    }
+
+    private static String selectSql(String name, Class<?>... parameterTypes) throws Exception {
+        Method method = CrawlerTaskLogMapper.class.getMethod(name, parameterTypes);
+        return String.join("\n", method.getAnnotation(Select.class).value());
     }
 }

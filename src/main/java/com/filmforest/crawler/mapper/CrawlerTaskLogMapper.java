@@ -214,8 +214,8 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                    COALESCE(SUM(updated_count), 0) AS updated,
                    COALESCE(SUM(failed_count), 0) AS failedItems
             FROM crawler_task_log
-            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
-              AND COALESCE(started_at, queued_at) &lt; #{to}
+            WHERE COALESCE(started_at, queued_at) >= #{from}
+              AND COALESCE(started_at, queued_at) < #{to}
             """)
     Map<String, Object> selectOperationsSummary(@Param("from") LocalDateTime from,
                                                  @Param("to") LocalDateTime to);
@@ -231,8 +231,8 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                    COALESCE(SUM(updated_count), 0) AS updated,
                    COALESCE(SUM(failed_count), 0) AS failedItems
             FROM crawler_task_log
-            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
-              AND COALESCE(started_at, queued_at) &lt; #{to}
+            WHERE COALESCE(started_at, queued_at) >= #{from}
+              AND COALESCE(started_at, queued_at) < #{to}
             GROUP BY day
             ORDER BY day ASC
             """)
@@ -249,8 +249,8 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                    COALESCE(AVG(CASE WHEN finished_at IS NOT NULL THEN duration_ms END), 0) AS avgDurationMs,
                    MAX(COALESCE(started_at, queued_at)) AS lastRunAt
             FROM crawler_task_log
-            WHERE COALESCE(started_at, queued_at) &gt;= #{from}
-              AND COALESCE(started_at, queued_at) &lt; #{to}
+            WHERE COALESCE(started_at, queued_at) >= #{from}
+              AND COALESCE(started_at, queued_at) < #{to}
             GROUP BY COALESCE(NULLIF(source_code, ''), 'unknown')
             ORDER BY jobs DESC, source ASC
             """)
