@@ -44,7 +44,7 @@ readonly -a PRESERVED_TABLES=(
 
 usage() {
   printf '%s\n' \
-    '用法：scripts/phase8-data-lifecycle.sh safety-backup|backup|verify|restore-drill|clear' \
+    '用法：scripts/phase8-data-lifecycle.sh safety-backup|backup|verify|restore-drill|clear|verify-cleared' \
     '' \
     '生产连接（容器模式）：' \
     '  FILM_FOREST_MYSQL_CONTAINER  MySQL 容器名' \
@@ -372,7 +372,7 @@ restore_drill() {
   printf '隔离恢复核对通过：%s\n' "$target_container"
 }
 
-clear_archived_data() {
+require_restored_formal_archive() {
   require_command awk
   require_command docker
   require_command diff
@@ -391,6 +391,49 @@ clear_archived_data() {
     cd "$archive_dir"
     sha256sum --check --strict RESTORE_SHA256SUMS
   )
+}
+
+verify_cleared_state() {
+  require_restored_formal_archive
+  local archive_dir="$ARCHIVE_DIR"
+  production_container
+  local container="$PRODUCTION_CONTAINER"
+  assert_required_tables "$container" "$PRODUCTION_DATABASE"
+
+  count_tables "$container" "$PRODUCTION_DATABASE" \
+    "$archive_dir/post-clear-counts.tsv" "${CLEAR_SCOPE_TABLES[@]}"
+  if awk -F '\t' '$2 != 0 { exit 1 }' "$archive_dir/post-clear-counts.tsv"; then
+    :
+  else
+    die '清空后仍存在非零业务表'
+  fi
+  count_tables "$container" "$PRODUCTION_DATABASE" \
+    "$archive_dir/post-clear-preserved-counts.tsv" "${PRESERVED_TABLES[@]}"
+  diff -u "$archive_dir/preserved-counts.tsv" "$archive_dir/post-clear-preserved-counts.tsv" \
+    || die '清空过程中需保留数据发生变化'
+  local clear_names="${CLEAR_SCOPE_TABLES[*]}"
+  awk -F '\t' -v OFS='\t' -v clear_names="$clear_names" '
+    BEGIN {
+      count = split(clear_names, names, " ")
+      for (i = 1; i <= count; i++) {
+        cleared[names[i]] = 1
+      }
+    }
+    $1 in cleared { $2 = 0 }
+    { print }
+  ' "$archive_dir/all-table-counts.tsv" > "$archive_dir/expected-post-clear-counts.tsv"
+  count_all_tables "$container" "$PRODUCTION_DATABASE" \
+    "$archive_dir/post-clear-all-table-counts.tsv"
+  diff -u "$archive_dir/expected-post-clear-counts.tsv" \
+    "$archive_dir/post-clear-all-table-counts.tsv" \
+    || die '清空过程中非目标表发生变化'
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$archive_dir/CLEARED"
+  printf '清空后全表核对通过；归档保留于：%s\n' "$archive_dir"
+}
+
+clear_archived_data() {
+  require_restored_formal_archive
+  local archive_dir="$ARCHIVE_DIR"
   production_container
   local container="$PRODUCTION_CONTAINER"
   assert_required_tables "$container" "$PRODUCTION_DATABASE"
@@ -401,13 +444,10 @@ clear_archived_data() {
   preserved_before=$(mktemp)
   local runtime_all_counts
   runtime_all_counts=$(mktemp)
-  local expected_post_clear_counts
-  expected_post_clear_counts=$(mktemp)
   PHASE8_RUNTIME_COUNTS="$runtime_counts"
   PHASE8_PRESERVED_BEFORE="$preserved_before"
   PHASE8_RUNTIME_ALL_COUNTS="$runtime_all_counts"
-  PHASE8_EXPECTED_POST_CLEAR_COUNTS="$expected_post_clear_counts"
-  trap 'rm -f -- "${PHASE8_RUNTIME_COUNTS:-}" "${PHASE8_PRESERVED_BEFORE:-}" "${PHASE8_RUNTIME_ALL_COUNTS:-}" "${PHASE8_EXPECTED_POST_CLEAR_COUNTS:-}"' EXIT
+  trap 'rm -f -- "${PHASE8_RUNTIME_COUNTS:-}" "${PHASE8_PRESERVED_BEFORE:-}" "${PHASE8_RUNTIME_ALL_COUNTS:-}"' EXIT
   count_tables "$container" "$PRODUCTION_DATABASE" "$runtime_counts" "${CLEAR_SCOPE_TABLES[@]}"
   diff -u "$archive_dir/clear-scope-counts.tsv" "$runtime_counts" \
     || die '归档后数据已变化，禁止按旧归档清空'
@@ -437,36 +477,9 @@ clear_archived_data() {
   delete_sql+='COMMIT;'
   mysql_in_container "$container" "$PRODUCTION_DATABASE" --execute="$delete_sql"
 
-  count_tables "$container" "$PRODUCTION_DATABASE" \
-    "$archive_dir/post-clear-counts.tsv" "${CLEAR_SCOPE_TABLES[@]}"
-  if awk -F '\t' '$2 != 0 { exit 1 }' "$archive_dir/post-clear-counts.tsv"; then
-    :
-  else
-    die '清空后仍存在非零业务表'
-  fi
-  count_tables "$container" "$PRODUCTION_DATABASE" \
-    "$archive_dir/post-clear-preserved-counts.tsv" "${PRESERVED_TABLES[@]}"
-  diff -u "$preserved_before" "$archive_dir/post-clear-preserved-counts.tsv" \
-    || die '清空过程中需保留数据发生变化'
-  local clear_names="${CLEAR_SCOPE_TABLES[*]}"
-  awk -F '\t' -v OFS='\t' -v clear_names="$clear_names" '
-    BEGIN {
-      count = split(clear_names, names, " ")
-      for (index = 1; index <= count; index++) {
-        cleared[names[index]] = 1
-      }
-    }
-    $1 in cleared { $2 = 0 }
-    { print }
-  ' "$archive_dir/all-table-counts.tsv" > "$expected_post_clear_counts"
-  count_all_tables "$container" "$PRODUCTION_DATABASE" \
-    "$archive_dir/post-clear-all-table-counts.tsv"
-  diff -u "$expected_post_clear_counts" "$archive_dir/post-clear-all-table-counts.tsv" \
-    || die '清空过程中非目标表发生变化'
-  date -u +%Y-%m-%dT%H:%M:%SZ > "$archive_dir/CLEARED"
-  rm -f -- "$runtime_counts" "$preserved_before" "$runtime_all_counts" \
-    "$expected_post_clear_counts"
+  rm -f -- "$runtime_counts" "$preserved_before" "$runtime_all_counts"
   trap - EXIT
+  verify_cleared_state
   printf '已按确认清单清空归档业务数据；归档保留于：%s\n' "$archive_dir"
 }
 
@@ -480,5 +493,6 @@ case "${1:-}" in
     ;;
   restore-drill) restore_drill ;;
   clear) clear_archived_data ;;
+  verify-cleared) verify_cleared_state ;;
   *) usage; exit 2 ;;
 esac

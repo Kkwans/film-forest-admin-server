@@ -21,6 +21,7 @@ class Phase8DataLifecycleScriptContractTest {
                 "restore-film-forest-phase8-isolated-copy",
                 "film-forest-pre-migration-archive-v1",
                 "safety-backup) safety_backup",
+                "verify-cleared) verify_cleared_state",
                 "PHASE8_MYSQL_PASSWORD",
                 "docker exec -i -e PHASE8_MYSQL_PASSWORD",
                 "--no-tablespaces --skip-triggers",
@@ -32,11 +33,14 @@ class Phase8DataLifecycleScriptContractTest {
                 "diff -u \"$archive_dir/clear-scope-counts.tsv\" \"$runtime_counts\"",
                 "diff -u \"$archive_dir/all-table-counts.tsv\" \"$runtime_all_counts\"",
                 "post-clear-all-table-counts.tsv",
+                "expected-post-clear-counts.tsv",
+                "for (i = 1; i <= count; i++)",
                 "START TRANSACTION;",
                 "COMMIT;");
         assertThat(script).doesNotContain(
                 "TRUNCATE ", "DROP TABLE", "FOREIGN_KEY_CHECKS=0",
                 "--routines", "--events",
+                "for (index = 1; index <= count; index++)",
                 "docker run", "docker rm", "docker compose");
 
         String clearScope = between(script, "readonly -a CLEAR_SCOPE_TABLES=(", ")");
