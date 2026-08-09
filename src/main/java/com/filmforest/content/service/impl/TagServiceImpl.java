@@ -53,7 +53,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         }
         return list(new LambdaQueryWrapper<Tag>()
                 .in(Tag::getId, tagIds)
-                .eq(Tag::getSystem, 1)
+                .eq(Tag::getSystemFlag, 1)
                 .orderByAsc(Tag::getSortOrder)
                 .orderByAsc(Tag::getId));
     }
@@ -174,7 +174,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         String canonicalType = canonicalContentType(contentType);
         List<Tag> selectedGenres = requireStandardGenres(canonicalType, tagIds);
         List<Long> allSystemTagIds = list(new LambdaQueryWrapper<Tag>()
-                        .eq(Tag::getSystem, 1))
+                        .eq(Tag::getSystemFlag, 1))
                 .stream()
                 .map(Tag::getId)
                 .toList();
