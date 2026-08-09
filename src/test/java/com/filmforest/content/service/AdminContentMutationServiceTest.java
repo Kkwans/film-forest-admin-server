@@ -1,12 +1,14 @@
 package com.filmforest.content.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.filmforest.content.entity.Movie;
 import com.filmforest.content.entity.Tag;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
@@ -81,15 +83,24 @@ class AdminContentMutationServiceTest {
         stored.setTitle("更新后");
         stored.setStatus(2);
         stored.setGenre("[]");
+        Movie existing = new Movie();
+        existing.setId(8L);
+        existing.setStatus(1);
+        existing.setGenre("[\"剧情\"]");
         when(tagService.requireStandardGenres("movie", List.of())).thenReturn(List.of());
-        when(movieService.updateById(request)).thenReturn(true);
-        when(movieService.getDetail(8L)).thenReturn(stored);
+        when(movieService.getDetail(8L)).thenReturn(existing, stored);
+        when(movieService.update(any(UpdateWrapper.class))).thenReturn(true);
         when(tagService.getContentTags(8L, "movie")).thenReturn(List.of());
 
         Movie updated = service.updateMovie(8L, request);
 
         assertThat(request.getGenre()).isEqualTo("[]");
         assertThat(updated.getGenreTagIds()).isEmpty();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<UpdateWrapper<Movie>> update = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(movieService).update(update.capture());
+        assertThat(update.getValue().getSqlSet()).contains("poster_url", "storyline", "score_douban");
+        assertThat(update.getValue().getParamNameValuePairs()).containsValue(null);
         verify(tagService).setContentGenres(8L, "movie", List.of());
     }
 

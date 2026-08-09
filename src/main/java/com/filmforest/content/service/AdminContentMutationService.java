@@ -2,6 +2,7 @@ package com.filmforest.content.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.filmforest.content.entity.Anime;
 import com.filmforest.content.entity.Drama;
 import com.filmforest.content.entity.Movie;
@@ -60,11 +61,13 @@ public class AdminContentMutationService {
 
     @Transactional
     public Movie updateMovie(Long id, Movie content) {
+        Movie existing = requireContent(movieService.getDetail(id));
         GenreSelection genres = prepareUpdate("movie", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setId(id);
-        applyGenres(content::setGenre, genres);
-        requireUpdated(movieService.updateById(content));
+        prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
+                content.getStatus(), genres);
+        requireUpdated(replaceMovie(id, content));
         if (genres != null) tagService.setContentGenres(id, "movie", genres.tagIds());
         Movie updated = requireContent(movieService.getDetail(id));
         updated.setGenreTagIds(currentGenreIds(id, "movie"));
@@ -85,11 +88,13 @@ public class AdminContentMutationService {
 
     @Transactional
     public Drama updateDrama(Long id, Drama content) {
+        Drama existing = requireContent(dramaService.getDetail(id));
         GenreSelection genres = prepareUpdate("drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setId(id);
-        applyGenres(content::setGenre, genres);
-        requireUpdated(dramaService.updateById(content));
+        prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
+                content.getStatus(), genres);
+        requireUpdated(replaceDrama(id, content));
         if (genres != null) tagService.setContentGenres(id, "drama", genres.tagIds());
         Drama updated = requireContent(dramaService.getDetail(id));
         updated.setGenreTagIds(currentGenreIds(id, "drama"));
@@ -110,11 +115,13 @@ public class AdminContentMutationService {
 
     @Transactional
     public Variety updateVariety(Long id, Variety content) {
+        Variety existing = requireContent(varietyService.getDetail(id));
         GenreSelection genres = prepareUpdate("variety", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setId(id);
-        applyGenres(content::setGenre, genres);
-        requireUpdated(varietyService.updateById(content));
+        prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
+                content.getStatus(), genres);
+        requireUpdated(replaceVariety(id, content));
         if (genres != null) tagService.setContentGenres(id, "variety", genres.tagIds());
         Variety updated = requireContent(varietyService.getDetail(id));
         updated.setGenreTagIds(currentGenreIds(id, "variety"));
@@ -135,11 +142,13 @@ public class AdminContentMutationService {
 
     @Transactional
     public Anime updateAnime(Long id, Anime content) {
+        Anime existing = requireContent(animeService.getDetail(id));
         GenreSelection genres = prepareUpdate("anime", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setId(id);
-        applyGenres(content::setGenre, genres);
-        requireUpdated(animeService.updateById(content));
+        prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
+                content.getStatus(), genres);
+        requireUpdated(replaceAnime(id, content));
         if (genres != null) tagService.setContentGenres(id, "anime", genres.tagIds());
         Anime updated = requireContent(animeService.getDetail(id));
         updated.setGenreTagIds(currentGenreIds(id, "anime"));
@@ -160,11 +169,13 @@ public class AdminContentMutationService {
 
     @Transactional
     public ShortDrama updateShortDrama(Long id, ShortDrama content) {
+        ShortDrama existing = requireContent(shortDramaService.getDetail(id));
         GenreSelection genres = prepareUpdate("short_drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setId(id);
-        applyGenres(content::setGenre, genres);
-        requireUpdated(shortDramaService.updateById(content));
+        prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
+                content.getStatus(), genres);
+        requireUpdated(replaceShortDrama(id, content));
         if (genres != null) tagService.setContentGenres(id, "short_drama", genres.tagIds());
         ShortDrama updated = requireContent(shortDramaService.getDetail(id));
         updated.setGenreTagIds(currentGenreIds(id, "short_drama"));
@@ -218,8 +229,125 @@ public class AdminContentMutationService {
         }
     }
 
-    private static void applyGenres(java.util.function.Consumer<String> setter, GenreSelection genres) {
-        if (genres != null) setter.accept(genres.projection());
+    private static void prepareReplacement(java.util.function.Consumer<String> genreSetter,
+                                           java.util.function.Consumer<Integer> statusSetter,
+                                           String existingGenre,
+                                           Integer existingStatus,
+                                           Integer requestedStatus,
+                                           GenreSelection genres) {
+        genreSetter.accept(genres == null ? existingGenre : genres.projection());
+        if (requestedStatus == null) statusSetter.accept(existingStatus);
+    }
+
+    private boolean replaceMovie(Long id, Movie content) {
+        return movieService.update(new UpdateWrapper<Movie>()
+                .eq("id", id)
+                .set("title", content.getTitle())
+                .set("alias", content.getAlias())
+                .set("poster_url", content.getPosterUrl())
+                .set("year", content.getYear())
+                .set("director", content.getDirector())
+                .set("writer", content.getWriter())
+                .set("actor", content.getActor())
+                .set("genre", content.getGenre())
+                .set("region", content.getRegion())
+                .set("language", content.getLanguage())
+                .set("release_date", content.getReleaseDate())
+                .set("duration", content.getDuration())
+                .set("storyline", content.getStoryline())
+                .set("score_douban", content.getScoreDouban())
+                .set("score_imdb", content.getScoreImdb())
+                .set("score_rt", content.getScoreRt())
+                .set("series_name", content.getSeriesName())
+                .set("series_order", content.getSeriesOrder())
+                .set("status", content.getStatus()));
+    }
+
+    private boolean replaceDrama(Long id, Drama content) {
+        return dramaService.update(new UpdateWrapper<Drama>()
+                .eq("id", id)
+                .set("title", content.getTitle())
+                .set("alias", content.getAlias())
+                .set("poster_url", content.getPosterUrl())
+                .set("year", content.getYear())
+                .set("director", content.getDirector())
+                .set("writer", content.getWriter())
+                .set("actor", content.getActor())
+                .set("genre", content.getGenre())
+                .set("region", content.getRegion())
+                .set("language", content.getLanguage())
+                .set("release_date", content.getReleaseDate())
+                .set("duration", content.getDuration())
+                .set("total_episode", content.getTotalEpisode())
+                .set("storyline", content.getStoryline())
+                .set("score_douban", content.getScoreDouban())
+                .set("score_imdb", content.getScoreImdb())
+                .set("status", content.getStatus()));
+    }
+
+    private boolean replaceVariety(Long id, Variety content) {
+        return varietyService.update(new UpdateWrapper<Variety>()
+                .eq("id", id)
+                .set("title", content.getTitle())
+                .set("alias", content.getAlias())
+                .set("poster_url", content.getPosterUrl())
+                .set("year", content.getYear())
+                .set("director", content.getDirector())
+                .set("writer", content.getWriter())
+                .set("actor", content.getActor())
+                .set("genre", content.getGenre())
+                .set("region", content.getRegion())
+                .set("language", content.getLanguage())
+                .set("release_date", content.getReleaseDate())
+                .set("duration", content.getDuration())
+                .set("total_episode", content.getTotalEpisode())
+                .set("storyline", content.getStoryline())
+                .set("score_douban", content.getScoreDouban())
+                .set("score_imdb", content.getScoreImdb())
+                .set("status", content.getStatus()));
+    }
+
+    private boolean replaceAnime(Long id, Anime content) {
+        return animeService.update(new UpdateWrapper<Anime>()
+                .eq("id", id)
+                .set("title", content.getTitle())
+                .set("alias", content.getAlias())
+                .set("poster_url", content.getPosterUrl())
+                .set("year", content.getYear())
+                .set("director", content.getDirector())
+                .set("writer", content.getWriter())
+                .set("actor", content.getActor())
+                .set("genre", content.getGenre())
+                .set("region", content.getRegion())
+                .set("language", content.getLanguage())
+                .set("release_date", content.getReleaseDate())
+                .set("duration", content.getDuration())
+                .set("total_episode", content.getTotalEpisode())
+                .set("storyline", content.getStoryline())
+                .set("score_douban", content.getScoreDouban())
+                .set("score_imdb", content.getScoreImdb())
+                .set("status", content.getStatus()));
+    }
+
+    private boolean replaceShortDrama(Long id, ShortDrama content) {
+        return shortDramaService.update(new UpdateWrapper<ShortDrama>()
+                .eq("id", id)
+                .set("title", content.getTitle())
+                .set("alias", content.getAlias())
+                .set("poster_url", content.getPosterUrl())
+                .set("year", content.getYear())
+                .set("director", content.getDirector())
+                .set("actor", content.getActor())
+                .set("genre", content.getGenre())
+                .set("region", content.getRegion())
+                .set("language", content.getLanguage())
+                .set("release_date", content.getReleaseDate())
+                .set("duration", content.getDuration())
+                .set("total_episode", content.getTotalEpisode())
+                .set("storyline", content.getStoryline())
+                .set("score_douban", content.getScoreDouban())
+                .set("score_imdb", content.getScoreImdb())
+                .set("status", content.getStatus()));
     }
 
     private static void requireSaved(boolean saved) {
