@@ -21,7 +21,9 @@ class CrawlerSourceScheduleMigrationContractTest {
         assertThat(sql).contains(
                 "WHERE NOT EXISTS (",
                 "'https://www.pkmp4.xyz/'",
-                "MIN(`id`) AS `canonical_pkmp4_id`",
+                "AS `canonical_pkmp4_id`",
+                "AS `canonical_tiantang_id`",
+                "AS `canonical_feifan_id`",
                 "UNIQUE KEY `uk_resource_source_code` (`code`)",
                 "CREATE TABLE `crawler_source_adapter`",
                 "CREATE TABLE `crawler_schedule_genre`",
@@ -30,8 +32,8 @@ class CrawlerSourceScheduleMigrationContractTest {
                 "JOIN JSON_TABLE",
                 "tag_type.`content_type` = schedule.`content_type`"
         );
-        assertThat(sql).contains("WHEN source.`name` = '天堂资源' THEN CONCAT('tiantang-', source.`id`)",
-                "WHEN source.`name` = '非凡资源' THEN CONCAT('feifan-', source.`id`)");
+        assertThat(sql).contains("WHEN source.`id` = canonical.`canonical_tiantang_id` THEN 'tiantang'",
+                "WHEN source.`id` = canonical.`canonical_feifan_id` THEN 'feifan'");
         assertThat(sql).doesNotContain("DELETE FROM", "DROP TABLE");
     }
 }

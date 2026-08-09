@@ -14,14 +14,16 @@ WHERE NOT EXISTS (
 -- 多条历史七味网记录只选择最早一条作为生产来源，避免唯一 code 迁移失败。
 UPDATE `resource_source` source
 JOIN (
-  SELECT MIN(`id`) AS `canonical_pkmp4_id`
+  SELECT
+    MIN(CASE WHEN `name` = '七味网' OR `url` LIKE '%pkmp4%' THEN `id` END) AS `canonical_pkmp4_id`,
+    MIN(CASE WHEN `name` = '天堂资源' THEN `id` END) AS `canonical_tiantang_id`,
+    MIN(CASE WHEN `name` = '非凡资源' THEN `id` END) AS `canonical_feifan_id`
   FROM `resource_source`
-  WHERE `name` = '七味网' OR `url` LIKE '%pkmp4%'
 ) canonical ON 1 = 1
 SET source.`code` = CASE
       WHEN source.`id` = canonical.`canonical_pkmp4_id` THEN 'pkmp4'
-      WHEN source.`name` = '天堂资源' THEN CONCAT('tiantang-', source.`id`)
-      WHEN source.`name` = '非凡资源' THEN CONCAT('feifan-', source.`id`)
+      WHEN source.`id` = canonical.`canonical_tiantang_id` THEN 'tiantang'
+      WHEN source.`id` = canonical.`canonical_feifan_id` THEN 'feifan'
       ELSE CONCAT('source-', source.`id`)
     END,
     source.`url` = CASE
