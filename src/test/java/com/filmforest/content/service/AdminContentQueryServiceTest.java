@@ -71,7 +71,7 @@ class AdminContentQueryServiceTest {
 
         assertThatThrownBy(() -> service.search("movie; DROP TABLE user", null, null,
                 null, null, 1, 20)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> service.search("movie", 2, null,
+        assertThatThrownBy(() -> service.search("movie", 3, null,
                 null, null, 1, 20)).isInstanceOf(IllegalArgumentException.class);
     }
 }
