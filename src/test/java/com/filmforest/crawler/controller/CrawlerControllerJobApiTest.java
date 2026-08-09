@@ -2,9 +2,10 @@ package com.filmforest.crawler.controller;
 
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
-import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
-import com.filmforest.crawler.source.SourceAdapterRegistry;
+import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,13 +23,16 @@ class CrawlerControllerJobApiTest {
     @Mock private CrawlerScheduleService scheduleService;
     @Mock private CrawlerOperationsQueryService operationsQueryService;
     @Mock private CrawlerTaskLogMapper jobMapper;
-    @Mock private SourceAdapterRegistry sourceAdapterRegistry;
+    @Mock private CrawlerSourceCatalogService sourceCatalogService;
+    @Mock private CrawlerScheduleDefinitionService scheduleDefinitionService;
 
     private CrawlerController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new CrawlerController(scheduleService, operationsQueryService, jobMapper, sourceAdapterRegistry);
+        controller = new CrawlerController(
+                scheduleService, operationsQueryService, jobMapper,
+                sourceCatalogService, scheduleDefinitionService);
     }
 
     @Test

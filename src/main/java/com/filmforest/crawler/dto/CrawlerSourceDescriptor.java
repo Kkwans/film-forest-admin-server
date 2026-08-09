@@ -1,4 +1,12 @@
 package com.filmforest.crawler.dto;
 
-public record CrawlerSourceDescriptor(String code, String name) {
+import java.util.List;
+
+public record CrawlerSourceDescriptor(
+        Long id,
+        String code,
+        String name,
+        String url,
+        List<CrawlerAdapterDescriptor> adapters
+) {
 }

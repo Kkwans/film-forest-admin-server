@@ -7,12 +7,14 @@ import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.impl.CrawlerScheduleServiceImpl;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
@@ -44,8 +46,23 @@ class CrawlerScheduleServiceTest {
     @Mock
     private CrawlerJobLifecycleService jobLifecycleService;
 
+    @Spy
+    private CrawlerScheduleDefinitionService scheduleDefinitionService = new CrawlerScheduleDefinitionService();
+
+    @Mock
+    private CrawlerScheduleGenreService scheduleGenreService;
+
+    @Mock
+    private CrawlerSourceCatalogService sourceCatalogService;
+
     @InjectMocks
     private CrawlerScheduleServiceImpl scheduleService;
+
+    @BeforeEach
+    void setUpGenreSelection() {
+        lenient().when(scheduleGenreService.validate(any(), nullable(List.class)))
+                .thenReturn(new CrawlerScheduleGenreService.Selection(List.of(), null));
+    }
 
     @Nested
     @DisplayName("配置列表运行事实装饰")
@@ -144,7 +161,7 @@ class CrawlerScheduleServiceTest {
         }
 
         @Test
-        @DisplayName("TC-002: 创建剧集配置 - cron=0 2 * * *，配置保存成功")
+        @DisplayName("TC-002: 创建剧集配置 - 旧五段 Cron 规范化为六段")
         void saveSchedule_newDramaConfig_shouldSaveSuccessfully() {
             CrawlerSchedule schedule = new CrawlerSchedule();
             schedule.setName("剧集爬虫");
@@ -162,7 +179,7 @@ class CrawlerScheduleServiceTest {
 
             CrawlerSchedule saved = captor.getValue();
             assertThat(saved.getStatus()).isEqualTo("idle");
-            assertThat(saved.getCronExpression()).isEqualTo("0 2 * * *");
+            assertThat(saved.getCronExpression()).isEqualTo("0 0 2 * * *");
         }
 
         @Test
@@ -202,15 +219,15 @@ class CrawlerScheduleServiceTest {
         }
     }
 
-    // ========== genreFilter 归一化 ==========
+    // ========== 标准题材关联 ==========
 
     @Nested
-    @DisplayName("genreFilter 归一化（saveSchedule 副作用）")
-    class GenreFilterNormalizationTest {
+    @DisplayName("标准题材关联（saveSchedule 副作用）")
+    class StandardGenreSelectionTest {
 
         @Test
-        @DisplayName("genreFilter=null → 保持 null")
-        void saveSchedule_nullGenreFilter_shouldKeepNull() {
+        @DisplayName("未选题材时兼容投影保持 null")
+        void saveSchedule_withoutGenres_shouldKeepCompatibilityProjectionNull() {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter(null);
 
@@ -223,87 +240,37 @@ class CrawlerScheduleServiceTest {
         }
 
         @Test
-        @DisplayName("genreFilter=\"\" → 归一化为 null")
-        void saveSchedule_emptyGenreFilter_shouldNormalizeToNull() {
-            CrawlerSchedule schedule = createBaseSchedule(null);
-            schedule.setGenreFilter("  ");
-
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
-            scheduleService.saveSchedule(schedule);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).insert(captor.capture());
-            assertThat(captor.getValue().getGenreFilter()).isNull();
-        }
-
-        @Test
-        @DisplayName("genreFilter=\"爱情,科幻\" → JSON 数组")
-        void saveSchedule_commaSeparatedGenreFilter_shouldConvertToJsonArray() {
+        @DisplayName("旧自由文本题材被明确拒绝")
+        void saveSchedule_legacyFreeTextGenre_shouldBeRejected() {
             CrawlerSchedule schedule = createBaseSchedule(null);
             schedule.setGenreFilter("爱情,科幻");
 
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> scheduleService.saveSchedule(schedule))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("genreTagIds");
+            verify(scheduleMapper, never()).insert(any(CrawlerSchedule.class));
+        }
+
+        @Test
+        @DisplayName("标准题材 ID 由关联表保存并生成只读兼容投影")
+        void saveSchedule_standardGenreIds_shouldPersistRelationsAndProjection() {
+            CrawlerSchedule schedule = createBaseSchedule(null);
+            schedule.setGenreTagIds(List.of(12L, 18L));
+            when(scheduleGenreService.validate("movie", List.of(12L, 18L)))
+                    .thenReturn(new CrawlerScheduleGenreService.Selection(
+                            List.of(12L, 18L), "[\"爱情\",\"科幻\"]"));
+
+            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenAnswer(invocation -> {
+                CrawlerSchedule saved = invocation.getArgument(0);
+                saved.setId(71L);
+                return 1;
+            });
             scheduleService.saveSchedule(schedule);
 
             ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
             verify(scheduleMapper).insert(captor.capture());
             assertThat(captor.getValue().getGenreFilter()).isEqualTo("[\"爱情\",\"科幻\"]");
-        }
-
-        @Test
-        @DisplayName("genreFilter=\"[\\\"爱情\\\"]\" → 保持 JSON 数组")
-        void saveSchedule_jsonArrayGenreFilter_shouldKeepAsIs() {
-            CrawlerSchedule schedule = createBaseSchedule(null);
-            schedule.setGenreFilter("[\"爱情\",\"科幻\"]");
-
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
-            scheduleService.saveSchedule(schedule);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).insert(captor.capture());
-            assertThat(captor.getValue().getGenreFilter()).isEqualTo("[\"爱情\",\"科幻\"]");
-        }
-
-        @Test
-        @DisplayName("genreFilter=\"[]\" → 归一化为 null（空数组等于无筛选）")
-        void saveSchedule_emptyJsonArrayGenreFilter_shouldNormalizeToNull() {
-            CrawlerSchedule schedule = createBaseSchedule(null);
-            schedule.setGenreFilter("[]");
-
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
-            scheduleService.saveSchedule(schedule);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).insert(captor.capture());
-            assertThat(captor.getValue().getGenreFilter()).isNull();
-        }
-
-        @Test
-        @DisplayName("genreFilter=\"爱情，科幻\"（中文逗号）→ JSON 数组")
-        void saveSchedule_chineseCommaGenreFilter_shouldConvertToJsonArray() {
-            CrawlerSchedule schedule = createBaseSchedule(null);
-            schedule.setGenreFilter("爱情，科幻");
-
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
-            scheduleService.saveSchedule(schedule);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).insert(captor.capture());
-            assertThat(captor.getValue().getGenreFilter()).isEqualTo("[\"爱情\",\"科幻\"]");
-        }
-
-        @Test
-        @DisplayName("genreFilter=\"非法JSON\" → 当作逗号分隔处理")
-        void saveSchedule_invalidJsonGenreFilter_shouldTreatAsCommaSeparated() {
-            CrawlerSchedule schedule = createBaseSchedule(null);
-            schedule.setGenreFilter("{invalid json}");
-
-            when(scheduleMapper.insert(any(CrawlerSchedule.class))).thenReturn(1);
-            scheduleService.saveSchedule(schedule);
-
-            ArgumentCaptor<CrawlerSchedule> captor = ArgumentCaptor.forClass(CrawlerSchedule.class);
-            verify(scheduleMapper).insert(captor.capture());
-            assertThat(captor.getValue().getGenreFilter()).isEqualTo("[\"{invalid json}\"]");
+            verify(scheduleGenreService).replace(71L, List.of(12L, 18L));
         }
     }
 

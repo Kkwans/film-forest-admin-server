@@ -66,7 +66,8 @@ public class CrawlerJobLifecycleService {
         job.setScheduleId(scheduleId);
         job.setScheduleName(schedule.getName());
         job.setContentType(schedule.getContentType());
-        job.setSourceCode(normalizeSourceCode(schedule.getSourceSite()));
+        job.setSourceCode(normalizeSourceCode(
+                schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode()));
         job.setCrawlMode(crawlMode.getCode());
         job.setTriggerType(triggerType.getCode());
         job.setRetryOfJobId(retryOfJobId);
@@ -92,7 +93,8 @@ public class CrawlerJobLifecycleService {
         jobMapper.insert(job);
 
         if (triggerType == CrawlerTriggerType.SCHEDULED) {
-            schedule.setNextRunTime(CrawlerTime.nextRunUtc(schedule.getCronExpression(), now));
+            schedule.setNextRunTime(CrawlerTime.nextRunUtc(
+                    schedule.getCronExpression(), now, schedule.getTimezone()));
             scheduleMapper.updateById(schedule);
         }
 

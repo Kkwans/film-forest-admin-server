@@ -21,6 +21,17 @@ class CrawlerTimeTest {
     }
 
     @Test
+    @DisplayName("每个计划可用自己的 IANA 时区解释 Cron")
+    void nextRunUtc_shouldRespectScheduleTimezone() {
+        LocalDateTime referenceUtc = LocalDateTime.of(2026, 8, 8, 16, 0);
+
+        LocalDateTime nextUtc = CrawlerTime.nextRunUtc(
+                "0 0 2 * * *", referenceUtc, "Asia/Tokyo");
+
+        assertThat(nextUtc).isEqualTo(LocalDateTime.of(2026, 8, 8, 17, 0));
+    }
+
+    @Test
     @DisplayName("上海自然日零点会转换为前一日 16:00 UTC")
     void startOfScheduleDayUtc_shouldConvertShanghaiBoundary() {
         assertThat(CrawlerTime.startOfScheduleDayUtc(java.time.LocalDate.of(2026, 8, 9)))

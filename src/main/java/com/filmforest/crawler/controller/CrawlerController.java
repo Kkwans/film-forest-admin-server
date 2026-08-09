@@ -4,6 +4,8 @@ import com.filmforest.common.dto.Result;
 import com.filmforest.common.dto.PageResult;
 import com.filmforest.crawler.dto.CrawlerOperationsStats;
 import com.filmforest.crawler.dto.CrawlerSourceDescriptor;
+import com.filmforest.crawler.dto.CrawlerSchedulePreview;
+import com.filmforest.crawler.dto.CrawlerSchedulePreviewRequest;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
@@ -11,7 +13,8 @@ import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
-import com.filmforest.crawler.source.SourceAdapterRegistry;
+import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
+import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,16 +35,19 @@ public class CrawlerController {
     private final CrawlerScheduleService scheduleService;
     private final CrawlerOperationsQueryService operationsQueryService;
     private final CrawlerTaskLogMapper taskLogMapper;
-    private final SourceAdapterRegistry sourceAdapterRegistry;
+    private final CrawlerSourceCatalogService sourceCatalogService;
+    private final CrawlerScheduleDefinitionService scheduleDefinitionService;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
                              CrawlerTaskLogMapper taskLogMapper,
-                             SourceAdapterRegistry sourceAdapterRegistry) {
+                             CrawlerSourceCatalogService sourceCatalogService,
+                             CrawlerScheduleDefinitionService scheduleDefinitionService) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
-        this.sourceAdapterRegistry = sourceAdapterRegistry;
+        this.sourceCatalogService = sourceCatalogService;
+        this.scheduleDefinitionService = scheduleDefinitionService;
     }
 
     /** 获取所有定时配置 */
@@ -62,6 +68,16 @@ public class CrawlerController {
         boolean saved = scheduleService.saveSchedule(schedule);
         log.info("保存爬虫配置: id={}, name={}", schedule.getId(), schedule.getName());
         return Result.ok(saved);
+    }
+
+    /** 规范化向导/Cron 并返回未来五次运行时间，不保存配置。 */
+    @PostMapping("/schedule/preview")
+    public Result<CrawlerSchedulePreview> previewSchedule(@RequestBody CrawlerSchedulePreviewRequest request) {
+        try {
+            return Result.ok(scheduleDefinitionService.preview(request));
+        } catch (IllegalArgumentException invalid) {
+            return Result.fail(400, invalid.getMessage());
+        }
     }
 
     /** 删除配置 */
@@ -139,9 +155,7 @@ public class CrawlerController {
     /** 获取资源来源列表（爬虫配置用） */
     @GetMapping("/sources")
     public Result<List<CrawlerSourceDescriptor>> listSources() {
-        return Result.ok(sourceAdapterRegistry.availableAdapters().stream()
-                .map(adapter -> new CrawlerSourceDescriptor(adapter.sourceCode(), adapter.displayName()))
-                .toList());
+        return Result.ok(sourceCatalogService.listAvailableSources());
     }
 
     /** 获取爬虫每日运行趋势（近7天） */

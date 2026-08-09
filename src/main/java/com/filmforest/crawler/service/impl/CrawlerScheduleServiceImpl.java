@@ -10,6 +10,9 @@ import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerJobLifecycleService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
+import com.filmforest.crawler.service.CrawlerScheduleGenreService;
+import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import com.filmforest.crawler.service.CrawlerTime;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -26,20 +29,32 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     private final CrawlerScheduleMapper scheduleMapper;
     private final CrawlerTaskLogMapper taskLogMapper;
     private final CrawlerJobLifecycleService jobLifecycleService;
+    private final CrawlerScheduleDefinitionService scheduleDefinitionService;
+    private final CrawlerScheduleGenreService scheduleGenreService;
+    private final CrawlerSourceCatalogService sourceCatalogService;
 
     public CrawlerScheduleServiceImpl(CrawlerScheduleMapper scheduleMapper,
                                       CrawlerTaskLogMapper taskLogMapper,
-                                      CrawlerJobLifecycleService jobLifecycleService) {
+                                      CrawlerJobLifecycleService jobLifecycleService,
+                                      CrawlerScheduleDefinitionService scheduleDefinitionService,
+                                      CrawlerScheduleGenreService scheduleGenreService,
+                                      CrawlerSourceCatalogService sourceCatalogService) {
         this.scheduleMapper = scheduleMapper;
         this.taskLogMapper = taskLogMapper;
         this.jobLifecycleService = jobLifecycleService;
+        this.scheduleDefinitionService = scheduleDefinitionService;
+        this.scheduleGenreService = scheduleGenreService;
+        this.sourceCatalogService = sourceCatalogService;
     }
 
     @Override
     public List<CrawlerSchedule> listSchedules() {
         List<CrawlerSchedule> schedules = scheduleMapper.selectList(new LambdaQueryWrapper<CrawlerSchedule>()
                 .orderByDesc(CrawlerSchedule::getCreatedAt));
-        schedules.forEach(this::decorateRuntimeStatus);
+        schedules.forEach(schedule -> {
+            decorateRuntimeStatus(schedule);
+            schedule.setGenreTagIds(scheduleGenreService.listTagIds(schedule.getId()));
+        });
         return schedules;
     }
 
@@ -47,18 +62,30 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     public CrawlerSchedule getSchedule(Long id) {
         CrawlerSchedule schedule = scheduleMapper.selectById(id);
         decorateRuntimeStatus(schedule);
+        if (schedule != null) schedule.setGenreTagIds(scheduleGenreService.listTagIds(schedule.getId()));
         return schedule;
     }
 
     @Override
     @Transactional
     public boolean saveSchedule(CrawlerSchedule schedule) {
-        // 修复 #6: genreFilter 是 JSON 列，空字符串/null/非法值统一转为 null
-        // 合法格式: 逗号分隔的中文标签 "爱情,科幻" 或 JSON 数组 "[\"爱情\",\"科幻\"]"
-        schedule.setGenreFilter(normalizeGenreFilter(schedule.getGenreFilter()));
+        if (schedule.getGenreTagIds() == null && schedule.getGenreFilter() != null
+                && !schedule.getGenreFilter().isBlank()) {
+            throw new IllegalArgumentException("不再接受自由文本题材，请提交 genreTagIds");
+        }
+        sourceCatalogService.validateAndNormalize(schedule);
+        CrawlerScheduleGenreService.Selection genreSelection = scheduleGenreService.validate(
+                schedule.getContentType(), schedule.getGenreTagIds());
+        schedule.setGenreFilter(genreSelection.compatibilityJson());
+        CrawlerScheduleDefinitionService.Definition definition = scheduleDefinitionService.normalize(
+                schedule.getScheduleMode(), schedule.getScheduleConfig(), schedule.getCronExpression());
+        schedule.setScheduleMode(definition.mode().name());
+        schedule.setScheduleConfig(definition.config());
+        schedule.setCronExpression(definition.cronExpression());
+        schedule.setTimezone(scheduleDefinitionService.normalizeTimezone(schedule.getTimezone()));
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(schedule.getCrawlMode());
         schedule.setCrawlMode(crawlMode.getCode());
-        if (crawlMode == CrawlerCrawlMode.FULL) {
+        if (crawlMode == CrawlerCrawlMode.FULL || definition.cronExpression() == null) {
             schedule.setEnabled(0);
             schedule.setNextRunTime(null);
         }
@@ -74,59 +101,23 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
             if (crawlMode == CrawlerCrawlMode.LATEST
                     && schedule.getEnabled() != null && schedule.getEnabled() == 1
                     && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
-                schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+                schedule.setNextRunTime(computeNextRunTime(schedule));
             }
-            return scheduleMapper.insert(schedule) > 0;
+            boolean inserted = scheduleMapper.insert(schedule) > 0;
+            if (inserted) scheduleGenreService.replace(schedule.getId(), genreSelection.tagIds());
+            return inserted;
         } else {
             // 更新时重算 nextRunTime
             if (crawlMode == CrawlerCrawlMode.LATEST
                     && schedule.getEnabled() != null && schedule.getEnabled() == 1
                     && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
-                schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+                schedule.setNextRunTime(computeNextRunTime(schedule));
             } else {
                 schedule.setNextRunTime(null);
             }
-            return scheduleMapper.updateById(schedule) > 0;
-        }
-    }
-
-    /**
-     * 将 genreFilter 统一转为 JSON 数组字符串或 null。
-     * 输入: null / "" / "爱情,科幻" / "[\"爱情\",\"科幻\"]"
-     * 输出: null / "[\"爱情\",\"科幻\"]"
-     */
-    private String normalizeGenreFilter(String genreFilter) {
-        if (genreFilter == null || genreFilter.trim().isEmpty()) {
-            return null;
-        }
-        genreFilter = genreFilter.trim();
-        // 已经是 JSON 数组格式
-        if (genreFilter.startsWith("[") && genreFilter.endsWith("]")) {
-            // 验证是否合法 JSON
-            try {
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                mapper.readTree(genreFilter);
-                // 空数组也返回 null
-                if ("[]".equals(genreFilter)) return null;
-                return genreFilter;
-            } catch (Exception e) {
-                // 非法 JSON，当作逗号分隔处理
-            }
-        }
-        // 逗号分隔格式 -> JSON 数组
-        String[] parts = genreFilter.split("[，,]");
-        java.util.List<String> genres = new java.util.ArrayList<>();
-        for (String part : parts) {
-            String trimmed = part.trim();
-            if (!trimmed.isEmpty()) {
-                genres.add(trimmed);
-            }
-        }
-        if (genres.isEmpty()) return null;
-        try {
-            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(genres);
-        } catch (Exception e) {
-            return null;
+            boolean updated = scheduleMapper.updateById(schedule) > 0;
+            if (updated) scheduleGenreService.replace(schedule.getId(), genreSelection.tagIds());
+            return updated;
         }
     }
 
@@ -180,7 +171,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         }
         schedule.setEnabled(enabled ? 1 : 0);
         if (enabled && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
-            schedule.setNextRunTime(computeNextRunTime(schedule.getCronExpression()));
+            schedule.setNextRunTime(computeNextRunTime(schedule));
         } else {
             schedule.setNextRunTime(null);
         }
@@ -188,14 +179,15 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     }
 
     /** 计算下一次运行时间（供 UI 展示） */
-    private LocalDateTime computeNextRunTime(String cronExpr) {
+    private LocalDateTime computeNextRunTime(CrawlerSchedule schedule) {
         try {
+            String cronExpr = schedule.getCronExpression();
             String normalized = cronExpr.trim();
             String[] parts = normalized.split("\\s+");
             if (parts.length == 5) normalized = "0 " + normalized;
-            return CrawlerTime.nextRunUtc(normalized, CrawlerTime.nowUtc());
+            return CrawlerTime.nextRunUtc(normalized, CrawlerTime.nowUtc(), schedule.getTimezone());
         } catch (Exception e) {
-            log.warn("[Scheduler] 无法解析 cron 表达式: {}", cronExpr);
+            log.warn("[Scheduler] 无法解析 cron 表达式: {}", schedule.getCronExpression());
             return null;
         }
     }

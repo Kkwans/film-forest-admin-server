@@ -1,13 +1,17 @@
 package com.filmforest.crawler.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 
 @Data
-@TableName("crawler_schedule")
+@TableName(value = "crawler_schedule", autoResultMap = true)
 /**
  * 爬虫调度配置实体
  * 对应 crawler_schedule 表，存储定时爬取任务的配置信息
@@ -26,14 +30,23 @@ public class CrawlerSchedule {
 
     private String crawlMode;
 
-    @NotBlank(message = "来源站点不能为空")
     private String sourceSite;
+    @NotNull(message = "资源来源不能为空")
+    private Long sourceId;
+    @NotBlank(message = "来源适配器不能为空")
+    private String adapterCode;
     private Integer enabled;
     private String cronExpression;
+    private String scheduleMode;
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Map<String, Object> scheduleConfig;
+    private String timezone;
     private Integer batchSize;
     private Integer rateLimitMs;
     private String priority;
     private String genreFilter;
+    @TableField(exist = false)
+    private List<Long> genreTagIds;
     /**
      * 兼容既有管理端响应的瞬时展示字段，不再持久化执行状态。
      */

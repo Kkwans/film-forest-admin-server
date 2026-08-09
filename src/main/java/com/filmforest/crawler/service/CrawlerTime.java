@@ -35,6 +35,10 @@ public final class CrawlerTime {
     }
 
     public static LocalDateTime nextRunUtc(String cronExpression, LocalDateTime referenceUtc) {
+        return nextRunUtc(cronExpression, referenceUtc, SCHEDULE_ZONE.getId());
+    }
+
+    public static LocalDateTime nextRunUtc(String cronExpression, LocalDateTime referenceUtc, String timezone) {
         if (cronExpression == null || cronExpression.isBlank()) {
             return null;
         }
@@ -42,8 +46,9 @@ public final class CrawlerTime {
         if (normalized.split("\\s+").length == 5) {
             normalized = "0 " + normalized;
         }
+        ZoneId zone = ZoneId.of(timezone == null || timezone.isBlank() ? SCHEDULE_ZONE.getId() : timezone);
         ZonedDateTime scheduleReference = referenceUtc.atZone(ZoneOffset.UTC)
-                .withZoneSameInstant(SCHEDULE_ZONE);
+                .withZoneSameInstant(zone);
         ZonedDateTime next = CronExpression.parse(normalized).next(scheduleReference);
         return next == null ? null
                 : LocalDateTime.ofInstant(next.toInstant(), ZoneOffset.UTC);

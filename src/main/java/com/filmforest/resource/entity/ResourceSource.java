@@ -15,6 +15,9 @@ public class ResourceSource {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    @NotBlank(message = "来源编码不能为空")
+    private String code;
+
     @NotBlank(message = "来源名称不能为空")
     private String name;        // 来源名称
 

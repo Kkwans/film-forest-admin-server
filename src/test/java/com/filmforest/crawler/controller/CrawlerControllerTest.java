@@ -7,9 +7,10 @@ import com.filmforest.crawler.core.CrawlerCore;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
-import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
-import com.filmforest.crawler.source.SourceAdapterRegistry;
+import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
+import com.filmforest.crawler.service.CrawlerScheduleService;
+import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,10 @@ class CrawlerControllerTest {
     private CrawlerTaskLogMapper taskLogMapper;
 
     @MockBean
-    private SourceAdapterRegistry sourceAdapterRegistry;
+    private CrawlerSourceCatalogService sourceCatalogService;
+
+    @MockBean
+    private CrawlerScheduleDefinitionService scheduleDefinitionService;
 
     // ========== TC-600: GET /api/crawler/schedules ==========
 
@@ -237,7 +241,7 @@ class CrawlerControllerTest {
             CrawlerSchedule schedule = new CrawlerSchedule();
             schedule.setName("电影爬虫");
             schedule.setContentType("movie");
-            schedule.setSourceSite("pkmp4.xyz");
+            completeRequiredFields(schedule);
             schedule.setBatchSize(10);
             schedule.setCronExpression("0 2 * * *");
 
@@ -264,7 +268,7 @@ class CrawlerControllerTest {
             CrawlerSchedule schedule = new CrawlerSchedule();
             schedule.setName("剧集爬虫");
             schedule.setContentType("drama");
-            schedule.setSourceSite("pkmp4.xyz");
+            completeRequiredFields(schedule);
             schedule.setCronExpression("0 2 * * *");
 
             when(scheduleService.saveSchedule(any())).thenReturn(true);
@@ -288,7 +292,7 @@ class CrawlerControllerTest {
             schedule.setId(1L);
             schedule.setName("电影爬虫-v2");
             schedule.setContentType("movie");
-            schedule.setSourceSite("pkmp4.xyz");
+            completeRequiredFields(schedule);
             schedule.setBatchSize(50);
 
             when(scheduleService.saveSchedule(any())).thenReturn(true);
@@ -406,6 +410,12 @@ class CrawlerControllerTest {
         s.setName(name);
         s.setContentType(contentType);
         s.setSourceSite("pkmp4.xyz");
+        s.setSourceId(1L);
+        s.setAdapterCode("pkmp4");
+        s.setScheduleMode("CUSTOM_CRON");
+        s.setScheduleConfig(java.util.Map.of("cronExpression", "0 0 2 * * *"));
+        s.setTimezone("Asia/Shanghai");
+        s.setGenreTagIds(List.of());
         s.setEnabled(1);
         s.setCronExpression("0 2 * * *");
         s.setBatchSize(20);
@@ -414,6 +424,14 @@ class CrawlerControllerTest {
         s.setCreatedAt(LocalDateTime.now());
         s.setUpdatedAt(LocalDateTime.now());
         return s;
+    }
+
+    private void completeRequiredFields(CrawlerSchedule schedule) {
+        schedule.setSourceSite("pkmp4.xyz");
+        schedule.setSourceId(1L);
+        schedule.setAdapterCode("pkmp4");
+        schedule.setTimezone("Asia/Shanghai");
+        schedule.setGenreTagIds(List.of());
     }
 
     private CrawlerTaskLog createTaskLog(Long id, Long scheduleId, String status) {

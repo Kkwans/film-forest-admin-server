@@ -75,7 +75,8 @@ public class CrawlerCore {
         if (isCancellationRequested(cancellation)) {
             return emptySummary();
         }
-        CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(schedule.getSourceSite());
+        CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(
+                schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode());
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(job.getCrawlMode() == null
                 ? schedule.getCrawlMode() : job.getCrawlMode());
         int startPage = crawlMode == CrawlerCrawlMode.FULL && job.getCurrentPage() != null
