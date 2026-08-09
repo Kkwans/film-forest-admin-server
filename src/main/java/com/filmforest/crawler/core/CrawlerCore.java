@@ -23,6 +23,7 @@ import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
+import com.filmforest.crawler.source.CrawlerResourceEnricher;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.RecoverableDataAccessException;
@@ -254,6 +255,9 @@ public class CrawlerCore {
         ParsedContent parsed;
         try {
             parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
+            if (adapter instanceof CrawlerResourceEnricher enricher) {
+                parsed = enricher.enrichResources(parsed, httpFetcher, rateLimitMs, cancellation);
+            }
         } catch (RuntimeException parseFailure) {
             stats.failed++;
             sourceItemService.recordParseFailure(adapter.sourceCode(), contentType,

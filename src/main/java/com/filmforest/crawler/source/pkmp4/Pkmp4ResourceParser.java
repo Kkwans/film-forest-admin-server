@@ -44,7 +44,7 @@ public class Pkmp4ResourceParser {
             if (url.startsWith("magnet:")) {
                 resources.add(new ParsedResource(ParsedResource.Kind.MAGNET, title, url,
                         null, null, resolution(title), containsSubtitle(title), containsSpecialSubtitle(title),
-                        null, null, null, order++, rawText));
+                        null, null, null, order++, rawText, null, null));
                 continue;
             }
             String diskType = diskType(url);
@@ -54,20 +54,38 @@ public class Pkmp4ResourceParser {
             String context = link.parent() == null ? "" : link.parent().ownText();
             resources.add(new ParsedResource(ParsedResource.Kind.CLOUD, title, url,
                     diskType, password(title + " " + rawText + " " + context), null, false, false,
-                    null, null, null, order++, rawText));
+                    null, null, null, order++, rawText, null, null));
         }
     }
 
     private void parseOnline(Document document, URI finalUri, List<ParsedResource> resources) {
         int order = 0;
+        Map<String, Element> links = new LinkedHashMap<>();
+        Map<String, String> providers = new LinkedHashMap<>();
+        for (Element group : document.select("ul.showplayul")) {
+            Element heading = group.previousElementSibling();
+            Element label = heading == null ? null : heading.selectFirst("span");
+            String provider = label == null ? "" : label.text().trim();
+            for (Element link : group.select("a[href*=/py/]")) {
+                links.putIfAbsent(link.attr("href"), link);
+                providers.putIfAbsent(link.attr("href"), provider);
+            }
+        }
         for (Element link : document.select("a[href*=/py/]")) {
+            links.putIfAbsent(link.attr("href"), link);
+        }
+        for (Map.Entry<String, Element> entry : links.entrySet()) {
+            Element link = entry.getValue();
             String title = link.text().trim();
-            String href = link.attr("href");
+            String provider = providers.getOrDefault(entry.getKey(), "");
+            String sourceName = provider.isBlank() ? title : provider + " · " + title;
+            String href = entry.getKey();
             URI resourceUri = finalUri.resolve(href);
             if (!resourceUri.getPath().startsWith("/py/")) continue;
-            resources.add(new ParsedResource(ParsedResource.Kind.ONLINE, title,
+            resources.add(new ParsedResource(ParsedResource.Kind.ONLINE, sourceName,
                     resourceUri.toString(), null, null, null, false, false,
-                    season(title), episodeNumber(title), title, order++, title));
+                    season(title), episodeNumber(title), title, order++, title,
+                    resourceUri.toString(), "EXTERNAL_PAGE"));
         }
     }
 

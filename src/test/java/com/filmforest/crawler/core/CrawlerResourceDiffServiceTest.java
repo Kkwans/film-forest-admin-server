@@ -84,6 +84,6 @@ class CrawlerResourceDiffServiceTest {
     private static ParsedResource magnet() {
         return new ParsedResource(ParsedResource.Kind.MAGNET, "资源",
                 "magnet:?xt=urn:btih:abcdef123&dn=Movie", null, null, "1080P",
-                false, false, null, null, null, 0, "资源");
+                false, false, null, null, null, 0, "资源", null, null);
     }
 }

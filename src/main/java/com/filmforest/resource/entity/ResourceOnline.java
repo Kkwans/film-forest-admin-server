@@ -37,6 +37,8 @@ public class ResourceOnline {
     private String sourceName;       // 来源名称
     @NotBlank(message = "播放 URL 不能为空")
     private String sourceUrl;        // 播放URL
+    private String sourcePageUrl;    // 来源站播放页，用于降级和溯源
+    private String playbackType;     // HLS/VIDEO/EMBED/EXTERNAL_PAGE
     private Integer sort;
 
     @TableField(fill = FieldFill.INSERT)

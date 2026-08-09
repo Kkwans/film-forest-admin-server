@@ -166,7 +166,7 @@ public class CrawlerResourceDiffService {
                     candidate.getTitle(), candidate.getMagnetUrl(), null, null,
                     candidate.getResolution(), Boolean.TRUE.equals(candidate.getHasSubtitle()),
                     Boolean.TRUE.equals(candidate.getIsSpecialSub()), null, null, null,
-                    valueOrZero(candidate.getSort()), candidate.getRawText());
+                    valueOrZero(candidate.getSort()), candidate.getRawText(), null, null);
             if (normalizer.normalize(sourceCode, parsed).resourceKey().equals(key)) {
                 legacy.remove(index);
                 return candidate;
@@ -182,7 +182,7 @@ public class CrawlerResourceDiffService {
             ParsedResource parsed = new ParsedResource(ParsedResource.Kind.CLOUD,
                     candidate.getTitle(), candidate.getUrl(), candidate.getDiskType(),
                     candidate.getPassword(), null, false, false, null, null, null,
-                    valueOrZero(candidate.getSort()), candidate.getRawText());
+                    valueOrZero(candidate.getSort()), candidate.getRawText(), null, null);
             if (normalizer.normalize(sourceCode, parsed).resourceKey().equals(key)) {
                 legacy.remove(index);
                 return candidate;
@@ -198,7 +198,8 @@ public class CrawlerResourceDiffService {
             ParsedResource parsed = new ParsedResource(ParsedResource.Kind.ONLINE,
                     candidate.getSourceName(), candidate.getSourceUrl(), null, null,
                     null, false, false, candidate.getSeason(), candidate.getEpisodeNumber(),
-                    candidate.getEpisodeTitle(), valueOrZero(candidate.getSort()), candidate.getRawText());
+                    candidate.getEpisodeTitle(), valueOrZero(candidate.getSort()), candidate.getRawText(),
+                    candidate.getSourcePageUrl(), candidate.getPlaybackType());
             if (normalizer.normalize(sourceCode, parsed).resourceKey().equals(key)) {
                 legacy.remove(index);
                 return candidate;
@@ -282,6 +283,8 @@ public class CrawlerResourceDiffService {
         entity.setEpisodeTitle(limit(parsed.episodeTitle(), 200));
         entity.setSourceName(limit(parsed.title(), 50));
         entity.setSourceUrl(parsed.url());
+        entity.setSourcePageUrl(parsed.sourcePageUrl());
+        entity.setPlaybackType(parsed.playbackType() == null ? "EXTERNAL_PAGE" : parsed.playbackType());
         entity.setSort(parsed.sourceOrder());
         entity.setDeleted(0);
         return entity;
@@ -312,6 +315,9 @@ public class CrawlerResourceDiffService {
                 || !Objects.equals(existing.getEpisodeTitle(), limit(parsed.episodeTitle(), 200))
                 || !Objects.equals(existing.getSourceName(), limit(parsed.title(), 50))
                 || !Objects.equals(existing.getSourceUrl(), parsed.url())
+                || !Objects.equals(existing.getSourcePageUrl(), parsed.sourcePageUrl())
+                || !Objects.equals(existing.getPlaybackType(), parsed.playbackType() == null
+                        ? "EXTERNAL_PAGE" : parsed.playbackType())
                 || !Objects.equals(existing.getSort(), parsed.sourceOrder())
                 || !Objects.equals(existing.getRawText(), parsed.rawText());
     }

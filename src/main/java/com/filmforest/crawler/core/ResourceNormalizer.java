@@ -77,15 +77,18 @@ public class ResourceNormalizer {
                 resource = new ParsedResource(resource.kind(), resource.title(), resource.url(),
                         diskType, resource.password(), resource.resolution(), resource.hasSubtitle(),
                         resource.specialSubtitle(), resource.season(), resource.episodeNumber(),
-                        resource.episodeTitle(), resource.sourceOrder(), resource.rawText());
+                        resource.episodeTitle(), resource.sourceOrder(), resource.rawText(),
+                        resource.sourcePageUrl(), resource.playbackType());
                 normalizedUrl = normalizeUrl(url, true);
                 material = "cloud\u0000" + diskType + '\u0000' + normalizedUrl;
             }
             case ONLINE -> {
                 normalizedUrl = normalizeUrl(url, false);
+                String stableUrl = resource.sourcePageUrl() == null || resource.sourcePageUrl().isBlank()
+                        ? normalizedUrl : normalizeUrl(resource.sourcePageUrl(), false);
                 material = "online\u0000" + normalizedSource + '\u0000'
                         + nullableNumber(resource.season()) + '\u0000'
-                        + nullableNumber(resource.episodeNumber()) + '\u0000' + normalizedUrl;
+                        + nullableNumber(resource.episodeNumber()) + '\u0000' + stableUrl;
             }
             default -> throw new IllegalArgumentException("Unsupported resource kind: " + resource.kind());
         }

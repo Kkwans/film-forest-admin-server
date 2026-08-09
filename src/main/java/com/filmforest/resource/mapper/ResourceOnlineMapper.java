@@ -39,6 +39,7 @@ public interface ResourceOnlineMapper extends BaseMapper<ResourceOnline> {
               removed_at = NULL, season = #{resource.season},
               episode_number = #{resource.episodeNumber}, episode_title = #{resource.episodeTitle},
               source_name = #{resource.sourceName}, source_url = #{resource.sourceUrl},
+              source_page_url = #{resource.sourcePageUrl}, playback_type = #{resource.playbackType},
               sort = #{resource.sort}, is_deleted = 0
             WHERE id = #{resource.id}
             """)

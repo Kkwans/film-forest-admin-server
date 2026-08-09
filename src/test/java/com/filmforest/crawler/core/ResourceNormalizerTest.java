@@ -41,16 +41,16 @@ class ResourceNormalizerTest {
 
     private static ParsedResource magnet(String url) {
         return new ParsedResource(ParsedResource.Kind.MAGNET, "资源", url, null, null,
-                "1080P", false, false, null, null, null, 0, "资源");
+                "1080P", false, false, null, null, null, 0, "资源", null, null);
     }
 
     private static ParsedResource cloud(String url) {
         return new ParsedResource(ParsedResource.Kind.CLOUD, "网盘", url, "baidu", "abcd",
-                null, false, false, null, null, null, 0, "网盘");
+                null, false, false, null, null, null, 0, "网盘", null, null);
     }
 
     private static ParsedResource online(Integer episode, String url) {
         return new ParsedResource(ParsedResource.Kind.ONLINE, "线路", url, null, null,
-                null, false, false, 1, episode, "剧集", 0, "剧集");
+                null, false, false, 1, episode, "剧集", 0, "剧集", url, "EXTERNAL_PAGE");
     }
 }

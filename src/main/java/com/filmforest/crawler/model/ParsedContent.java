@@ -34,4 +34,11 @@ public record ParsedContent(
     public boolean valid() {
         return diagnostics.missingRequiredFields().isEmpty();
     }
+
+    public ParsedContent withResources(List<ParsedResource> nextResources) {
+        return new ParsedContent(externalId, contentType, sourceUrl, title, sourcePosterUrl, year,
+                regions, genres, directors, writers, actors, languages, durationMinutes,
+                releaseDate, rawReleaseDate, aliases, doubanScore, imdbScore,
+                rottenTomatoesScore, storyline, totalEpisodes, List.copyOf(nextResources), diagnostics);
+    }
 }

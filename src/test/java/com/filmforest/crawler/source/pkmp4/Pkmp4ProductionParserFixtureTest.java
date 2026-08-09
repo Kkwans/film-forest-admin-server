@@ -1,5 +1,6 @@
 package com.filmforest.crawler.source.pkmp4;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.model.ParsedResource;
 import org.jsoup.Jsoup;
@@ -62,7 +63,8 @@ class Pkmp4ProductionParserFixtureTest {
     void detailPageWithRelatedContentLinksIsStillClassifiedAsDetail() throws IOException {
         String html = fixture("/fixtures/pkmp4/detail-drama-475547.html");
         var adapter = new Pkmp4SourceAdapter(new Pkmp4UrlBuilder(), new Pkmp4ListParser(),
-                detailParser, new Pkmp4PageClassifier());
+                detailParser, new Pkmp4PageClassifier(),
+                new Pkmp4PlaybackEnricher(new Pkmp4PlaybackPageParser(new ObjectMapper())));
 
         var parsed = adapter.parseDetail(ContentType.DRAMA, html,
                 URI.create("https://www.pkmp4.xyz/mv/475547.html"));

@@ -13,7 +13,9 @@ public record ParsedResource(
         Integer episodeNumber,
         String episodeTitle,
         int sourceOrder,
-        String rawText
+        String rawText,
+        String sourcePageUrl,
+        String playbackType
 ) {
     public enum Kind {
         MAGNET,

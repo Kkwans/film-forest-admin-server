@@ -4,27 +4,33 @@ import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
+import com.filmforest.crawler.source.CrawlerResourceEnricher;
+import com.filmforest.crawler.http.HttpFetcher;
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
-public class Pkmp4SourceAdapter implements CrawlerSourceAdapter {
+public class Pkmp4SourceAdapter implements CrawlerSourceAdapter, CrawlerResourceEnricher {
 
     private final Pkmp4UrlBuilder urlBuilder;
     private final Pkmp4ListParser listParser;
     private final Pkmp4DetailParser detailParser;
     private final Pkmp4PageClassifier pageClassifier;
+    private final Pkmp4PlaybackEnricher playbackEnricher;
 
     public Pkmp4SourceAdapter(Pkmp4UrlBuilder urlBuilder, Pkmp4ListParser listParser,
-                              Pkmp4DetailParser detailParser, Pkmp4PageClassifier pageClassifier) {
+                              Pkmp4DetailParser detailParser, Pkmp4PageClassifier pageClassifier,
+                              Pkmp4PlaybackEnricher playbackEnricher) {
         this.urlBuilder = urlBuilder;
         this.listParser = listParser;
         this.detailParser = detailParser;
         this.pageClassifier = pageClassifier;
+        this.playbackEnricher = playbackEnricher;
     }
 
     @Override
@@ -57,6 +63,12 @@ public class Pkmp4SourceAdapter implements CrawlerSourceAdapter {
     public ParsedContent parseDetail(ContentType contentType, String html, URI finalUri) {
         requirePageKind(html, finalUri, Pkmp4PageClassifier.PageKind.DETAIL);
         return detailParser.parse(contentType, html, finalUri);
+    }
+
+    @Override
+    public ParsedContent enrichResources(ParsedContent parsed, HttpFetcher httpFetcher,
+                                         int rateLimitMs, AtomicBoolean cancellation) {
+        return playbackEnricher.enrich(parsed, httpFetcher, rateLimitMs, cancellation);
     }
 
     private void requirePageKind(String html, URI finalUri, Pkmp4PageClassifier.PageKind expected) {
