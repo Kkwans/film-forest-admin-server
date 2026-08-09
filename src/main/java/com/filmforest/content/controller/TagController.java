@@ -27,6 +27,16 @@ public class TagController {
         return Result.ok(tagService.getAllTags());
     }
 
+    /** 获取指定内容类型可选的系统标准题材。 */
+    @GetMapping("/genres")
+    public Result<?> listStandardGenres(@RequestParam String contentType) {
+        try {
+            return Result.ok(tagService.getStandardGenres(contentType));
+        } catch (IllegalArgumentException exception) {
+            return Result.fail(400, exception.getMessage());
+        }
+    }
+
     /** 创建标签 */
     @PostMapping
     public Result<?> create(@RequestBody Map<String, Object> body) {
@@ -55,6 +65,10 @@ public class TagController {
     /** 删除标签 */
     @DeleteMapping("/{id}")
     public Result<?> delete(@PathVariable Long id) {
+        Tag tag = tagService.getById(id);
+        if (tag != null && Integer.valueOf(1).equals(tag.getSystem())) {
+            return Result.fail(400, "系统标准题材不可删除");
+        }
         tagService.removeById(id);
         return Result.ok();
     }

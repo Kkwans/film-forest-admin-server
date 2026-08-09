@@ -3,6 +3,7 @@ package com.filmforest.content.service;
 import com.filmforest.common.dto.PageResult;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.content.dto.AdminContentItem;
+import com.filmforest.content.model.ContentStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -103,8 +104,8 @@ public class AdminContentQueryService {
     }
 
     private static void validateStatus(Integer status) {
-        if (status != null && status != 0 && status != 1) {
-            throw new IllegalArgumentException("状态只允许 0 或 1");
+        if (status != null && !ContentStatus.isValid(status)) {
+            throw new IllegalArgumentException("状态只允许 0、1 或 2");
         }
     }
 

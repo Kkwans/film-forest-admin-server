@@ -1,12 +1,11 @@
 package com.filmforest.content.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.dto.Result;
 import com.filmforest.common.dto.PageResult;
 import com.filmforest.content.dto.AdminContentItem;
 import com.filmforest.content.entity.*;
+import com.filmforest.content.model.ContentStatus;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
@@ -39,22 +38,7 @@ public class ContentController {
     @Autowired private ShortDramaService shortDramaService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private AdminContentQueryService adminContentQueryService;
-
-    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
-
-    /** 语言类关键词（从 genre 中排除） */
-    private static final Set<String> LANGUAGE_KEYWORDS = Set.of(
-            // 中文语言名
-            "国语", "粤语", "英语", "日语", "韩语", "法语", "德语",
-            "西班牙语", "意大利语", "俄语", "泰语", "印度语",
-            "普通话", "原声", "配音", "中字", "英字", "日字",
-            "双语", "多语言", "外语", "国语配音", "日语配音",
-            // 爬虫采集到的其他语言
-            "丹麦语", "乌克兰语", "印地语", "拉丁语", "挪威语",
-            "格鲁吉亚语", "波兰语", "泰米尔语", "爱沙尼亚语",
-            "瑞典语", "瑞士德语", "芬兰语", "荷兰语", "葡萄牙语",
-            "越南语", "闽南话", "闽南语", "日本語", "Hindi", "Serbian"
-    );
+    @Autowired private TagService tagService;
 
     /** 内容类型 → 数据库表名映射 */
     private static final Map<String, String> CONTENT_TYPE_TABLE_MAP = Map.of(
@@ -84,9 +68,8 @@ public class ContentController {
         if (!CONTENT_TYPE_TABLE_MAP.containsValue(table)) {
             return Result.fail("不支持的内容类型: " + type);
         }
-        // 校验 status 只能为 0 或 1
-        if (status != 0 && status != 1) {
-            return Result.fail("非法的状态值: " + status + "，只允许 0 或 1");
+        if (!ContentStatus.isValid(status)) {
+            return Result.fail("非法的状态值: " + status + "，只允许 0、1 或 2");
         }
         try {
             int rows = jdbcTemplate.update(
@@ -127,6 +110,7 @@ public class ContentController {
     @PostMapping("/movies")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Movie> createMovie(@Valid @RequestBody Movie movie) {
+        if (movie.getStatus() == null) movie.setStatus(ContentStatus.DRAFT.code());
         movieService.save(movie);
         log.info("创建电影: id={}, title={}", movie.getId(), movie.getTitle());
         return Result.ok(movie);
@@ -171,6 +155,7 @@ public class ContentController {
     @PostMapping("/dramas")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Drama> createDrama(@Valid @RequestBody Drama drama) {
+        if (drama.getStatus() == null) drama.setStatus(ContentStatus.DRAFT.code());
         dramaService.save(drama);
         log.info("创建剧集: id={}, title={}", drama.getId(), drama.getTitle());
         return Result.ok(drama);
@@ -215,6 +200,7 @@ public class ContentController {
     @PostMapping("/varieties")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Variety> createVariety(@Valid @RequestBody Variety variety) {
+        if (variety.getStatus() == null) variety.setStatus(ContentStatus.DRAFT.code());
         varietyService.save(variety);
         log.info("创建综艺: id={}, title={}", variety.getId(), variety.getTitle());
         return Result.ok(variety);
@@ -259,6 +245,7 @@ public class ContentController {
     @PostMapping("/animes")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<Anime> createAnime(@Valid @RequestBody Anime anime) {
+        if (anime.getStatus() == null) anime.setStatus(ContentStatus.DRAFT.code());
         animeService.save(anime);
         log.info("创建动漫: id={}, title={}", anime.getId(), anime.getTitle());
         return Result.ok(anime);
@@ -303,6 +290,7 @@ public class ContentController {
     @PostMapping("/short-dramas")
     @CacheEvict(value = {"stats", "genres"}, allEntries = true)
     public Result<ShortDrama> createShortDrama(@Valid @RequestBody ShortDrama shortDrama) {
+        if (shortDrama.getStatus() == null) shortDrama.setStatus(ContentStatus.DRAFT.code());
         shortDramaService.save(shortDrama);
         log.info("创建短剧: id={}, title={}", shortDrama.getId(), shortDrama.getTitle());
         return Result.ok(shortDrama);
@@ -332,8 +320,7 @@ public class ContentController {
      * 获取指定内容类型的所有 genre 标签（去重）
      * 用于爬虫配置的 genre_filter 多选
      *
-     * 直接从数据库中提取 genre JSON 字段，解析后去重返回。
-     * 不做白名单过滤，保留数据库中实际存在的所有类型。
+     * 仅返回系统标准题材，不再从历史 genre JSON 推导自由文本选项。
      */
     @GetMapping("/genres")
     @Cacheable(value = "genres", key = "#contentType")
@@ -350,27 +337,11 @@ public class ContentController {
         }
 
         try {
-            List<String> genreJsons = jdbcTemplate.queryForList(
-                    "SELECT genre FROM " + table + " WHERE genre IS NOT NULL AND genre != '[]'",
-                    String.class
-            );
-
-            Set<String> genres = new TreeSet<>();
-            for (String json : genreJsons) {
-                try {
-                    List<String> arr = JSON_MAPPER.readValue(json, new TypeReference<>() {});
-                    for (String g : arr) {
-                        // 过滤掉语言类关键词
-                        if (!LANGUAGE_KEYWORDS.contains(g.trim())) {
-                            genres.add(g);
-                        }
-                    }
-                } catch (Exception ignored) {
-                    // 跳过无法解析的 JSON
-                }
-            }
-            log.debug("获取 genre 列表: contentType={}, 共 {} 个", contentType, genres.size());
-            return Result.ok(new ArrayList<>(genres));
+            List<String> genres = tagService.getStandardGenres(contentType).stream()
+                    .map(Tag::getName)
+                    .toList();
+            log.debug("获取标准 genre 列表: contentType={}, 共 {} 个", contentType, genres.size());
+            return Result.ok(genres);
         } catch (Exception e) {
             log.error("获取 genre 列表失败: contentType={}", contentType, e);
             return Result.fail("获取 genre 失败: " + e.getMessage());

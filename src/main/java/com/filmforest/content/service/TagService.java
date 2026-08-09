@@ -9,6 +9,10 @@ public interface TagService extends IService<Tag> {
 
     List<Tag> getAllTags();
 
+    List<Tag> getStandardGenres(String contentType);
+
+    List<Tag> resolveSourceGenres(String sourceCode, String contentType, List<String> sourceGenres);
+
     Tag createTag(String name, String color);
 
     Tag updateTag(Long id, String name, String color);

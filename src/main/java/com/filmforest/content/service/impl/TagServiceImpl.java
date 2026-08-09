@@ -4,8 +4,12 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.filmforest.content.entity.ContentTag;
 import com.filmforest.content.entity.Tag;
+import com.filmforest.content.entity.TagContentType;
+import com.filmforest.content.entity.TagSourceAlias;
 import com.filmforest.content.mapper.ContentTagMapper;
+import com.filmforest.content.mapper.TagContentTypeMapper;
 import com.filmforest.content.mapper.TagMapper;
+import com.filmforest.content.mapper.TagSourceAliasMapper;
 import com.filmforest.content.service.TagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,11 +26,65 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     @Autowired
     private ContentTagMapper contentTagMapper;
 
+    @Autowired
+    private TagContentTypeMapper tagContentTypeMapper;
+
+    @Autowired
+    private TagSourceAliasMapper tagSourceAliasMapper;
+
     @Override
     public List<Tag> getAllTags() {
         return list(new LambdaQueryWrapper<Tag>()
                 .orderByDesc(Tag::getUsageCount)
                 .orderByAsc(Tag::getSortOrder));
+    }
+
+    @Override
+    public List<Tag> getStandardGenres(String contentType) {
+        String canonicalType = canonicalContentType(contentType);
+        List<Long> tagIds = tagContentTypeMapper.selectList(
+                        new LambdaQueryWrapper<TagContentType>()
+                                .eq(TagContentType::getContentType, canonicalType))
+                .stream()
+                .map(TagContentType::getTagId)
+                .toList();
+        if (tagIds.isEmpty()) {
+            return List.of();
+        }
+        return list(new LambdaQueryWrapper<Tag>()
+                .in(Tag::getId, tagIds)
+                .eq(Tag::getSystem, 1)
+                .orderByAsc(Tag::getSortOrder)
+                .orderByAsc(Tag::getId));
+    }
+
+    @Override
+    public List<Tag> resolveSourceGenres(String sourceCode, String contentType, List<String> sourceGenres) {
+        if (sourceGenres == null || sourceGenres.isEmpty()) {
+            return List.of();
+        }
+        String canonicalType = canonicalContentType(contentType);
+        Map<String, Tag> canonicalByName = getStandardGenres(canonicalType).stream()
+                .collect(Collectors.toMap(Tag::getName, tag -> tag));
+        Map<String, Tag> aliasMap = new HashMap<>();
+        List<TagSourceAlias> aliases = tagSourceAliasMapper.selectList(
+                new LambdaQueryWrapper<TagSourceAlias>()
+                        .eq(TagSourceAlias::getSourceCode, sourceCode)
+                        .eq(TagSourceAlias::getContentType, canonicalType)
+                        .in(TagSourceAlias::getAlias, sourceGenres));
+        if (!aliases.isEmpty()) {
+            Map<Long, Tag> tagsById = listByIds(aliases.stream().map(TagSourceAlias::getTagId).toList())
+                    .stream().collect(Collectors.toMap(Tag::getId, tag -> tag));
+            aliases.forEach(alias -> aliasMap.put(alias.getAlias(), tagsById.get(alias.getTagId())));
+        }
+        LinkedHashMap<Long, Tag> resolved = new LinkedHashMap<>();
+        for (String rawGenre : sourceGenres) {
+            if (rawGenre == null || rawGenre.isBlank()) continue;
+            String genre = rawGenre.trim();
+            Tag tag = canonicalByName.getOrDefault(genre, aliasMap.get(genre));
+            if (tag != null) resolved.putIfAbsent(tag.getId(), tag);
+        }
+        return new ArrayList<>(resolved.values());
     }
 
     @Override
@@ -38,9 +96,11 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         }
         Tag tag = new Tag();
         tag.setName(name);
+        tag.setCode("custom-" + UUID.randomUUID().toString().replace("-", ""));
         tag.setColor(color);
         tag.setSortOrder(0);
         tag.setUsageCount(0);
+        tag.setSystem(0);
         save(tag);
         return tag;
     }
@@ -50,6 +110,9 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     public Tag updateTag(Long id, String name, String color) {
         Tag tag = getById(id);
         if (tag == null) throw new RuntimeException("标签不存在");
+        if (Integer.valueOf(1).equals(tag.getSystem()) && name != null && !name.equals(tag.getName())) {
+            throw new RuntimeException("系统题材名称不可修改");
+        }
         if (name != null) tag.setName(name);
         if (color != null) tag.setColor(color);
         updateById(tag);
@@ -59,19 +122,31 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     @Override
     @Transactional
     public void setContentTags(Long contentId, String contentType, List<Long> tagIds) {
+        String canonicalType = canonicalContentType(contentType);
+        List<Long> normalizedTagIds = tagIds == null ? List.of() : tagIds.stream().distinct().toList();
+        Set<Long> allowedIds = getStandardGenres(canonicalType).stream()
+                .map(Tag::getId)
+                .collect(Collectors.toSet());
+        List<Tag> requestedTags = normalizedTagIds.isEmpty() ? List.of() : listByIds(normalizedTagIds);
+        if (requestedTags.size() != normalizedTagIds.size()) {
+            throw new IllegalArgumentException("包含不存在的标签");
+        }
+        boolean containsInapplicableSystemGenre = requestedTags.stream()
+                .anyMatch(tag -> Integer.valueOf(1).equals(tag.getSystem()) && !allowedIds.contains(tag.getId()));
+        if (containsInapplicableSystemGenre) {
+            throw new IllegalArgumentException("题材必须来自当前内容类型的系统标准选项");
+        }
         // 删除旧关联
         contentTagMapper.delete(new LambdaQueryWrapper<ContentTag>()
                 .eq(ContentTag::getContentId, contentId)
-                .eq(ContentTag::getContentType, contentType));
+                .eq(ContentTag::getContentType, canonicalType));
         // 添加新关联
-        if (tagIds != null) {
-            for (Long tagId : tagIds) {
-                ContentTag ct = new ContentTag();
-                ct.setContentId(contentId);
-                ct.setContentType(contentType);
-                ct.setTagId(tagId);
-                contentTagMapper.insert(ct);
-            }
+        for (Long tagId : normalizedTagIds) {
+            ContentTag ct = new ContentTag();
+            ct.setContentId(contentId);
+            ct.setContentType(canonicalType);
+            ct.setTagId(tagId);
+            contentTagMapper.insert(ct);
         }
         // 更新使用次数
         updateAllUsageCounts();
@@ -79,13 +154,22 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
 
     @Override
     public List<Tag> getContentTags(Long contentId, String contentType) {
+        String canonicalType = canonicalContentType(contentType);
         List<ContentTag> cts = contentTagMapper.selectList(
                 new LambdaQueryWrapper<ContentTag>()
                         .eq(ContentTag::getContentId, contentId)
-                        .eq(ContentTag::getContentType, contentType));
+                        .eq(ContentTag::getContentType, canonicalType));
         if (cts.isEmpty()) return Collections.emptyList();
         List<Long> tagIds = cts.stream().map(ContentTag::getTagId).collect(Collectors.toList());
         return listByIds(tagIds);
+    }
+
+    private static String canonicalContentType(String contentType) {
+        String canonical = "short".equals(contentType) ? "short_drama" : contentType;
+        if (!Set.of("movie", "drama", "variety", "anime", "short_drama").contains(canonical)) {
+            throw new IllegalArgumentException("不支持的内容类型: " + contentType);
+        }
+        return canonical;
     }
 
     private void updateAllUsageCounts() {

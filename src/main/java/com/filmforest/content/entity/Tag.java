@@ -14,10 +14,13 @@ public class Tag {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    private String code;
     private String name;
     private String color;
     private Integer sortOrder;
     private Integer usageCount;
+    @TableField("is_system")
+    private Integer system;
 
     @TableLogic
     @TableField("is_deleted")
