@@ -25,7 +25,7 @@ class Pkmp4ProductionParserFixtureTest {
 
         assertThat(parsed.valid()).isTrue();
         assertThat(parsed.externalId()).isEqualTo("475547");
-        assertThat(parsed.title()).isEqualTo("示例剧集 第二季 (2024)");
+        assertThat(parsed.title()).isEqualTo("示例剧集 第二季");
         assertThat(parsed.sourcePosterUrl()).isEqualTo("https://www.pkmp4.xyz/images/475547.jpg");
         assertThat(parsed.year()).isEqualTo(2024);
         assertThat(parsed.directors()).containsExactly("导演甲", "导演乙");
@@ -42,6 +42,20 @@ class Pkmp4ProductionParserFixtureTest {
         assertThat(parsed.diagnostics().pageFingerprint()).hasSize(64);
         assertThat(parsed.diagnostics().resourceCounts())
                 .containsEntry("magnet", 1).containsEntry("cloud", 1).containsEntry("online", 7);
+    }
+
+    @Test
+    void detailTitleSeparatesTrailingReleaseYearFromCanonicalTitle() {
+        String html = """
+                <h1>2001太空漫游（1968）</h1>
+                <div class="movie-introduce">经典科幻片。</div>
+                """;
+
+        var parsed = detailParser.parse(ContentType.MOVIE, html,
+                URI.create("https://www.pkmp4.xyz/mv/42.html"));
+
+        assertThat(parsed.title()).isEqualTo("2001太空漫游");
+        assertThat(parsed.year()).isEqualTo(1968);
     }
 
     @Test

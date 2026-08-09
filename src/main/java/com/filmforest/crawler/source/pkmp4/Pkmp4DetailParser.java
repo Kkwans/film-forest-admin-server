@@ -34,6 +34,8 @@ public class Pkmp4DetailParser {
 
     private static final Pattern EXTERNAL_ID = Pattern.compile("/mv/(\\d+)(?:\\.html)?");
     private static final Pattern YEAR = Pattern.compile("((?:19|20)\\d{2})");
+    private static final Pattern TRAILING_YEAR = Pattern.compile(
+            "\\s*[（(\\[]((?:19|20)\\d{2})[）)\\]]\\s*$");
     private static final Pattern DATE = Pattern.compile("((?:19|20)\\d{2}-\\d{2}-\\d{2})");
     private static final Pattern DURATION = Pattern.compile("(\\d+)\\s*分钟");
     private static final Pattern TOTAL_EPISODES = Pattern.compile("(?:共|更新至)?\\s*(\\d+)\\s*[集期](?:全|完结)?");
@@ -52,14 +54,16 @@ public class Pkmp4DetailParser {
 
         String externalId = externalId(finalUri);
         if (externalId == null) missingRequired.add("externalId");
-        String title = text(document, "h1", matchedSelectors);
-        if (title == null) missingRequired.add("title");
+        String rawTitle = text(document, "h1", matchedSelectors);
+        if (rawTitle == null) missingRequired.add("title");
         String posterUrl = poster(document, matchedSelectors);
         if (posterUrl == null) warnings.add("missingPoster");
         String rawReleaseDate = labelText(document, "上映", matchedSelectors);
         LocalDate releaseDate = parseDate(rawReleaseDate, warnings);
-        Integer year = firstInteger(title, YEAR);
+        Integer year = trailingYear(rawTitle);
         if (year == null && releaseDate != null) year = releaseDate.getYear();
+        if (year == null) year = firstInteger(rawTitle, YEAR);
+        String title = stripTrailingYear(rawTitle, year);
         String storyline = storyline(document, matchedSelectors);
         List<ParsedResource> resources = resourceParser.parse(document, finalUri);
 
@@ -256,6 +260,20 @@ public class Pkmp4DetailParser {
         if (text == null) return null;
         Matcher matcher = pattern.matcher(text);
         return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
+    }
+
+    private static Integer trailingYear(String title) {
+        if (title == null) return null;
+        Matcher matcher = TRAILING_YEAR.matcher(title);
+        return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
+    }
+
+    private static String stripTrailingYear(String title, Integer year) {
+        if (title == null || year == null) return title;
+        Matcher matcher = TRAILING_YEAR.matcher(title);
+        if (!matcher.find() || !year.toString().equals(matcher.group(1))) return title;
+        String cleaned = title.substring(0, matcher.start()).trim();
+        return cleaned.isEmpty() ? title : cleaned;
     }
 
     private static String text(Document document, String selector, Set<String> matchedSelectors) {
