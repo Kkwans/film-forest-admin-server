@@ -2,6 +2,7 @@ package com.filmforest.system.service;
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.security.SecureRandom;
@@ -21,6 +22,17 @@ class RegistrationInvitationAdminServiceTest {
 
     private static final Clock FIXED_CLOCK = Clock.fixed(
             Instant.parse("2026-08-10T01:00:00Z"), ZoneId.of("Asia/Shanghai"));
+
+    @Test
+    void springContextUsesTheProductionConstructor() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class));
+            context.register(RegistrationInvitationAdminService.class);
+            context.refresh();
+
+            assertThat(context.getBean(RegistrationInvitationAdminService.class)).isNotNull();
+        }
+    }
 
     @Test
     void createReturnsRawTokenOnceButPersistsOnlySha256Hash() {

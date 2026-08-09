@@ -1,5 +1,6 @@
 package com.filmforest.system.service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class RegistrationInvitationAdminService {
     private final SecureRandom secureRandom;
     private final Clock clock;
 
+    @Autowired
     public RegistrationInvitationAdminService(JdbcTemplate jdbcTemplate) {
         this(jdbcTemplate, new SecureRandom(), Clock.systemDefaultZone());
     }
