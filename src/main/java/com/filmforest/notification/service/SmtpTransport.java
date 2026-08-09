@@ -15,6 +15,7 @@ import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -111,8 +112,9 @@ public class SmtpTransport {
         }
     }
 
-    private static SmtpService.SmtpDeliveryException classify(IOException exception) {
+    static SmtpService.SmtpDeliveryException classify(IOException exception) {
         if (exception instanceof SocketTimeoutException) return new SmtpService.SmtpDeliveryException("TIMEOUT", "SMTP 连接或响应超时");
+        if (exception instanceof UnknownHostException) return new SmtpService.SmtpDeliveryException("DNS_ERROR", "无法解析 SMTP 服务器地址");
         if (exception instanceof ConnectException) return new SmtpService.SmtpDeliveryException("CONNECTION_REFUSED", "无法连接 SMTP 服务器");
         if (exception instanceof SmtpReplyException reply) {
             if (reply.code == 535) return new SmtpService.SmtpDeliveryException("AUTHENTICATION_FAILED", "SMTP 认证失败，请检查用户名、密码或授权码");

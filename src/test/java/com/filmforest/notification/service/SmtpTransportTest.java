@@ -10,6 +10,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -50,6 +51,14 @@ class SmtpTransportTest {
                     .isInstanceOfSatisfying(SmtpService.SmtpDeliveryException.class,
                             error -> assertThat(error.category()).isEqualTo("PERMANENT_REJECTED"));
         }
+    }
+
+    @Test
+    void classifiesServerResponseTimeout() {
+        SmtpService.SmtpDeliveryException error = SmtpTransport.classify(new SocketTimeoutException("timed out"));
+
+        assertThat(error.category()).isEqualTo("TIMEOUT");
+        assertThat(error.getMessage()).contains("超时");
     }
 
     private static SmtpSetting setting(int port, boolean authenticated) {
