@@ -62,7 +62,8 @@ public class JavaHttpFetcher implements HttpFetcher {
             if (isCancelled(cancellation)) {
                 return cancelled(publicUri, last == null ? 0L : last.elapsedMs());
             }
-            last = fetchOnce(uri, publicUri, headers, cancellation, sensitiveQueryParameters);
+            last = fetchOnce(uri, publicUri, headers, cancellation, sensitiveQueryParameters)
+                    .withAttemptCount(attempt);
             if (!last.retryable() || attempt == attempts) {
                 return last;
             }

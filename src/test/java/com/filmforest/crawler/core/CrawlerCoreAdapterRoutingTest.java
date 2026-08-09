@@ -14,6 +14,7 @@ import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
@@ -49,9 +50,10 @@ class CrawlerCoreAdapterRoutingTest {
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
         CrawlerGenreService genres = mock(CrawlerGenreService.class);
         CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
+        CrawlerItemFailureService itemFailures = mock(CrawlerItemFailureService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
         CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
-                sourceItems, executionProperties(), new ObjectMapper());
+                sourceItems, itemFailures, executionProperties(), new ObjectMapper());
 
         CrawlerSchedule schedule = new CrawlerSchedule();
         schedule.setId(1L);
@@ -106,9 +108,10 @@ class CrawlerCoreAdapterRoutingTest {
         CrawlerContentPersistence persistence = mock(CrawlerContentPersistence.class);
         CrawlerGenreService genres = mock(CrawlerGenreService.class);
         CrawlerSourceItemService sourceItems = mock(CrawlerSourceItemService.class);
+        CrawlerItemFailureService itemFailures = mock(CrawlerItemFailureService.class);
         CrawlerSourceAdapter adapter = mock(CrawlerSourceAdapter.class);
         CrawlerCore crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
-                sourceItems, executionProperties(), new ObjectMapper());
+                sourceItems, itemFailures, executionProperties(), new ObjectMapper());
         CrawlerSchedule schedule = new CrawlerSchedule();
         schedule.setId(1L);
         schedule.setSourceSite("pkmp4");

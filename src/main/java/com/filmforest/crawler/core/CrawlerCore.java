@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
+import com.filmforest.crawler.entity.CrawlerFailureStage;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.http.FetchCategory;
@@ -17,15 +18,20 @@ import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.RecoverableDataAccessException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.sql.SQLRecoverableException;
+import java.sql.SQLTransientException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +51,7 @@ public class CrawlerCore {
     private final CrawlerContentPersistence contentPersistence;
     private final CrawlerGenreService genreService;
     private final CrawlerSourceItemService sourceItemService;
+    private final CrawlerItemFailureService itemFailureService;
     private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
     private final ThreadLocal<Long> executingJobId = new ThreadLocal<>();
@@ -56,6 +63,7 @@ public class CrawlerCore {
                        CrawlerContentPersistence contentPersistence,
                        CrawlerGenreService genreService,
                        CrawlerSourceItemService sourceItemService,
+                       CrawlerItemFailureService itemFailureService,
                        CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper) {
         this.scheduleService = scheduleService;
@@ -65,6 +73,7 @@ public class CrawlerCore {
         this.contentPersistence = contentPersistence;
         this.genreService = genreService;
         this.sourceItemService = sourceItemService;
+        this.itemFailureService = itemFailureService;
         this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
     }
@@ -234,9 +243,12 @@ public class CrawlerCore {
                 case CHALLENGE_PAGE, INVALID_CONTENT_TYPE, EMPTY_BODY -> ItemOutcome.STRUCTURE_FAILURE;
                 default -> ItemOutcome.FETCH_FAILURE;
             };
-            return new ItemProcessingResult(outcome,
-                    "externalId=" + item.externalId() + ", category=" + detailFetch.category(),
-                    false);
+            String diagnostic = "externalId=" + item.externalId()
+                    + ", category=" + detailFetch.category();
+            recordItemFailure(adapter, contentType, item, CrawlerFailureStage.FETCH,
+                    detailFetch.category().name(), detailFetch.attemptCount(),
+                    detailFetch.retryable(), diagnostic);
+            return new ItemProcessingResult(outcome, diagnostic, false);
         }
         stats.fetchSucceeded++;
         ParsedContent parsed;
@@ -246,9 +258,11 @@ public class CrawlerCore {
             stats.failed++;
             sourceItemService.recordParseFailure(adapter.sourceCode(), contentType,
                     item.externalId(), parseFailure.getClass().getSimpleName());
-            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE,
-                    "externalId=" + item.externalId() + ", parser="
-                            + parseFailure.getClass().getSimpleName(), false);
+            String diagnostic = "externalId=" + item.externalId() + ", parser="
+                    + parseFailure.getClass().getSimpleName();
+            recordItemFailure(adapter, contentType, item, CrawlerFailureStage.PARSE,
+                    parseFailure.getClass().getSimpleName(), 1, false, diagnostic);
+            return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic, false);
         }
         if (!parsed.valid()) {
             stats.failed++;
@@ -258,6 +272,8 @@ public class CrawlerCore {
                     + parsed.diagnostics().missingRequiredFields() + ", fingerprint="
                     + parsed.diagnostics().pageFingerprint();
             log.atWarn().log("Detail parse rejected: source={}, {}", adapter.sourceCode(), diagnostic);
+            recordItemFailure(adapter, contentType, item, CrawlerFailureStage.PARSE,
+                    "MISSING_REQUIRED_FIELDS", 1, false, diagnostic);
             return new ItemProcessingResult(ItemOutcome.STRUCTURE_FAILURE, diagnostic, false);
         }
         stats.parseSucceeded++;
@@ -286,32 +302,88 @@ public class CrawlerCore {
             stats.filtered++;
             return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered", detailUnchanged);
         }
-        try {
-            CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
-                    adapter.sourceCode(), parsed, resolvedGenres, observation.internalContentId());
-            long internalContentId = persisted.contentId() > 0
-                    ? persisted.contentId() : Long.parseLong(parsed.externalId());
-            String canonicalKey = persisted.canonicalKey() == null
-                    ? SourceFingerprint.forCanonicalContent(contentType, parsed.title(), parsed.year())
-                    : persisted.canonicalKey();
-            sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
-                    internalContentId, canonicalKey, detailFingerprint);
-            if (persisted.added()) stats.added++;
-            if (persisted.updated()) stats.updated++;
-            if (persisted.unchanged()) stats.unchanged++;
-            return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
-        } catch (RuntimeException persistenceFailure) {
-            stats.failed++;
-            sourceItemService.recordPersistFailure(adapter.sourceCode(), contentType,
-                    item.externalId(), detailFingerprint,
-                    persistenceFailure.getClass().getSimpleName());
-            log.warn("Detail persistence failed: source={}, externalId={}, error={}",
-                    adapter.sourceCode(), item.externalId(),
-                    persistenceFailure.getClass().getSimpleName());
-            return new ItemProcessingResult(ItemOutcome.PERSISTENCE_FAILURE,
-                    "externalId=" + item.externalId() + ", persistence="
-                            + persistenceFailure.getClass().getSimpleName(), false);
+        int maxPersistenceAttempts = Math.min(5, Math.max(1,
+                executionProperties.getItemPersistenceMaxAttempts()));
+        for (int attempt = 1; attempt <= maxPersistenceAttempts; attempt++) {
+            try {
+                CrawlerContentPersistence.PersistResult persisted = contentPersistence.persist(
+                        adapter.sourceCode(), parsed, resolvedGenres, observation.internalContentId());
+                long internalContentId = persisted.contentId() > 0
+                        ? persisted.contentId() : Long.parseLong(parsed.externalId());
+                String canonicalKey = persisted.canonicalKey() == null
+                        ? SourceFingerprint.forCanonicalContent(
+                                contentType, parsed.title(), parsed.year())
+                        : persisted.canonicalKey();
+                sourceItemService.recordParsed(adapter.sourceCode(), contentType, item.externalId(),
+                        internalContentId, canonicalKey, detailFingerprint);
+                if (persisted.added()) stats.added++;
+                if (persisted.updated()) stats.updated++;
+                if (persisted.unchanged()) stats.unchanged++;
+                return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
+            } catch (RuntimeException persistenceFailure) {
+                boolean retryable = isRetryablePersistenceFailure(persistenceFailure);
+                boolean exhausted = attempt >= maxPersistenceAttempts;
+                if (retryable && !exhausted) {
+                    long delayMs = persistenceRetryDelayMs(attempt);
+                    log.warn("Retrying transient persistence failure: source={}, externalId={}, attempt={}",
+                            adapter.sourceCode(), item.externalId(), attempt);
+                    if (!sleepWithCancellation(delayMs, cancellation)) {
+                        return new ItemProcessingResult(ItemOutcome.CANCELLED, "cancelled", false);
+                    }
+                    continue;
+                }
+                stats.failed++;
+                String category = persistenceFailure.getClass().getSimpleName();
+                String diagnostic = "externalId=" + item.externalId()
+                        + ", persistence=" + category;
+                sourceItemService.recordPersistFailure(adapter.sourceCode(), contentType,
+                        item.externalId(), detailFingerprint, category);
+                recordItemFailure(adapter, contentType, item, CrawlerFailureStage.PERSISTENCE,
+                        category, attempt, retryable && exhausted, diagnostic);
+                log.warn("Detail persistence failed: source={}, externalId={}, error={}, attempts={}",
+                        adapter.sourceCode(), item.externalId(), category, attempt);
+                return new ItemProcessingResult(ItemOutcome.PERSISTENCE_FAILURE,
+                        diagnostic, false);
+            }
         }
+        throw new IllegalStateException("Unreachable persistence retry state");
+    }
+
+    private void recordItemFailure(CrawlerSourceAdapter adapter, ContentType contentType,
+                                   SourceListItem item, CrawlerFailureStage stage,
+                                   String errorCategory, int attempts, boolean retryExhausted,
+                                   String diagnostic) {
+        Long jobId = executingJobId.get();
+        if (jobId == null) return;
+        try {
+            itemFailureService.record(jobId, adapter.sourceCode(), contentType, item, stage,
+                    errorCategory, attempts, retryExhausted, diagnostic);
+        } catch (RuntimeException recordFailure) {
+            log.warn("Failed to record crawler item failure: jobId={}, source={}, externalId={}, error={}",
+                    jobId, adapter.sourceCode(), item.externalId(),
+                    recordFailure.getClass().getSimpleName());
+        }
+    }
+
+    private long persistenceRetryDelayMs(int attempt) {
+        long base = Math.min(5_000L,
+                Math.max(0L, executionProperties.getItemRetryBaseDelayMs()));
+        return Math.min(base * (1L << Math.min(Math.max(0, attempt - 1), 6)), 5_000L);
+    }
+
+    private static boolean isRetryablePersistenceFailure(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof TransientDataAccessException
+                    || current instanceof RecoverableDataAccessException
+                    || current instanceof SQLTransientException
+                    || current instanceof SQLRecoverableException) {
+                return true;
+            }
+            if (current == current.getCause()) break;
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void recordProgress(CrawlerCheckpoint checkpoint, String currentItem, MutableStats stats) {

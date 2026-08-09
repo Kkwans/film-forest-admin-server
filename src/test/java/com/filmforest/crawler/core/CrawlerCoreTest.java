@@ -10,6 +10,7 @@ import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import com.filmforest.resource.mapper.ResourceCloudMapper;
@@ -61,6 +62,7 @@ class CrawlerCoreTest {
     @Mock private CrawlerContentPersistence contentPersistence;
     @Mock private CrawlerGenreService genreService;
     @Mock private CrawlerSourceItemService sourceItemService;
+    @Mock private CrawlerItemFailureService itemFailureService;
     @Mock private CrawlerExecutionProperties executionProperties;
     @Mock private ResourceMagnetMapper magnetMapper;
     @Mock private ResourceOnlineMapper onlineMapper;

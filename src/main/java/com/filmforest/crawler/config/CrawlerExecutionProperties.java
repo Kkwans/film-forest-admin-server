@@ -11,6 +11,8 @@ public class CrawlerExecutionProperties {
     private long heartbeatIntervalMs = 15_000;
     private long staleHeartbeatMs = 120_000;
     private long stalledProgressMs = 300_000;
+    private int itemPersistenceMaxAttempts = 2;
+    private long itemRetryBaseDelayMs = 250;
     private int latestConsecutiveUnchanged = 20;
     private int latestRecentPages = 2;
 
@@ -60,6 +62,22 @@ public class CrawlerExecutionProperties {
 
     public void setStalledProgressMs(long stalledProgressMs) {
         this.stalledProgressMs = stalledProgressMs;
+    }
+
+    public int getItemPersistenceMaxAttempts() {
+        return itemPersistenceMaxAttempts;
+    }
+
+    public void setItemPersistenceMaxAttempts(int itemPersistenceMaxAttempts) {
+        this.itemPersistenceMaxAttempts = itemPersistenceMaxAttempts;
+    }
+
+    public long getItemRetryBaseDelayMs() {
+        return itemRetryBaseDelayMs;
+    }
+
+    public void setItemRetryBaseDelayMs(long itemRetryBaseDelayMs) {
+        this.itemRetryBaseDelayMs = itemRetryBaseDelayMs;
     }
 
     public int getLatestConsecutiveUnchanged() {

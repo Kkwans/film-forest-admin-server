@@ -15,6 +15,7 @@ import com.filmforest.crawler.model.CrawlerCheckpoint;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
@@ -51,6 +52,7 @@ class CrawlerCoreCrawlModeTest {
     @Mock private CrawlerContentPersistence persistence;
     @Mock private CrawlerGenreService genres;
     @Mock private CrawlerSourceItemService sourceItems;
+    @Mock private CrawlerItemFailureService itemFailures;
     @Mock private CrawlerSourceAdapter adapter;
 
     private CrawlerExecutionProperties properties;
@@ -62,7 +64,7 @@ class CrawlerCoreCrawlModeTest {
         properties.setLatestConsecutiveUnchanged(20);
         properties.setLatestRecentPages(2);
         crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
-                sourceItems, properties, new ObjectMapper());
+                sourceItems, itemFailures, properties, new ObjectMapper());
     }
 
     @Test
