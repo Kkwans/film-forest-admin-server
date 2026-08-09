@@ -3,13 +3,32 @@
 ALTER TABLE `resource_source`
   ADD COLUMN `code` varchar(50) DEFAULT NULL AFTER `id`;
 
-UPDATE `resource_source`
-SET `code` = CASE
-    WHEN `name` = '七味网' OR `url` LIKE '%pkmp4%' THEN 'pkmp4'
-    WHEN `name` = '天堂资源' THEN 'tiantang'
-    WHEN `name` = '非凡资源' THEN 'feifan'
-    ELSE CONCAT('source-', `id`)
-  END;
+-- 历史库可能完全没有来源记录；先建立唯一、稳定的七味网生产来源。
+INSERT INTO `resource_source` (`name`, `url`, `enabled`, `sort`, `code`)
+SELECT '七味网', 'https://www.pkmp4.xyz/', 1, 10, 'pkmp4'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `resource_source`
+  WHERE `name` = '七味网' OR `url` LIKE '%pkmp4%'
+);
+
+-- 多条历史七味网记录只选择最早一条作为生产来源，避免唯一 code 迁移失败。
+UPDATE `resource_source` source
+JOIN (
+  SELECT MIN(`id`) AS `canonical_pkmp4_id`
+  FROM `resource_source`
+  WHERE `name` = '七味网' OR `url` LIKE '%pkmp4%'
+) canonical ON 1 = 1
+SET source.`code` = CASE
+      WHEN source.`id` = canonical.`canonical_pkmp4_id` THEN 'pkmp4'
+      WHEN source.`name` = '天堂资源' THEN CONCAT('tiantang-', source.`id`)
+      WHEN source.`name` = '非凡资源' THEN CONCAT('feifan-', source.`id`)
+      ELSE CONCAT('source-', source.`id`)
+    END,
+    source.`url` = CASE
+      WHEN source.`id` = canonical.`canonical_pkmp4_id`
+        THEN COALESCE(NULLIF(source.`url`, ''), 'https://www.pkmp4.xyz/')
+      ELSE source.`url`
+    END;
 
 -- 本阶段只启用七味网；其余来源保留为明确禁用的扩展位。
 UPDATE `resource_source`
