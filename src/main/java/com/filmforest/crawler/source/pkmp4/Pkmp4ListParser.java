@@ -17,14 +17,15 @@ import java.util.regex.Pattern;
 @Component
 public class Pkmp4ListParser {
 
-    private static final Pattern DETAIL_PATH = Pattern.compile("/mv/(\\d+)\\.html");
+    private static final Pattern DETAIL_PATH = Pattern.compile("/mv/(\\d+)(?:\\.html)?");
 
     public List<SourceListItem> parse(String html, URI finalUri) {
         Document document = Jsoup.parse(html, finalUri.toString());
         Map<String, SourceListItem> items = new LinkedHashMap<>();
         int order = 0;
         for (Element link : document.select("a[href^=/mv/]")) {
-            Matcher matcher = DETAIL_PATH.matcher(link.attr("href"));
+            URI detailUri = finalUri.resolve(link.attr("href"));
+            Matcher matcher = DETAIL_PATH.matcher(detailUri.getPath());
             if (!matcher.matches()) {
                 continue;
             }
@@ -35,14 +36,24 @@ public class Pkmp4ListParser {
             Element image = link.selectFirst("img");
             String title = image != null && !image.attr("alt").isBlank()
                     ? image.attr("alt").trim() : link.text().trim();
-            String poster = image == null ? null : blankToNull(image.attr("abs:src"));
+            String poster = image == null ? null : firstImageUrl(image);
             items.put(externalId, new SourceListItem(externalId,
-                    finalUri.resolve(link.attr("href")).toString(), title, poster, order++));
+                    detailUri.toString(), title, poster, order++));
         }
         return List.copyOf(new ArrayList<>(items.values()));
     }
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String firstImageUrl(Element image) {
+        for (String attribute : List.of("data-original", "data-src", "src")) {
+            String raw = blankToNull(image.attr(attribute));
+            if (raw == null || raw.startsWith("data:") || raw.startsWith("javascript:")) continue;
+            String absolute = blankToNull(image.absUrl(attribute));
+            return absolute == null ? raw : absolute;
+        }
+        return null;
     }
 }

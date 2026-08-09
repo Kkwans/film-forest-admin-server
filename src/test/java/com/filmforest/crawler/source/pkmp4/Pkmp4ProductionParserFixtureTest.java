@@ -2,6 +2,7 @@ package com.filmforest.crawler.source.pkmp4;
 
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.model.ParsedResource;
+import org.jsoup.Jsoup;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -44,6 +45,29 @@ class Pkmp4ProductionParserFixtureTest {
     }
 
     @Test
+    void detailPageWithRelatedContentLinksIsStillClassifiedAsDetail() throws IOException {
+        String html = fixture("/fixtures/pkmp4/detail-drama-475547.html");
+        var adapter = new Pkmp4SourceAdapter(new Pkmp4UrlBuilder(), new Pkmp4ListParser(),
+                detailParser, new Pkmp4PageClassifier());
+
+        var parsed = adapter.parseDetail(ContentType.DRAMA, html,
+                URI.create("https://www.pkmp4.xyz/mv/475547.html"));
+
+        assertThat(parsed.externalId()).isEqualTo("475547");
+    }
+
+    @Test
+    void listingHeadingAndOpenGraphImageDoNotMasqueradeAsDetailPage() {
+        var document = Jsoup.parse("""
+                <head><meta property="og:image" content="/site.jpg"></head>
+                <body><h1>电影列表</h1><a href="/mv/42.html">影片</a></body>
+                """, "https://www.pkmp4.xyz/vt/1.html");
+
+        assertThat(new Pkmp4PageClassifier().classify(document))
+                .isEqualTo(Pkmp4PageClassifier.PageKind.LIST);
+    }
+
+    @Test
     void productionResourceParserPreservesSpecialAndDatedEpisodesInSourceOrder() throws IOException {
         String html = fixture("/fixtures/pkmp4/detail-drama-475547.html");
         var parsed = detailParser.parse(ContentType.DRAMA, html,
@@ -63,9 +87,9 @@ class Pkmp4ProductionParserFixtureTest {
     @Test
     void listParserDeduplicatesDetailLinksAndKeepsPageOrder() {
         String html = """
-                <a href="/mv/2.html"><img src="/2.jpg" alt="第二部"></a>
+                <a href="/mv/2.html"><img src="data:image/gif;base64,placeholder" data-src="/2.jpg" alt="第二部"></a>
                 <a href="/mv/2.html">重复</a>
-                <a href="/mv/3.html">第三部</a>
+                <a href="/mv/3?from=list">第三部</a>
                 """;
 
         var items = new Pkmp4ListParser().parse(html,
@@ -73,6 +97,7 @@ class Pkmp4ProductionParserFixtureTest {
 
         assertThat(items).extracting(item -> item.externalId()).containsExactly("2", "3");
         assertThat(items).extracting(item -> item.sourceOrder()).containsExactly(0, 1);
+        assertThat(items.get(0).posterUrl()).isEqualTo("https://www.pkmp4.xyz/2.jpg");
     }
 
     private static String fixture(String resource) throws IOException {

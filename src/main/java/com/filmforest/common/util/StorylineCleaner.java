@@ -1,54 +1,60 @@
 package com.filmforest.common.util;
 
-/**
- * 简介文本清理工具
- * 清理爬虫数据中残留的 UI 文本（如"[展开全部]"按钮文字）
- */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+
 public final class StorylineCleaner {
 
-    private StorylineCleaner() {}
+    private static final String DELIMITER = "\u0000";
+    private static final Pattern BRACKETED_CONTROL = Pattern.compile(
+            "[\\[【（(]\\s*(?:展开全部|收起部分|收起简介|展开简介|收起全文|展开全文|查看更多|展开更多|点击展开|展开|收起|更多)\\s*[\\]】）)]");
+    private static final Pattern EXPLICIT_CONTROL = Pattern.compile(
+            "(?:展开全部|收起部分|收起简介|展开简介|收起全文|展开全文|查看更多|展开更多|点击展开)");
+    private static final Pattern TRAILING_COLLAPSE = Pattern.compile("收起\\s*$");
+    private static final Pattern TRAILING_ELLIPSIS = Pattern.compile("(?:…+\\.?|\\.{3,})\\s*$");
 
-    /** 需要清理的 UI 残留文本（带方括号） */
-    private static final String[] BRACKET_PATTERNS = {
-        "[展开全部]", "[收起部分]", "[收起简介]", "[展开简介]",
-        "[收起全文]", "[展开全文]", "[查看更多]", "[展开]",
-        "[收起]", "[更多]", "[]"
-    };
+    private StorylineCleaner() {
+    }
 
-    /** 需要清理的 UI 残留文本（不带方括号） */
-    private static final String[] PLAIN_PATTERNS = {
-        "展开全部", "收起部分", "收起简介", "展开简介",
-        "收起全文", "展开全文", "查看更多", "展开更多",
-        "点击展开", "收起"
-    };
-
-    /**
-     * 清理简介文本中的 UI 残留内容
-     * @param text 原始简介文本
-     * @return 清理后的文本
-     */
     public static String clean(String text) {
-        if (text == null || text.isEmpty()) return text;
-
-        String result = text;
-
-        // 1. 清理带方括号的变体
-        for (String pattern : BRACKET_PATTERNS) {
-            result = result.replace(pattern, "");
+        if (text == null || text.isBlank()) {
+            return text == null ? null : "";
         }
 
-        // 2. 清理不带方括号的变体
-        for (String pattern : PLAIN_PATTERNS) {
-            result = result.replace(pattern, "");
+        String delimited = BRACKETED_CONTROL.matcher(text).replaceAll(DELIMITER);
+        delimited = EXPLICIT_CONTROL.matcher(delimited).replaceAll(DELIMITER);
+        delimited = TRAILING_COLLAPSE.matcher(delimited).replaceAll(DELIMITER);
+        boolean containedControl = delimited.indexOf('\u0000') >= 0;
+
+        List<String> segments = new ArrayList<>();
+        for (String rawSegment : delimited.split(DELIMITER, -1)) {
+            String segment = normalizeWhitespace(rawSegment);
+            if (containedControl) {
+                segment = TRAILING_ELLIPSIS.matcher(segment).replaceFirst("").trim();
+            }
+            if (!segment.isBlank()) {
+                mergeSegment(segments, segment);
+            }
         }
+        return String.join(" ", segments).trim();
+    }
 
-        // 3. 清理末尾残留的省略号 + 空白
-        result = result.replaceAll("[…]+\\.?$", "").trim();
-        result = result.replaceAll("\\.{3,}$", "").trim();
+    private static void mergeSegment(List<String> segments, String candidate) {
+        for (int index = 0; index < segments.size(); index++) {
+            String existing = segments.get(index);
+            if (existing.equals(candidate) || existing.contains(candidate)) {
+                return;
+            }
+            if (candidate.contains(existing)) {
+                segments.set(index, candidate);
+                return;
+            }
+        }
+        segments.add(candidate);
+    }
 
-        // 4. 合并多余空白
-        result = result.replaceAll("\\s{2,}", " ").trim();
-
-        return result;
+    private static String normalizeWhitespace(String value) {
+        return value.replace('\u00a0', ' ').replaceAll("\\s+", " ").trim();
     }
 }

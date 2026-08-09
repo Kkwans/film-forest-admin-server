@@ -56,10 +56,10 @@ public class Pkmp4DetailParser {
         if (title == null) missingRequired.add("title");
         String posterUrl = poster(document, matchedSelectors);
         if (posterUrl == null) warnings.add("missingPoster");
-        Integer year = firstInteger(title, YEAR);
-
         String rawReleaseDate = labelText(document, "上映", matchedSelectors);
         LocalDate releaseDate = parseDate(rawReleaseDate, warnings);
+        Integer year = firstInteger(title, YEAR);
+        if (year == null && releaseDate != null) year = releaseDate.getYear();
         String storyline = storyline(document, matchedSelectors);
         List<ParsedResource> resources = resourceParser.parse(document, finalUri);
 
@@ -91,9 +91,10 @@ public class Pkmp4DetailParser {
     private static String poster(Document document, Set<String> matchedSelectors) {
         for (String selector : List.of("div.img img", "div.li-img img", ".movie-cover img")) {
             Element image = document.selectFirst(selector);
-            if (image != null && !image.attr("abs:src").isBlank()) {
+            String url = imageUrl(image);
+            if (url != null) {
                 matchedSelectors.add(selector);
-                return image.attr("abs:src").trim();
+                return url;
             }
         }
         Element ogImage = document.selectFirst("meta[property=og:image]");
@@ -123,6 +124,8 @@ public class Pkmp4DetailParser {
     }
 
     private static List<String> genres(Document document, Set<String> matchedSelectors) {
+        List<String> labelled = tagsByLabel(document, "类型", matchedSelectors);
+        if (!labelled.isEmpty()) return labelled;
         List<String> values = new ArrayList<>();
         for (Element link : document.select("a[href*='/ms/'][href*='---']")) {
             if (link.attr("href").matches(".*/ms/\\d+---[^-].*")) {
@@ -134,6 +137,8 @@ public class Pkmp4DetailParser {
     }
 
     private static List<String> languages(Document document, Set<String> matchedSelectors) {
+        List<String> labelled = tagsByLabel(document, "语言", matchedSelectors);
+        if (!labelled.isEmpty()) return labelled;
         List<String> values = new ArrayList<>();
         for (Element link : document.select("a[href*='/ms/'][href*='----']")) {
             if (link.attr("href").matches(".*/ms/\\d+----[^-].*")) {
@@ -144,7 +149,7 @@ public class Pkmp4DetailParser {
             matchedSelectors.add("languageLinks");
             return List.copyOf(values);
         }
-        return tagsByLabel(document, "语言", matchedSelectors);
+        return List.of();
     }
 
     private static List<String> tagsByLabel(Document document, String label,
@@ -154,9 +159,16 @@ public class Pkmp4DetailParser {
             List<String> values = new ArrayList<>();
             Node sibling = span.nextSibling();
             while (sibling != null && !isAnotherLabel(sibling)) {
-                if (sibling instanceof Element element) {
-                    if (element.is("a")) addValue(values, element.text());
-                    for (Element anchor : element.select("a")) addValue(values, anchor.text());
+                if (sibling instanceof TextNode textNode) {
+                    addValues(values, textNode.text());
+                } else if (sibling instanceof Element element) {
+                    if (element.is("a")) {
+                        addValue(values, element.text());
+                    } else if (!element.select("a").isEmpty()) {
+                        for (Element anchor : element.select("a")) addValue(values, anchor.text());
+                    } else {
+                        addValues(values, element.text());
+                    }
                 }
                 sibling = sibling.nextSibling();
             }
@@ -256,14 +268,36 @@ public class Pkmp4DetailParser {
     private static List<String> splitValues(String value) {
         if (value == null || value.isBlank()) return List.of();
         List<String> values = new ArrayList<>();
-        for (String part : value.split("[/／,，、]")) addValue(values, part);
+        for (String part : value.split("[/／,，、|｜]")) addValue(values, part);
         return List.copyOf(values);
+    }
+
+    private static void addValues(List<String> values, String raw) {
+        splitValues(raw).forEach(value -> addValue(values, value));
     }
 
     private static void addValue(List<String> values, String candidate) {
         if (candidate == null) return;
         String trimmed = candidate.trim();
         if (!trimmed.isEmpty() && !values.contains(trimmed)) values.add(trimmed);
+    }
+
+    private static String imageUrl(Element image) {
+        if (image == null) return null;
+        for (String attribute : List.of("data-original", "data-src", "src")) {
+            String raw = image.attr(attribute).trim();
+            if (raw.isBlank() || raw.startsWith("data:") || raw.startsWith("javascript:")) continue;
+            String absolute = image.absUrl(attribute);
+            return absolute.isBlank() ? raw : absolute;
+        }
+        String srcset = image.attr("srcset").trim();
+        if (!srcset.isBlank()) {
+            String first = srcset.split(",", 2)[0].trim().split("\\s+", 2)[0];
+            if (!first.isBlank() && !first.startsWith("data:")) {
+                return URI.create(image.baseUri()).resolve(first).toString();
+            }
+        }
+        return null;
     }
 
     private static String fingerprint(String html) {

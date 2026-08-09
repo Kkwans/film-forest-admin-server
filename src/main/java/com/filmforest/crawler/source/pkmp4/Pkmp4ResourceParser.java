@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -25,12 +27,17 @@ public class Pkmp4ResourceParser {
         List<ParsedResource> resources = new ArrayList<>();
         parseDownloads(document, resources);
         parseOnline(document, finalUri, resources);
-        return List.copyOf(resources);
+        Map<String, ParsedResource> unique = new LinkedHashMap<>();
+        for (ParsedResource resource : resources) {
+            unique.putIfAbsent(resource.kind() + "\u0000" + resource.url(), resource);
+        }
+        return List.copyOf(unique.values());
     }
 
     private void parseDownloads(Document document, List<ParsedResource> resources) {
         int order = 0;
-        for (Element link : document.select("p.down-list3 > a[href]")) {
+        for (Element link : document.select("p.down-list3 > a[href], .down-list3 a[href], "
+                + "[class*=down-list] a[href]")) {
             String url = link.attr("href").trim();
             String rawText = link.text().trim();
             String title = firstNonBlank(link.attr("title"), rawText);
@@ -44,19 +51,22 @@ public class Pkmp4ResourceParser {
             if (diskType == null) {
                 continue;
             }
+            String context = link.parent() == null ? "" : link.parent().ownText();
             resources.add(new ParsedResource(ParsedResource.Kind.CLOUD, title, url,
-                    diskType, password(title + " " + rawText), null, false, false,
+                    diskType, password(title + " " + rawText + " " + context), null, false, false,
                     null, null, null, order++, rawText));
         }
     }
 
     private void parseOnline(Document document, URI finalUri, List<ParsedResource> resources) {
         int order = 0;
-        for (Element link : document.select("a[href^=/py/]")) {
+        for (Element link : document.select("a[href*=/py/]")) {
             String title = link.text().trim();
             String href = link.attr("href");
+            URI resourceUri = finalUri.resolve(href);
+            if (!resourceUri.getPath().startsWith("/py/")) continue;
             resources.add(new ParsedResource(ParsedResource.Kind.ONLINE, title,
-                    finalUri.resolve(href).toString(), null, null, null, false, false,
+                    resourceUri.toString(), null, null, null, false, false,
                     season(title), episodeNumber(title), title, order++, title));
         }
     }

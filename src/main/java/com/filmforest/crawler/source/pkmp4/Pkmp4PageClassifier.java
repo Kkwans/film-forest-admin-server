@@ -7,11 +7,13 @@ import org.springframework.stereotype.Component;
 public class Pkmp4PageClassifier {
 
     public PageKind classify(Document document) {
+        if (document.selectFirst("h1") != null
+                && document.selectFirst(".movie-introduce, .introduce, .desc, .summary, "
+                + ".down-list3, a[href^=/py/], div.img img, .movie-cover img") != null) {
+            return PageKind.DETAIL;
+        }
         if (!document.select("a[href^=/mv/]").isEmpty()) {
             return PageKind.LIST;
-        }
-        if (document.selectFirst("h1") != null) {
-            return PageKind.DETAIL;
         }
         return PageKind.UNKNOWN;
     }
