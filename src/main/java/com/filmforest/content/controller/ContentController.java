@@ -47,7 +47,8 @@ public class ContentController {
             "drama", "drama",
             "variety", "variety",
             "anime", "anime",
-            "short", "short_drama"
+            "short", "short_drama",
+            "short_drama", "short_drama"
     );
 
     // ==================== 状态切换（通用） ====================
