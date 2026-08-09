@@ -54,10 +54,28 @@ class AuthControllerTest {
 
         assertThat(result.getCode()).isEqualTo(200);
         assertThat(result.getData()).containsEntry("token", "token");
+        Map<?, ?> returnedUser = (Map<?, ?>) result.getData().get("user");
+        assertThat(returnedUser.get("adminSidebarCollapsed")).isEqualTo(false);
         assertThat(admin.getPasswordAlgorithm()).isEqualTo(PasswordAlgorithm.BCRYPT);
         assertThat(admin.getPasswordHash()).startsWith("$2");
         verify(userMapper).updateById(admin);
         verify(loginAttemptService).recordSuccess("192.0.2.10", "admin");
+    }
+
+    @Test
+    void persistsLayoutPreferenceForCurrentAdmin() throws Exception {
+        User admin = user(UserRole.ADMIN);
+        when(userMapper.selectById(1L)).thenReturn(admin);
+        MockHttpServletRequest request = servletRequest();
+        request.setAttribute("userId", 1L);
+
+        Result<Map<String, Object>> result = controller.updateLayoutPreference(
+                new AuthController.LayoutPreferenceRequest(true), request);
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).containsEntry("adminSidebarCollapsed", true);
+        assertThat(admin.getAdminSidebarCollapsed()).isTrue();
+        verify(userMapper).updateById(admin);
     }
 
     @Test
@@ -79,6 +97,7 @@ class AuthControllerTest {
                 MessageDigest.getInstance("SHA-256").digest("secret12".getBytes(StandardCharsets.UTF_8))));
         user.setPasswordAlgorithm(PasswordAlgorithm.LEGACY_SHA256);
         user.setMustChangePassword(false);
+        user.setAdminSidebarCollapsed(false);
         user.setStatus(1);
         user.setIsDeleted(0);
         user.setRole(role);

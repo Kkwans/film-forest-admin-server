@@ -94,7 +94,8 @@ public class AuthController {
             "username", user.getUsername(),
             "nickname", user.getNickname() != null ? user.getNickname() : user.getUsername(),
             "role", user.getRole().name(),
-            "mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword())
+            "mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()),
+            "adminSidebarCollapsed", Boolean.TRUE.equals(user.getAdminSidebarCollapsed())
         ));
 
         return Result.ok(data);
@@ -148,8 +149,26 @@ public class AuthController {
         data.put("avatarUrl", user.getAvatarUrl());
         data.put("role", user.getRole());
         data.put("mustChangePassword", Boolean.TRUE.equals(user.getMustChangePassword()));
+        data.put("adminSidebarCollapsed", Boolean.TRUE.equals(user.getAdminSidebarCollapsed()));
         return Result.ok(data);
     }
+
+    /** 保存当前管理员的跨设备布局偏好。 */
+    @PutMapping("/preferences/layout")
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Map<String, Object>> updateLayoutPreference(
+            @RequestBody LayoutPreferenceRequest preference,
+            HttpServletRequest request) {
+        Long userId = (Long) request.getAttribute("userId");
+        if (userId == null) return Result.fail("未登录");
+        User user = userMapper.selectById(userId);
+        if (user == null) return Result.fail("用户不存在");
+        user.setAdminSidebarCollapsed(preference.sidebarCollapsed());
+        userMapper.updateById(user);
+        return Result.ok(Map.of("adminSidebarCollapsed", preference.sidebarCollapsed()));
+    }
+
+    public record LayoutPreferenceRequest(boolean sidebarCollapsed) {}
 
     /** 登录请求体 */
     public static class LoginRequest {

@@ -25,6 +25,7 @@ public class User {
     private Boolean mustChangePassword;
     private String nickname;
     private String avatarUrl;
+    private Boolean adminSidebarCollapsed;
     private Integer status;
     private UserRole role;
 
