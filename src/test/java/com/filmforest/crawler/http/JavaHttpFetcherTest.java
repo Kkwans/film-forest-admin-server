@@ -52,6 +52,13 @@ class JavaHttpFetcherTest {
     }
 
     @Test
+    void htmlContentNegotiationDoesNotAdvertiseJson() {
+        assertThat(JavaHttpFetcher.HTML_ACCEPT)
+                .isEqualTo("text/html,application/xhtml+xml;q=0.9,*/*;q=0.8")
+                .doesNotContain("application/json");
+    }
+
+    @Test
     void sensitiveQueryValuesNeverAppearInFetchResultUris() {
         URI uri = URI.create("https://api.example.test/search?query=title&api_key=secret-value&page=1");
 

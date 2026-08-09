@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Component
 public class JavaHttpFetcher implements HttpFetcher {
 
+    static final String HTML_ACCEPT = "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8";
     private static final Set<String> IMPORTANT_HEADERS = Set.of(
             "content-type", "content-length", "retry-after", "location", "etag", "last-modified");
     private static final Set<String> CHALLENGE_MARKERS = Set.of(
@@ -81,7 +82,7 @@ public class JavaHttpFetcher implements HttpFetcher {
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .GET()
                 .timeout(properties.getRequestTimeout())
-                .header("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
+                .header("Accept", HTML_ACCEPT)
                 .header("User-Agent", properties.getUserAgent());
         headers.forEach(builder::header);
 
