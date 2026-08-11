@@ -15,7 +15,7 @@ class TagServiceStandardGenreTest {
 
     @Test
     void returnsRequestedGenresInCanonicalDisplayOrder() {
-        TagServiceImpl service = spy(new TagServiceImpl());
+        TagServiceImpl service = spy(new TagServiceImpl(null, null, null, null));
         Tag drama = genre(3L, "剧情");
         Tag scienceFiction = genre(7L, "科幻");
         doReturn(List.of(drama, scienceFiction)).when(service).getStandardGenres("movie");
@@ -26,7 +26,7 @@ class TagServiceStandardGenreTest {
 
     @Test
     void rejectsIdsOutsideTheContentTypesStandardSet() {
-        TagServiceImpl service = spy(new TagServiceImpl());
+        TagServiceImpl service = spy(new TagServiceImpl(null, null, null, null));
         doReturn(List.of(genre(3L, "剧情"))).when(service).getStandardGenres("movie");
 
         assertThatThrownBy(() -> service.requireStandardGenres("movie", List.of(3L, 99L)))

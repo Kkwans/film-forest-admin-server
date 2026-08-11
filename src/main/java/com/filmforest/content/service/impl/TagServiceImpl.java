@@ -11,8 +11,8 @@ import com.filmforest.content.mapper.TagContentTypeMapper;
 import com.filmforest.content.mapper.TagMapper;
 import com.filmforest.content.mapper.TagSourceAliasMapper;
 import com.filmforest.content.service.TagService;
+import com.filmforest.content.service.ContentRecordGuard;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,14 +23,20 @@ import java.util.stream.Collectors;
 @Service
 public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagService {
 
-    @Autowired
-    private ContentTagMapper contentTagMapper;
+    private final ContentTagMapper contentTagMapper;
+    private final TagContentTypeMapper tagContentTypeMapper;
+    private final TagSourceAliasMapper tagSourceAliasMapper;
+    private final ContentRecordGuard contentRecordGuard;
 
-    @Autowired
-    private TagContentTypeMapper tagContentTypeMapper;
-
-    @Autowired
-    private TagSourceAliasMapper tagSourceAliasMapper;
+    public TagServiceImpl(ContentTagMapper contentTagMapper,
+                          TagContentTypeMapper tagContentTypeMapper,
+                          TagSourceAliasMapper tagSourceAliasMapper,
+                          ContentRecordGuard contentRecordGuard) {
+        this.contentTagMapper = contentTagMapper;
+        this.tagContentTypeMapper = tagContentTypeMapper;
+        this.tagSourceAliasMapper = tagSourceAliasMapper;
+        this.contentRecordGuard = contentRecordGuard;
+    }
 
     @Override
     public List<Tag> getAllTags() {
@@ -139,6 +145,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     @Transactional
     public void setContentTags(Long contentId, String contentType, List<Long> tagIds) {
         String canonicalType = canonicalContentType(contentType);
+        contentRecordGuard.requireActiveRecord(canonicalType, contentId);
         List<Long> normalizedTagIds = tagIds == null ? List.of() : tagIds.stream().distinct().toList();
         Set<Long> allowedIds = getStandardGenres(canonicalType).stream()
                 .map(Tag::getId)
@@ -172,6 +179,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
     @Transactional
     public void setContentGenres(Long contentId, String contentType, List<Long> tagIds) {
         String canonicalType = canonicalContentType(contentType);
+        contentRecordGuard.requireActiveRecord(canonicalType, contentId);
         List<Tag> selectedGenres = requireStandardGenres(canonicalType, tagIds);
         List<Long> allSystemTagIds = list(new LambdaQueryWrapper<Tag>()
                         .eq(Tag::getSystemFlag, 1))
