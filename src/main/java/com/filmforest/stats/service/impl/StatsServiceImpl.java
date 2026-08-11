@@ -81,22 +81,19 @@ public class StatsServiceImpl implements StatsService {
 
         // 3. 爬虫统计
         try {
-            Integer totalRuns = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM crawler_task_log", Integer.class);
-            Integer successRuns = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM crawler_task_log WHERE status = 'success'", Integer.class);
-            Integer failedRuns = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM crawler_task_log WHERE status = 'failed'", Integer.class);
-            Integer totalItemsCrawled = jdbcTemplate.queryForObject(
-                    "SELECT COALESCE(SUM(items_crawled), 0) FROM crawler_task_log WHERE status = 'success'",
-                    Integer.class);
-
-            totalRuns = totalRuns != null ? totalRuns : 0;
-            successRuns = successRuns != null ? successRuns : 0;
-            failedRuns = failedRuns != null ? failedRuns : 0;
-            totalItemsCrawled = totalItemsCrawled != null ? totalItemsCrawled : 0;
-
-            double successRate = totalRuns > 0 ? (successRuns * 100.0 / totalRuns) : 0;
+            Map<String, Object> row = jdbcTemplate.queryForMap(
+                    "SELECT COUNT(*) AS total_runs, "
+                            + "COALESCE(SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END), 0) AS success_runs, "
+                            + "COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failed_runs, "
+                            + "COALESCE(SUM(CASE WHEN status IN ('success','partial_success','failed','cancelled','interrupted') THEN 1 ELSE 0 END), 0) AS terminal_runs, "
+                            + "COALESCE(SUM(CASE WHEN status IN ('success','partial_success') THEN items_crawled ELSE 0 END), 0) AS total_items "
+                            + "FROM crawler_task_log");
+            long totalRuns = numberAsLong(row, "total_runs");
+            long successRuns = numberAsLong(row, "success_runs");
+            long failedRuns = numberAsLong(row, "failed_runs");
+            long terminalRuns = numberAsLong(row, "terminal_runs");
+            long totalItemsCrawled = numberAsLong(row, "total_items");
+            double successRate = terminalRuns > 0 ? (successRuns * 100.0 / terminalRuns) : 0;
 
             Map<String, Object> crawlerStats = new LinkedHashMap<>();
             crawlerStats.put("totalRuns", totalRuns);
@@ -119,11 +116,11 @@ public class StatsServiceImpl implements StatsService {
         // 4. 资源统计
         try {
             Integer onlineCount = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM resource_online", Integer.class);
+                    "SELECT COUNT(*) FROM resource_online WHERE is_deleted = 0 AND enabled = 1 AND removed_at IS NULL", Integer.class);
             Integer magnetCount = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM resource_magnet", Integer.class);
+                    "SELECT COUNT(*) FROM resource_magnet WHERE is_deleted = 0 AND enabled = 1 AND removed_at IS NULL", Integer.class);
             Integer cloudCount = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM resource_cloud", Integer.class);
+                    "SELECT COUNT(*) FROM resource_cloud WHERE is_deleted = 0 AND enabled = 1 AND removed_at IS NULL", Integer.class);
 
             Map<String, Object> resourceStats = new LinkedHashMap<>();
             resourceStats.put("online", onlineCount != null ? onlineCount : 0);
@@ -273,6 +270,7 @@ public class StatsServiceImpl implements StatsService {
                     "SELECT COUNT(*) AS total_runs, " +
                     "COALESCE(SUM(CASE WHEN status='success' THEN 1 ELSE 0 END), 0) AS success_runs, " +
                     "COALESCE(SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END), 0) AS failed_runs, " +
+                    "COALESCE(SUM(CASE WHEN status IN ('success','partial_success','failed','cancelled','interrupted') THEN 1 ELSE 0 END), 0) AS terminal_runs, " +
                     "COALESCE(SUM(items_crawled), 0) AS total_items, " +
                     "COALESCE(SUM(items_added), 0) AS total_added, " +
                     "COALESCE(SUM(items_updated), 0) AS total_updated, " +
@@ -282,14 +280,16 @@ public class StatsServiceImpl implements StatsService {
             Map<String, Object> crawlerEfficiency = new LinkedHashMap<>();
             long totalRuns = numberAsLong(efficiency, "total_runs");
             long successRuns = numberAsLong(efficiency, "success_runs");
+            long terminalRuns = numberAsLong(efficiency, "terminal_runs");
             crawlerEfficiency.put("totalRuns", totalRuns);
+            crawlerEfficiency.put("terminalRuns", terminalRuns);
             crawlerEfficiency.put("successRuns", successRuns);
             crawlerEfficiency.put("failedRuns", numberAsLong(efficiency, "failed_runs"));
             crawlerEfficiency.put("totalItems", numberAsLong(efficiency, "total_items"));
             crawlerEfficiency.put("totalAdded", numberAsLong(efficiency, "total_added"));
             crawlerEfficiency.put("totalUpdated", numberAsLong(efficiency, "total_updated"));
             crawlerEfficiency.put("avgDurationMs", Math.round(numberAsDouble(efficiency, "avg_duration")));
-            crawlerEfficiency.put("successRate", totalRuns > 0 ? Math.round(successRuns * 1000.0 / totalRuns) / 10.0 : 0);
+            crawlerEfficiency.put("successRate", terminalRuns > 0 ? Math.round(successRuns * 1000.0 / terminalRuns) / 10.0 : 0);
             report.put("crawlerEfficiency", crawlerEfficiency);
         } catch (Exception e) {
             log.warn("[Report] 查询爬虫效率失败", e);
@@ -326,27 +326,34 @@ public class StatsServiceImpl implements StatsService {
             log.warn("[Report] 查询内容质量统计失败", e);
         }
 
-        // 4. 每日新增趋势（按天汇总所有类型）
+        // 4. 每日新增趋势（每类一次聚合查询，避免按日期逐日查询）
         try {
             List<String> dates = new ArrayList<>();
-            List<Long> dailyTotals = new ArrayList<>();
+            Map<LocalDate, Long> totalsByDate = new LinkedHashMap<>();
             for (LocalDate d = startDate; !d.isAfter(endDate); d = d.plusDays(1)) {
                 dates.add(d.format(DateTimeFormatter.ofPattern("MM-dd")));
-                long dayTotal = 0;
-                for (String table : CONTENT_TABLES) {
-                    try {
-                        Long cnt = jdbcTemplate.queryForObject(
-                                "SELECT COUNT(*) FROM " + table
-                                        + " WHERE is_deleted = 0 AND DATE(created_at) = ?",
-                                Long.class, d);
-                        dayTotal += cnt != null ? cnt : 0;
-                    } catch (Exception ignored) {}
+                totalsByDate.put(d, 0L);
+            }
+            for (String table : CONTENT_TABLES) {
+                try {
+                    List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                            "SELECT DATE(created_at) AS d, COUNT(*) AS cnt FROM " + table
+                                    + " WHERE is_deleted = 0 AND created_at >= ? AND created_at < ?"
+                                    + " GROUP BY DATE(created_at)",
+                            startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay());
+                    for (Map<String, Object> row : rows) {
+                        LocalDate date = toLocalDate(row.get("d"));
+                        if (date != null && totalsByDate.containsKey(date)) {
+                            totalsByDate.merge(date, numberAsLong(row, "cnt"), Long::sum);
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("[Report] 查询 {} 每日趋势失败", table, e);
                 }
-                dailyTotals.add(dayTotal);
             }
             Map<String, Object> dailyTrend = new LinkedHashMap<>();
             dailyTrend.put("dates", dates);
-            dailyTrend.put("totals", dailyTotals);
+            dailyTrend.put("totals", new ArrayList<>(totalsByDate.values()));
             report.put("dailyTrend", dailyTrend);
         } catch (Exception e) {
             log.warn("[Report] 查询每日趋势失败", e);
@@ -368,6 +375,17 @@ public class StatsServiceImpl implements StatsService {
         return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 
+    private static LocalDate toLocalDate(Object value) {
+        if (value instanceof LocalDate date) return date;
+        if (value instanceof java.sql.Date date) return date.toLocalDate();
+        if (value == null) return null;
+        try {
+            return LocalDate.parse(value.toString());
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     @Override
     public List<Map<String, Object>> getContentList(ContentType type) {
         List<Map<String, Object>> result = new ArrayList<>();
@@ -376,7 +394,8 @@ public class StatsServiceImpl implements StatsService {
             try {
                 List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                         "SELECT id, '" + table + "' AS type, title, year, score_douban, score_imdb, " +
-                        "CASE WHEN status = 1 THEN '已发布' ELSE '未发布' END AS status, " +
+                        "CASE status WHEN 0 THEN '草稿' WHEN 1 THEN '已发布' " +
+                        "WHEN 2 THEN '已下线' ELSE '未知' END AS status, " +
                         "created_at FROM " + table + " WHERE is_deleted = 0 ORDER BY created_at DESC");
                 result.addAll(rows);
             } catch (Exception e) {
