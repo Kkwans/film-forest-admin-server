@@ -3,14 +3,16 @@ package com.filmforest.content.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.filmforest.common.dto.Result;
 import com.filmforest.common.dto.PageResult;
+import com.filmforest.common.type.ContentType;
 import com.filmforest.content.dto.AdminContentItem;
+import com.filmforest.content.dto.ContentStatusBatchRequest;
+import com.filmforest.content.dto.ContentStatusBatchResult;
+import com.filmforest.content.dto.ContentStatusTarget;
 import com.filmforest.content.entity.*;
-import com.filmforest.content.model.ContentStatus;
 import com.filmforest.content.service.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.jdbc.core.JdbcTemplate;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,20 +38,10 @@ public class ContentController {
     @Autowired private VarietyService varietyService;
     @Autowired private AnimeService animeService;
     @Autowired private ShortDramaService shortDramaService;
-    @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private AdminContentQueryService adminContentQueryService;
     @Autowired private AdminContentMutationService adminContentMutationService;
+    @Autowired private AdminContentStatusService adminContentStatusService;
     @Autowired private TagService tagService;
-
-    /** 内容类型 → 数据库表名映射 */
-    private static final Map<String, String> CONTENT_TYPE_TABLE_MAP = Map.of(
-            "movie", "movie",
-            "drama", "drama",
-            "variety", "variety",
-            "anime", "anime",
-            "short", "short_drama",
-            "short_drama", "short_drama"
-    );
 
     // ==================== 状态切换（通用） ====================
 
@@ -63,30 +55,22 @@ public class ContentController {
             @PathVariable String type,
             @PathVariable Long id,
             @RequestParam int status) {
-        String table = CONTENT_TYPE_TABLE_MAP.get(type);
-        if (table == null) {
-            return Result.fail("不支持的内容类型: " + type);
-        }
-        if (!CONTENT_TYPE_TABLE_MAP.containsValue(table)) {
-            return Result.fail("不支持的内容类型: " + type);
-        }
-        if (!ContentStatus.isValid(status)) {
-            return Result.fail("非法的状态值: " + status + "，只允许 0、1 或 2");
-        }
-        try {
-            int rows = jdbcTemplate.update(
-                    "UPDATE " + table + " SET status = ?, updated_at = NOW() WHERE id = ?",
-                    status, id
-            );
-            if (rows > 0) {
-                log.info("切换内容状态: type={}, id={}, status={}", type, id, status);
-                return Result.ok(true);
-            }
-            return Result.fail("内容不存在");
-        } catch (Exception e) {
-            log.error("切换状态失败: type={}, id={}", type, id, e);
-            return Result.fail("操作失败: " + e.getMessage());
-        }
+        ContentStatusBatchResult result = adminContentStatusService.updateStatuses(
+                List.of(new ContentStatusTarget(type, id)), status);
+        log.info("切换内容状态: type={}, id={}, status={}", type, id, status);
+        return Result.ok(result.updated() == 1);
+    }
+
+    /** 当前页跨内容类型批量更新；校验全部目标后在同一事务提交。 */
+    @PostMapping("/status/batch")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
+    public Result<ContentStatusBatchResult> batchUpdateStatus(
+            @Valid @RequestBody ContentStatusBatchRequest request) {
+        ContentStatusBatchResult result = adminContentStatusService.updateStatuses(
+                request.items(), request.status());
+        log.info("批量切换内容状态: requested={}, updated={}, status={}",
+                result.requested(), result.updated(), result.status());
+        return Result.ok(result);
     }
 
     // ==================== 内容管理 API（管理端） ====================
@@ -312,19 +296,13 @@ public class ContentController {
     @GetMapping("/genres")
     @Cacheable(value = "genres", key = "#contentType")
     public Result<List<String>> getGenres(@RequestParam String contentType) {
-        String table = CONTENT_TYPE_TABLE_MAP.get(contentType);
-        if (table == null) {
-            return Result.ok(Collections.emptyList());
-        }
-
-        // 二次校验表名必须在白名单内，防止 SQL 注入
-        if (!CONTENT_TYPE_TABLE_MAP.containsValue(table)) {
-            log.warn("非法的 contentType 请求: {}", contentType);
+        String canonicalType = "short".equals(contentType) ? "short_drama" : contentType;
+        if (ContentType.fromValue(canonicalType).isEmpty()) {
             return Result.ok(Collections.emptyList());
         }
 
         try {
-            List<String> genres = tagService.getStandardGenres(contentType).stream()
+            List<String> genres = tagService.getStandardGenres(canonicalType).stream()
                     .map(Tag::getName)
                     .toList();
             log.debug("获取标准 genre 列表: contentType={}, 共 {} 个", contentType, genres.size());
