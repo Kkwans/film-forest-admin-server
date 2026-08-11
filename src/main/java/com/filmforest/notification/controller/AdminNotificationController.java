@@ -23,9 +23,12 @@ public class AdminNotificationController {
     @GetMapping
     public Result<IPage<AdminNotification>> list(HttpServletRequest request,
                                                 @RequestParam(defaultValue = "false") boolean unreadOnly,
+                                                @RequestParam(required = false) String eventType,
+                                                @RequestParam(required = false) String severity,
+                                                @RequestParam(required = false) String keyword,
                                                 @RequestParam(defaultValue = "1") int page,
                                                 @RequestParam(defaultValue = "20") int size) {
-        return Result.ok(service.list(userId(request), unreadOnly, page, size));
+        return Result.ok(service.list(userId(request), unreadOnly, eventType, severity, keyword, page, size));
     }
 
     @GetMapping("/unread-count")

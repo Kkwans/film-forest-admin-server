@@ -21,9 +21,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Service
 public class AdminNotificationService {
+
+    private static final Pattern EVENT_TYPE_PATTERN = Pattern.compile("[A-Z][A-Z0-9_]{0,63}");
+    private static final List<String> SEVERITIES = List.of("INFO", "SUCCESS", "WARNING", "ERROR");
 
     private final AdminNotificationMapper notificationMapper;
     private final AdminNotificationPreferenceMapper preferenceMapper;
@@ -43,16 +48,58 @@ public class AdminNotificationService {
         this.userMapper = userMapper;
     }
 
-    public IPage<AdminNotification> list(long userId, boolean unreadOnly, int page, int size) {
+    public IPage<AdminNotification> list(long userId,
+                                         boolean unreadOnly,
+                                         String rawEventType,
+                                         String rawSeverity,
+                                         String rawKeyword,
+                                         int page,
+                                         int size) {
         if (page < 1 || size < 1 || size > 100) {
             throw new IllegalArgumentException("通知分页参数不合法");
         }
+        String eventType = normalizeEventType(rawEventType);
+        String severity = normalizeSeverity(rawSeverity);
+        String keyword = normalizeKeyword(rawKeyword);
         return notificationMapper.selectPage(new Page<>(page, size),
                 new LambdaQueryWrapper<AdminNotification>()
                         .eq(AdminNotification::getUserId, userId)
                         .isNull(unreadOnly, AdminNotification::getReadAt)
+                        .eq(eventType != null, AdminNotification::getEventType, eventType)
+                        .eq(severity != null, AdminNotification::getSeverity, severity)
+                        .and(keyword != null, nested -> nested
+                                .like(AdminNotification::getTitle, keyword)
+                                .or()
+                                .like(AdminNotification::getMessage, keyword))
                         .orderByDesc(AdminNotification::getCreatedAt)
                         .orderByDesc(AdminNotification::getId));
+    }
+
+    private static String normalizeEventType(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!EVENT_TYPE_PATTERN.matcher(normalized).matches()) {
+            throw new IllegalArgumentException("通知事件类型不合法");
+        }
+        return normalized;
+    }
+
+    private static String normalizeSeverity(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!SEVERITIES.contains(normalized)) {
+            throw new IllegalArgumentException("通知级别不合法");
+        }
+        return normalized;
+    }
+
+    private static String normalizeKeyword(String value) {
+        if (value == null || value.isBlank()) return null;
+        String normalized = value.trim();
+        if (normalized.length() > 100) {
+            throw new IllegalArgumentException("通知关键词最长 100 字符");
+        }
+        return normalized;
     }
 
     public long unreadCount(long userId) {

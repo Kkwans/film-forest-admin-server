@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.conditions.AbstractWrapper;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.filmforest.content.entity.User;
 import com.filmforest.content.entity.UserRole;
 import com.filmforest.content.mapper.UserMapper;
@@ -62,6 +63,30 @@ class AdminNotificationServiceTest {
         assertThat(update.getValue().getSqlSegment()).contains("id", "user_id", "read_at");
         assertThat(((AbstractWrapper<?, ?, ?>) update.getValue()).getParamNameValuePairs().values())
                 .contains(9L, 33L);
+    }
+
+    @Test
+    void inboxFiltersStayScopedAndNormalizeOperatorInput() {
+        when(notificationMapper.selectPage(any(), any())).thenReturn(new Page<>());
+
+        service.list(9L, true, " crawler_failed ", " error ", " 解析失败 ", 1, 20);
+
+        ArgumentCaptor<Wrapper<AdminNotification>> query = ArgumentCaptor.forClass(Wrapper.class);
+        verify(notificationMapper).selectPage(any(), query.capture());
+        assertThat(query.getValue().getSqlSegment())
+                .contains("user_id", "read_at", "event_type", "severity", "title", "message");
+        assertThat(((AbstractWrapper<?, ?, ?>) query.getValue()).getParamNameValuePairs().values())
+                .contains(9L, "CRAWLER_FAILED", "ERROR", "%解析失败%");
+    }
+
+    @Test
+    void inboxRejectsInvalidFilterValues() {
+        assertThatThrownBy(() -> service.list(9L, false, "failed;drop", null, null, 1, 20))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("事件类型");
+        assertThatThrownBy(() -> service.list(9L, false, null, "fatal", null, 1, 20))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("级别");
     }
 
     @Test
