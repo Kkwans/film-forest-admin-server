@@ -1,11 +1,13 @@
 package com.filmforest.crawler.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.filmforest.common.exception.BusinessException;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
+import com.filmforest.crawler.dto.CrawlerJobStartResult;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerJobLifecycleService;
@@ -130,8 +132,8 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     }
 
     @Override
-    public boolean startCrawler(Long id) {
-        return enqueue(id, CrawlerTriggerType.MANUAL, null);
+    public CrawlerJobStartResult startCrawler(Long id) {
+        return enqueueManual(id, CrawlerTriggerType.MANUAL, null);
     }
 
     @Override
@@ -140,16 +142,19 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     }
 
     @Override
-    public boolean retryCrawler(Long jobId) {
+    public CrawlerJobStartResult retryCrawler(Long jobId) {
         CrawlerTaskLog previous = taskLogMapper.selectById(jobId);
         if (previous == null) {
-            return false;
+            throw new BusinessException(404, "任务日志不存在");
         }
         CrawlerStatus status = CrawlerStatus.fromCode(previous.getStatus());
         if (status == null || !status.isRetryable()) {
-            return false;
+            throw new BusinessException(409, "当前状态不支持重试: " + previous.getStatus());
         }
-        return enqueue(previous.getScheduleId(), CrawlerTriggerType.RETRY, jobId);
+        if (previous.getScheduleId() == null || scheduleMapper.selectById(previous.getScheduleId()) == null) {
+            throw new BusinessException(404, "关联的爬虫配置已不存在");
+        }
+        return enqueueManual(previous.getScheduleId(), CrawlerTriggerType.RETRY, jobId);
     }
 
     @Override
@@ -200,6 +205,28 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
                     scheduleId, triggerType.getCode());
             return false;
         }
+    }
+
+    private CrawlerJobStartResult enqueueManual(Long scheduleId,
+                                                CrawlerTriggerType triggerType,
+                                                Long retryOfJobId) {
+        CrawlerTaskLog job;
+        try {
+            job = jobLifecycleService.enqueueJob(scheduleId, triggerType, retryOfJobId);
+        } catch (DuplicateKeyException conflict) {
+            throw new BusinessException(409, "该爬虫配置已有活动 Job，不能重复启动");
+        }
+        if (job != null) {
+            return CrawlerJobStartResult.from(job);
+        }
+
+        if (scheduleId == null || scheduleMapper.selectById(scheduleId) == null) {
+            throw new BusinessException(404, "爬虫配置不存在");
+        }
+        if (taskLogMapper.selectActiveByScheduleId(scheduleId) != null) {
+            throw new BusinessException(409, "该爬虫配置已有活动 Job，不能重复启动");
+        }
+        throw new BusinessException(409, "爬虫 Job 启动冲突，请稍后重试");
     }
 
     private void decorateRuntimeStatus(CrawlerSchedule schedule) {

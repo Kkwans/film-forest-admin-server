@@ -1,6 +1,7 @@
 package com.filmforest.crawler.service;
 
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.dto.CrawlerJobStartResult;
 import java.util.List;
 
 public interface CrawlerScheduleService {
@@ -28,13 +29,13 @@ public interface CrawlerScheduleService {
     /**
      * 启动爬虫（手动触发一次）
      */
-    boolean startCrawler(Long id);
+    CrawlerJobStartResult startCrawler(Long id);
 
     /** 由定时调度触发，和手工/重试共用唯一活动 Job 约束。 */
     boolean startScheduledCrawler(Long id);
 
     /** 基于终态 Job 的安全检查点创建重试 Job。 */
-    boolean retryCrawler(Long jobId);
+    CrawlerJobStartResult retryCrawler(Long jobId);
 
     /**
      * 停止爬虫

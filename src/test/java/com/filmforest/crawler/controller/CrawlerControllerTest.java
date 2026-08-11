@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.auth.JwtAuthFilter;
 import com.filmforest.common.config.WebConfig;
 import com.filmforest.crawler.core.CrawlerCore;
+import com.filmforest.crawler.dto.CrawlerJobStartResult;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
@@ -70,6 +72,9 @@ class CrawlerControllerTest {
 
     @MockBean
     private CrawlerScheduleDefinitionService scheduleDefinitionService;
+
+    @MockBean
+    private CrawlerItemFailureService itemFailureService;
 
     // ========== TC-600: GET /api/crawler/schedules ==========
 
@@ -152,12 +157,14 @@ class CrawlerControllerTest {
         @Test
         @DisplayName("TC-604: POST /api/crawler/start/{id} - 启动爬虫成功")
         void startCrawler_shouldStartSuccessfully() throws Exception {
-            when(scheduleService.startCrawler(1L)).thenReturn(true);
+            when(scheduleService.startCrawler(1L))
+                    .thenReturn(new CrawlerJobStartResult(101L, "queued", LocalDateTime.of(2026, 8, 11, 1, 2, 3)));
 
             mockMvc.perform(post("/api/crawler/start/1"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(true));
+                    .andExpect(jsonPath("$.data.jobId").value(101))
+                    .andExpect(jsonPath("$.data.status").value("queued"));
         }
 
         @Test
@@ -367,12 +374,13 @@ class CrawlerControllerTest {
         @Test
         @DisplayName("TC-050 API: 启动爬虫")
         void startCrawler_shouldCallService() throws Exception {
-            when(scheduleService.startCrawler(1L)).thenReturn(true);
+            when(scheduleService.startCrawler(1L))
+                    .thenReturn(new CrawlerJobStartResult(101L, "queued", LocalDateTime.of(2026, 8, 11, 1, 2, 3)));
 
             mockMvc.perform(post("/api/crawler/start/1"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(true));
+                    .andExpect(jsonPath("$.data.jobId").value(101));
 
             verify(scheduleService).startCrawler(1L);
         }
@@ -380,12 +388,12 @@ class CrawlerControllerTest {
         @Test
         @DisplayName("TC-051 API: 启动不存在的爬虫 - 返回 false")
         void startCrawler_notFound_shouldReturnFalse() throws Exception {
-            when(scheduleService.startCrawler(999L)).thenReturn(false);
+            when(scheduleService.startCrawler(999L)).thenReturn(null);
 
             mockMvc.perform(post("/api/crawler/start/999"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.code").value(200))
-                    .andExpect(jsonPath("$.data").value(false));
+                    .andExpect(jsonPath("$.code").value(409))
+                    .andExpect(jsonPath("$.message").value("爬虫 Job 启动冲突，请稍后重试"));
         }
 
         @Test

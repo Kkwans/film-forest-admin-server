@@ -50,9 +50,11 @@ class CrawlerJobLifecycleServiceTest {
             return 1;
         });
 
-        Long jobId = lifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null);
+        CrawlerTaskLog createdJob = lifecycleService.enqueueJob(1L, CrawlerTriggerType.MANUAL, null);
 
-        assertThat(jobId).isEqualTo(101L);
+        assertThat(createdJob.getId()).isEqualTo(101L);
+        assertThat(createdJob.getStatus()).isEqualTo("queued");
+        assertThat(createdJob.getQueuedAt()).isNotNull();
         ArgumentCaptor<CrawlerTaskLog> jobCaptor = ArgumentCaptor.forClass(CrawlerTaskLog.class);
         verify(jobMapper).insert(jobCaptor.capture());
         assertThat(jobCaptor.getValue().getStatus()).isEqualTo("queued");
@@ -60,6 +62,22 @@ class CrawlerJobLifecycleServiceTest {
         assertThat(jobCaptor.getValue().getCrawlMode()).isEqualTo("latest");
         assertThat(jobCaptor.getValue().getCurrentPage()).isEqualTo(1);
         verify(eventPublisher).publishEvent(new CrawlerJobQueuedEvent(101L));
+    }
+
+    @Test
+    @DisplayName("兼容旧生命周期入口仍返回实际 Job ID")
+    void enqueue_legacyEntryPoint_shouldReturnJobId() {
+        when(scheduleMapper.selectByIdForUpdate(1L)).thenReturn(schedule(1L));
+        when(jobMapper.selectActiveByScheduleId(1L)).thenReturn(null);
+        when(jobMapper.insert(any(CrawlerTaskLog.class))).thenAnswer(invocation -> {
+            invocation.<CrawlerTaskLog>getArgument(0).setId(111L);
+            return 1;
+        });
+
+        Long jobId = lifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null);
+
+        assertThat(jobId).isEqualTo(111L);
+        verify(eventPublisher).publishEvent(new CrawlerJobQueuedEvent(111L));
     }
 
     @Test
@@ -105,9 +123,9 @@ class CrawlerJobLifecycleServiceTest {
             return 1;
         });
 
-        Long jobId = lifecycleService.enqueue(1L, CrawlerTriggerType.RETRY, 88L);
+        CrawlerTaskLog createdJob = lifecycleService.enqueueJob(1L, CrawlerTriggerType.RETRY, 88L);
 
-        assertThat(jobId).isEqualTo(102L);
+        assertThat(createdJob.getId()).isEqualTo(102L);
         ArgumentCaptor<CrawlerTaskLog> captor = ArgumentCaptor.forClass(CrawlerTaskLog.class);
         verify(jobMapper).insert(captor.capture());
         assertThat(captor.getValue().getCurrentPage()).isEqualTo(7);

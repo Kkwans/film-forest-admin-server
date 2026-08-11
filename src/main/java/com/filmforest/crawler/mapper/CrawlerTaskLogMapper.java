@@ -36,6 +36,44 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
             """)
     CrawlerTaskLog selectLatestByScheduleId(@Param("scheduleId") Long scheduleId);
 
+    /**
+     * 每个计划只返回最新权威 Job，且仅保留最新状态仍可重试的计划。
+     * 查询在数据库内完成去重与上限控制，避免批量重试扫描全部历史日志。
+     */
+    @Select("""
+            SELECT ranked.*
+            FROM (
+                SELECT log.*,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY log.schedule_id
+                           ORDER BY log.queued_at DESC, log.id DESC
+                       ) AS row_num
+                FROM crawler_task_log log
+                WHERE log.schedule_id IS NOT NULL
+            ) ranked
+            WHERE ranked.row_num = 1
+              AND ranked.status IN ('failed', 'partial_success', 'cancelled', 'interrupted')
+            ORDER BY ranked.schedule_id ASC
+            LIMIT #{limit}
+            """)
+    List<CrawlerTaskLog> selectLatestRetryableJobs(@Param("limit") int limit);
+
+    @Select("""
+            SELECT COUNT(*)
+            FROM (
+                SELECT log.status,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY log.schedule_id
+                           ORDER BY log.queued_at DESC, log.id DESC
+                       ) AS row_num
+                FROM crawler_task_log log
+                WHERE log.schedule_id IS NOT NULL
+            ) ranked
+            WHERE ranked.row_num = 1
+              AND ranked.status IN ('failed', 'partial_success', 'cancelled', 'interrupted')
+            """)
+    long countLatestRetryableJobs();
+
     @Select("""
             SELECT * FROM crawler_task_log
             WHERE status IN ('queued', 'running', 'cancel_requested')

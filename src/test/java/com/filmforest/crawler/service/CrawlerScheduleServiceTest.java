@@ -3,6 +3,7 @@ package com.filmforest.crawler.service;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
+import com.filmforest.crawler.dto.CrawlerJobStartResult;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.impl.CrawlerScheduleServiceImpl;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -335,31 +337,81 @@ class CrawlerScheduleServiceTest {
         @Test
         @DisplayName("TC-050: 手工启动只创建 QUEUED Job，由提交后事件派发")
         void startCrawler_idle_shouldEnqueueManualJob() {
-            when(jobLifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(101L);
+            CrawlerTaskLog queued = new CrawlerTaskLog();
+            queued.setId(101L);
+            queued.setStatus("queued");
+            queued.setQueuedAt(LocalDateTime.of(2026, 8, 11, 1, 2, 3));
+            when(jobLifecycleService.enqueueJob(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(queued);
 
-            boolean result = scheduleService.startCrawler(1L);
+            CrawlerJobStartResult result = scheduleService.startCrawler(1L);
 
-            assertThat(result).isTrue();
-            verify(jobLifecycleService).enqueue(1L, CrawlerTriggerType.MANUAL, null);
+            assertThat(result.jobId()).isEqualTo(101L);
+            assertThat(result.status()).isEqualTo("queued");
+            assertThat(result.queuedAt()).isEqualTo(queued.getQueuedAt());
+            verify(jobLifecycleService).enqueueJob(1L, CrawlerTriggerType.MANUAL, null);
         }
 
         @Test
         @DisplayName("TC-050 补充: 同一 schedule 已有活动 Job 时拒绝重复启动")
         void startCrawler_activeJobExists_shouldReturnFalse() {
-            when(jobLifecycleService.enqueue(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
+            when(jobLifecycleService.enqueueJob(1L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
+            when(scheduleMapper.selectById(1L)).thenReturn(createBaseSchedule(1L));
+            when(taskLogMapper.selectActiveByScheduleId(1L)).thenReturn(new CrawlerTaskLog());
 
-            assertThat(scheduleService.startCrawler(1L)).isFalse();
+            assertThatThrownBy(() -> scheduleService.startCrawler(1L))
+                    .isInstanceOf(com.filmforest.common.exception.BusinessException.class)
+                    .hasMessageContaining("活动 Job");
         }
 
         @Test
         @DisplayName("TC-051: 启动不存在的爬虫 - 返回 false")
         void startCrawler_notFound_shouldReturnFalse() {
-            when(jobLifecycleService.enqueue(999L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
+            when(jobLifecycleService.enqueueJob(999L, CrawlerTriggerType.MANUAL, null)).thenReturn(null);
 
-            boolean result = scheduleService.startCrawler(999L);
+            assertThatThrownBy(() -> scheduleService.startCrawler(999L))
+                    .isInstanceOf(com.filmforest.common.exception.BusinessException.class)
+                    .hasMessageContaining("配置不存在");
+            verify(jobLifecycleService).enqueueJob(999L, CrawlerTriggerType.MANUAL, null);
+        }
 
-            assertThat(result).isFalse();
-            verify(jobLifecycleService).enqueue(999L, CrawlerTriggerType.MANUAL, null);
+        @Test
+        @DisplayName("重试从生命周期服务拿到新 Job ID，不查询最新 Job")
+        void retryCrawler_shouldReturnNewJobSummary() {
+            CrawlerTaskLog previous = new CrawlerTaskLog();
+            previous.setId(88L);
+            previous.setScheduleId(1L);
+            previous.setStatus("failed");
+            when(taskLogMapper.selectById(88L)).thenReturn(previous);
+            when(scheduleMapper.selectById(1L)).thenReturn(createBaseSchedule(1L));
+            CrawlerTaskLog retried = new CrawlerTaskLog();
+            retried.setId(101L);
+            retried.setStatus("queued");
+            retried.setQueuedAt(LocalDateTime.of(2026, 8, 11, 1, 2, 3));
+            when(jobLifecycleService.enqueueJob(1L, CrawlerTriggerType.RETRY, 88L)).thenReturn(retried);
+
+            CrawlerJobStartResult result = scheduleService.retryCrawler(88L);
+
+            assertThat(result.jobId()).isEqualTo(101L);
+            assertThat(result.jobId()).isNotEqualTo(88L);
+            verify(jobLifecycleService).enqueueJob(1L, CrawlerTriggerType.RETRY, 88L);
+            verify(taskLogMapper, never()).selectLatestByScheduleId(any());
+        }
+
+        @Test
+        @DisplayName("重试遇到活动 Job 时返回明确业务冲突")
+        void retryCrawler_activeJob_shouldReject() {
+            CrawlerTaskLog previous = new CrawlerTaskLog();
+            previous.setId(88L);
+            previous.setScheduleId(1L);
+            previous.setStatus("failed");
+            when(taskLogMapper.selectById(88L)).thenReturn(previous);
+            when(scheduleMapper.selectById(1L)).thenReturn(createBaseSchedule(1L));
+            when(jobLifecycleService.enqueueJob(1L, CrawlerTriggerType.RETRY, 88L)).thenReturn(null);
+            when(taskLogMapper.selectActiveByScheduleId(1L)).thenReturn(new CrawlerTaskLog());
+
+            assertThatThrownBy(() -> scheduleService.retryCrawler(88L))
+                    .isInstanceOf(com.filmforest.common.exception.BusinessException.class)
+                    .hasMessageContaining("活动 Job");
         }
 
         @Test

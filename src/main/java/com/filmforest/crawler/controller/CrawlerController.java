@@ -2,14 +2,18 @@ package com.filmforest.crawler.controller;
 
 import com.filmforest.common.dto.Result;
 import com.filmforest.common.dto.PageResult;
+import com.filmforest.common.exception.BusinessException;
+import com.filmforest.crawler.dto.CrawlerJobStartResult;
 import com.filmforest.crawler.dto.CrawlerOperationsStats;
 import com.filmforest.crawler.dto.CrawlerSourceDescriptor;
 import com.filmforest.crawler.dto.CrawlerSchedulePreview;
 import com.filmforest.crawler.dto.CrawlerSchedulePreviewRequest;
+import com.filmforest.crawler.entity.CrawlerJobItemFailure;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
@@ -37,17 +41,20 @@ public class CrawlerController {
     private final CrawlerTaskLogMapper taskLogMapper;
     private final CrawlerSourceCatalogService sourceCatalogService;
     private final CrawlerScheduleDefinitionService scheduleDefinitionService;
+    private final CrawlerItemFailureService itemFailureService;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
                              CrawlerTaskLogMapper taskLogMapper,
                              CrawlerSourceCatalogService sourceCatalogService,
-                             CrawlerScheduleDefinitionService scheduleDefinitionService) {
+                             CrawlerScheduleDefinitionService scheduleDefinitionService,
+                             CrawlerItemFailureService itemFailureService) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
         this.sourceCatalogService = sourceCatalogService;
         this.scheduleDefinitionService = scheduleDefinitionService;
+        this.itemFailureService = itemFailureService;
     }
 
     /** 获取所有定时配置 */
@@ -89,9 +96,16 @@ public class CrawlerController {
 
     /** 启动爬虫 */
     @PostMapping("/start/{id}")
-    public Result<Boolean> startCrawler(@PathVariable Long id) {
+    public Result<CrawlerJobStartResult> startCrawler(@PathVariable Long id) {
         log.info("启动爬虫: scheduleId={}", id);
-        return Result.ok(scheduleService.startCrawler(id));
+        try {
+            CrawlerJobStartResult started = scheduleService.startCrawler(id);
+            return started == null
+                    ? Result.fail(409, "爬虫 Job 启动冲突，请稍后重试")
+                    : Result.ok(started);
+        } catch (BusinessException failure) {
+            return Result.fail(failure.getCode(), failure.getMessage());
+        }
     }
 
     /** 停止爬虫 */
@@ -106,6 +120,37 @@ public class CrawlerController {
     public Result<CrawlerTaskLog> getJob(@PathVariable Long jobId) {
         CrawlerTaskLog job = taskLogMapper.selectById(jobId);
         return job == null ? Result.fail("爬虫 Job 不存在") : Result.ok(job);
+    }
+
+    /** 查询单个 Job 的条目失败，结果严格限定在该 Job 内。 */
+    @GetMapping("/jobs/{jobId}/failures")
+    public Result<PageResult<CrawlerJobItemFailure>> listJobFailures(
+            @PathVariable Long jobId,
+            @RequestParam(required = false) String stage,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) Boolean retryExhausted,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size) {
+        if (jobId == null || jobId <= 0) {
+            return Result.fail(400, "jobId 必须为正整数");
+        }
+        if (taskLogMapper.selectById(jobId) == null) {
+            return Result.fail(404, "爬虫 Job 不存在");
+        }
+        int safePage = page == null ? 1 : page;
+        int safeSize = size == null ? 20 : size;
+        if (safePage < 1) {
+            return Result.fail(400, "页码必须大于 0");
+        }
+        if (safeSize < 1 || safeSize > 100) {
+            return Result.fail(400, "每页数量必须在 1 到 100 之间");
+        }
+        try {
+            return Result.ok(itemFailureService.listFailures(
+                    jobId, stage, category, retryExhausted, safePage, safeSize));
+        } catch (IllegalArgumentException invalid) {
+            return Result.fail(400, invalid.getMessage());
+        }
     }
 
     /** 获取全部活动 Job。 */
@@ -197,73 +242,76 @@ public class CrawlerController {
 
     /** 重试失败/停止的任务 */
     @PostMapping("/retry/{logId}")
-    public Result<String> retryTask(@PathVariable Long logId) {
+    public Result<CrawlerJobStartResult> retryTask(@PathVariable Long logId) {
         CrawlerTaskLog taskLog = taskLogMapper.selectById(logId);
         if (taskLog == null) {
-            return Result.fail("任务日志不存在");
+            return Result.fail(404, "任务日志不存在");
         }
         CrawlerStatus status = CrawlerStatus.fromCode(taskLog.getStatus());
         if (status == null || !status.isRetryable()) {
-            return Result.fail("当前状态不支持重试: " + taskLog.getStatus());
+            return Result.fail(409, "当前状态不支持重试: " + taskLog.getStatus());
         }
         CrawlerSchedule schedule = scheduleService.getSchedule(taskLog.getScheduleId());
         if (schedule == null) {
-            return Result.fail("关联的爬虫配置已不存在");
+            return Result.fail(404, "关联的爬虫配置已不存在");
         }
-        log.info("重试爬虫任务: logId={}, scheduleId={}, scheduleName={}",
-                logId, taskLog.getScheduleId(), schedule.getName());
-        boolean started = scheduleService.retryCrawler(logId);
-        if (started) {
-            return Result.ok("重试任务已启动");
-        } else {
-            return Result.fail("重试启动失败");
+        log.info("重试爬虫任务: logId={}, scheduleId={}",
+                logId, taskLog.getScheduleId());
+        try {
+            CrawlerJobStartResult started = scheduleService.retryCrawler(logId);
+            if (started != null) {
+                return Result.ok(started);
+            }
+            return activeConflict(taskLog.getScheduleId());
+        } catch (BusinessException failure) {
+            return Result.fail(failure.getCode(), failure.getMessage());
         }
     }
 
     /** 批量重试所有失败任务 */
     @PostMapping("/retry-all")
     public Result<Map<String, Object>> retryAllFailed() {
-        LambdaQueryWrapper<CrawlerTaskLog> wrapper = new LambdaQueryWrapper<>();
-        wrapper.in(CrawlerTaskLog::getStatus,
-                CrawlerStatus.FAILED.getCode(),
-                CrawlerStatus.PARTIAL_SUCCESS.getCode(),
-                CrawlerStatus.CANCELLED.getCode(),
-                CrawlerStatus.INTERRUPTED.getCode());
-        List<CrawlerTaskLog> failedLogs = taskLogMapper.selectList(wrapper);
+        final int batchLimit = 100;
+        long candidateCount = taskLogMapper.countLatestRetryableJobs();
 
-        if (failedLogs.isEmpty()) {
-            return Result.ok(Map.of("total", 0, "started", 0, "skipped", 0, "message", "没有需要重试的任务"));
+        if (candidateCount == 0) {
+            return Result.ok(Map.of("total", 0, "started", 0,
+                    "startedJobIds", List.of(), "skipped", 0, "message", "没有需要重试的任务"));
         }
 
-        // 按 scheduleId 去重（同一个配置只重试一次）
-        Set<Long> scheduleIds = failedLogs.stream()
-                .map(CrawlerTaskLog::getScheduleId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-
-        int started = 0;
-        int skipped = 0;
-        for (Long scheduleId : scheduleIds) {
-            CrawlerSchedule schedule = scheduleService.getSchedule(scheduleId);
-            if (schedule == null) {
+        List<CrawlerTaskLog> latestRetryableJobs = taskLogMapper.selectLatestRetryableJobs(batchLimit);
+        List<Long> startedJobIds = new ArrayList<>();
+        long skipped = Math.max(0L, candidateCount - latestRetryableJobs.size());
+        for (CrawlerTaskLog latest : latestRetryableJobs) {
+            if (latest == null || latest.getId() == null || latest.getScheduleId() == null) {
                 skipped++;
                 continue;
             }
-            CrawlerTaskLog latest = failedLogs.stream()
-                    .filter(job -> scheduleId.equals(job.getScheduleId()))
-                    .max(Comparator.comparing(CrawlerTaskLog::getId))
-                    .orElse(null);
-            boolean ok = latest != null && scheduleService.retryCrawler(latest.getId());
-            if (ok) started++;
-            else skipped++;
+            try {
+                CrawlerJobStartResult started = scheduleService.retryCrawler(latest.getId());
+                if (started != null) {
+                    startedJobIds.add(started.jobId());
+                } else {
+                    skipped++;
+                }
+            } catch (BusinessException ignored) {
+                skipped++;
+            }
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("total", failedLogs.size());
-        result.put("schedules", scheduleIds.size());
-        result.put("started", started);
+        result.put("total", candidateCount);
+        result.put("schedules", candidateCount);
+        result.put("started", startedJobIds.size());
+        result.put("startedJobIds", startedJobIds);
         result.put("skipped", skipped);
         return Result.ok(result);
+    }
+
+    private Result<CrawlerJobStartResult> activeConflict(Long scheduleId) {
+        return taskLogMapper.selectActiveByScheduleId(scheduleId) == null
+                ? Result.fail(409, "重试启动冲突，请稍后重试")
+                : Result.fail(409, "该爬虫配置已有活动 Job，不能重复重试");
     }
 
     /** 获取任务日志统计（各状态数量） */

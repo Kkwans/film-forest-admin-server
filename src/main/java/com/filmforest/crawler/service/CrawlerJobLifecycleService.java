@@ -35,10 +35,20 @@ public class CrawlerJobLifecycleService {
     }
 
     /**
-     * 锁定 schedule 后原子创建唯一 QUEUED Job。事件只会在事务成功提交后派发。
+     * 兼容旧调用者：锁定 schedule 后原子创建唯一 QUEUED Job，并返回其 ID。
      */
     @Transactional
     public Long enqueue(Long scheduleId, CrawlerTriggerType triggerType, Long retryOfJobId) {
+        CrawlerTaskLog job = enqueueJob(scheduleId, triggerType, retryOfJobId);
+        return job == null ? null : job.getId();
+    }
+
+    /**
+     * 锁定 schedule 后原子创建唯一 QUEUED Job，并沿调用链返回已入库 Job。
+     * 事件只会在事务成功提交后派发。
+     */
+    @Transactional
+    public CrawlerTaskLog enqueueJob(Long scheduleId, CrawlerTriggerType triggerType, Long retryOfJobId) {
         CrawlerSchedule schedule = scheduleMapper.selectByIdForUpdate(scheduleId);
         LocalDateTime now = CrawlerTime.nowUtc();
         if (schedule == null || !isScheduledTriggerStillDue(schedule, triggerType, now)
@@ -90,7 +100,9 @@ public class CrawlerJobLifecycleService {
         job.setItemsUpdated(0);
         job.setQueuedAt(now);
         job.setProgressUpdatedAt(now);
-        jobMapper.insert(job);
+        if (jobMapper.insert(job) <= 0 || job.getId() == null) {
+            return null;
+        }
 
         if (triggerType == CrawlerTriggerType.SCHEDULED) {
             schedule.setNextRunTime(CrawlerTime.nextRunUtc(
@@ -99,7 +111,7 @@ public class CrawlerJobLifecycleService {
         }
 
         eventPublisher.publishEvent(new CrawlerJobQueuedEvent(job.getId()));
-        return job.getId();
+        return job;
     }
 
     @Transactional

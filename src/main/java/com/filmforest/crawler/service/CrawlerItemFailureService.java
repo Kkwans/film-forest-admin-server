@@ -1,11 +1,15 @@
 package com.filmforest.crawler.service;
 
+import com.filmforest.common.dto.PageResult;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.entity.CrawlerFailureStage;
 import com.filmforest.crawler.entity.CrawlerJobItemFailure;
 import com.filmforest.crawler.mapper.CrawlerJobItemFailureMapper;
 import com.filmforest.crawler.model.SourceListItem;
 import org.springframework.stereotype.Service;
+
+import java.util.List;
+import java.util.Locale;
 
 @Service
 public class CrawlerItemFailureService {
@@ -40,6 +44,37 @@ public class CrawlerItemFailureService {
         mapper.upsertFailure(failure);
     }
 
+    /**
+     * 查询单个 Job 的条目失败，分页参数由服务端严格约束。
+     */
+    public PageResult<CrawlerJobItemFailure> listFailures(Long jobId,
+                                                          String stage,
+                                                          String category,
+                                                          Boolean retryExhausted,
+                                                          Integer page,
+                                                          Integer size) {
+        Long safeJobId = requirePositive(jobId);
+        String safeStage = normalizeStage(stage);
+        String safeCategory = normalizeCategory(category);
+        int safePage = page == null ? 1 : page;
+        int safeSize = size == null ? 20 : size;
+        if (safePage < 1) {
+            throw new IllegalArgumentException("页码必须大于 0");
+        }
+        if (safeSize < 1 || safeSize > 100) {
+            throw new IllegalArgumentException("每页数量必须在 1 到 100 之间");
+        }
+
+        long total = mapper.countFailures(safeJobId, safeStage, safeCategory, retryExhausted);
+        long offset = Math.multiplyExact((long) safePage - 1, safeSize);
+        List<CrawlerJobItemFailure> records = total == 0 || offset >= total
+                ? List.of()
+                : mapper.selectFailurePage(safeJobId, safeStage, safeCategory,
+                retryExhausted, safeSize, offset);
+        long pages = total == 0 ? 0 : (total + safeSize - 1) / safeSize;
+        return new PageResult<>(records, total, safeSize, safePage, pages);
+    }
+
     private static Long requirePositive(Long value) {
         if (value == null || value <= 0) {
             throw new IllegalArgumentException("jobId must be positive");
@@ -56,6 +91,30 @@ public class CrawlerItemFailureService {
 
     private static String normalizeDiagnostic(String value) {
         return value == null || value.isBlank() ? null : value.trim().replaceAll("\\s+", " ");
+    }
+
+    private static String normalizeStage(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim().toLowerCase(Locale.ROOT);
+        for (CrawlerFailureStage stage : CrawlerFailureStage.values()) {
+            if (stage.getCode().equals(normalized)) {
+                return normalized;
+            }
+        }
+        throw new IllegalArgumentException("不支持的失败阶段: " + value.trim());
+    }
+
+    private static String normalizeCategory(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.length() > ERROR_CATEGORY_LIMIT) {
+            throw new IllegalArgumentException("category 长度不能超过 " + ERROR_CATEGORY_LIMIT);
+        }
+        return normalized;
     }
 
     private static String limit(String value, int maxLength) {
