@@ -122,10 +122,12 @@ class ResourceServiceImplTest {
     }
 
     @Test
-    void adminOnlineUpdateClearsOptionalFieldsWithoutOverwritingCrawlerMetadata() {
+    void adminOnlineUpdatePersistsPlaybackContractWithoutOverwritingCrawlerMetadata() {
         ResourceOnline stored = new ResourceOnline();
         stored.setId(41L);
         stored.setSourceCode("pkmp4");
+        stored.setSourcePageUrl("https://old.example.test/page");
+        stored.setPlaybackType("EXTERNAL_PAGE");
         when(onlineMapper.selectById(41L)).thenReturn(stored);
         when(onlineMapper.update(any(), any())).thenReturn(1);
 
@@ -134,7 +136,9 @@ class ResourceServiceImplTest {
         update.setContentType("short");
         update.setContentId(9L);
         update.setSourceUrl(" https://example.test/play ");
-        update.setSourceName(" ");
+        update.setSourceName(" 七味线路 ");
+        update.setSourcePageUrl(" https://example.test/source-page ");
+        update.setPlaybackType("hls");
         update.setEpisodeTitle("");
         update.setEnabled(1);
         update.setRawText("不得覆盖");
@@ -148,9 +152,36 @@ class ResourceServiceImplTest {
         var sqlSet = ((com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<ResourceOnline>) wrapper.getValue())
                 .getSqlSet();
         assertThat(sqlSet)
-                .contains("content_type", "source_code", "episode_title", "source_name", "source_url")
+                .contains("content_type", "source_code", "episode_title", "source_name", "source_url",
+                        "source_page_url", "playback_type")
                 .doesNotContain("raw_text", "resource_key", "removed_at", "last_seen_at");
-        assertThat(parameters(wrapper.getValue())).contains("short_drama", "pkmp4", null, "https://example.test/play");
+        assertThat(parameters(wrapper.getValue())).contains("short_drama", "pkmp4", null, "七味线路",
+                "https://example.test/play", "https://example.test/source-page", "HLS");
+        assertThat(update.getPlaybackType()).isEqualTo("HLS");
+    }
+
+    @Test
+    void adminOnlineSaveRejectsUnsafeUrlAndUnknownPlaybackType() {
+        ResourceOnline unsafe = new ResourceOnline();
+        unsafe.setContentType("movie");
+        unsafe.setContentId(1L);
+        unsafe.setSourceName("危险来源");
+        unsafe.setSourceUrl("javascript:alert(1)");
+
+        assertThatThrownBy(() -> service.saveOnlineResource(unsafe))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("HTTP/HTTPS");
+
+        ResourceOnline unknownType = new ResourceOnline();
+        unknownType.setContentType("movie");
+        unknownType.setContentId(1L);
+        unknownType.setSourceName("测试来源");
+        unknownType.setSourceUrl("https://example.test/play");
+        unknownType.setPlaybackType("MAGIC");
+
+        assertThatThrownBy(() -> service.saveOnlineResource(unknownType))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("播放类型");
     }
 
     @Test

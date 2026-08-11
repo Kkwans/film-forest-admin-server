@@ -22,6 +22,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -92,8 +93,15 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     public ResourceOnline saveOnlineResource(ResourceOnline resource) {
         resource.setContentType(normalizeContentType(resource.getContentType()));
         resource.setSourceCode(normalizeSourceCode(resource.getSourceCode()));
+        resource.setSourceName(requireText(resource.getSourceName(), "来源名称"));
+        resource.setSourceUrl(normalizeHttpUrl(resource.getSourceUrl(), true, "播放 URL"));
         validateEnabled(resource.getEnabled());
         if (resource.getId() == null) {
+            resource.setSourcePageUrl(normalizeHttpUrl(resource.getSourcePageUrl(), false, "来源详情页 URL"));
+            resource.setPlaybackType(normalizePlaybackType(resource.getPlaybackType(), resource.getSourceUrl()));
+            if ("EXTERNAL_PAGE".equals(resource.getPlaybackType()) && resource.getSourcePageUrl() == null) {
+                resource.setSourcePageUrl(resource.getSourceUrl());
+            }
             if (resource.getEnabled() == null) resource.setEnabled(1);
             if (resource.getSort() == null) resource.setSort(0);
             clearCrawlerMetadata(resource);
@@ -102,6 +110,17 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         } else {
             ResourceOnline stored = requireOnline(resource.getId());
             if (resource.getSourceCode() == null) resource.setSourceCode(stored.getSourceCode());
+            String sourcePageUrl = resource.getSourcePageUrl() == null
+                    ? stored.getSourcePageUrl()
+                    : normalizeHttpUrl(resource.getSourcePageUrl(), false, "来源详情页 URL");
+            String playbackType = resource.getPlaybackType() == null
+                    ? normalizePlaybackType(stored.getPlaybackType(), resource.getSourceUrl())
+                    : normalizePlaybackType(resource.getPlaybackType(), resource.getSourceUrl());
+            if ("EXTERNAL_PAGE".equals(playbackType) && sourcePageUrl == null) {
+                sourcePageUrl = resource.getSourceUrl();
+            }
+            resource.setSourcePageUrl(sourcePageUrl);
+            resource.setPlaybackType(playbackType);
             UpdateWrapper<ResourceOnline> update = new UpdateWrapper<ResourceOnline>()
                     .eq("id", resource.getId())
                     .set("content_type", resource.getContentType())
@@ -110,8 +129,10 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                     .set("season", resource.getSeason())
                     .set("episode_number", resource.getEpisodeNumber())
                     .set("episode_title", trimToNull(resource.getEpisodeTitle()))
-                    .set("source_name", trimToNull(resource.getSourceName()))
-                    .set("source_url", resource.getSourceUrl().trim())
+                    .set("source_name", resource.getSourceName())
+                    .set("source_url", resource.getSourceUrl())
+                    .set("source_page_url", sourcePageUrl)
+                    .set("playback_type", playbackType)
                     .set("sort", resource.getSort() == null ? 0 : resource.getSort())
                     .set(resource.getEnabled() != null, "enabled", resource.getEnabled())
                     .set("updated_at", LocalDateTime.now());
@@ -465,6 +486,47 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
         if (enabled != null && enabled != 0 && enabled != 1) {
             throw new IllegalArgumentException("启用状态只允许 0 或 1");
         }
+    }
+
+    private static String requireText(String value, String field) {
+        String normalized = trimToNull(value);
+        if (normalized == null) throw new IllegalArgumentException(field + "不能为空");
+        return normalized;
+    }
+
+    private static String normalizeHttpUrl(String value, boolean required, String field) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            if (required) throw new IllegalArgumentException(field + "不能为空");
+            return null;
+        }
+        try {
+            URI uri = URI.create(normalized);
+            String scheme = uri.getScheme();
+            if (scheme == null || uri.getRawAuthority() == null
+                    || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                throw new IllegalArgumentException(field + "只允许有效的 HTTP/HTTPS 地址");
+            }
+            return normalized;
+        } catch (IllegalArgumentException invalid) {
+            if (invalid.getMessage() != null && invalid.getMessage().startsWith(field)) throw invalid;
+            throw new IllegalArgumentException(field + "只允许有效的 HTTP/HTTPS 地址");
+        }
+    }
+
+    private static String normalizePlaybackType(String value, String sourceUrl) {
+        String normalized = trimToNull(value);
+        if (normalized == null) {
+            String lowerUrl = sourceUrl.toLowerCase(Locale.ROOT);
+            if (lowerUrl.contains(".m3u8")) return "HLS";
+            if (lowerUrl.matches(".*\\.(mp4|webm|ogg)(?:[?#].*)?$")) return "VIDEO";
+            return "EXTERNAL_PAGE";
+        }
+        String type = normalized.toUpperCase(Locale.ROOT);
+        if (!Set.of("HLS", "VIDEO", "EMBED", "EXTERNAL_PAGE").contains(type)) {
+            throw new IllegalArgumentException("播放类型只允许 HLS、VIDEO、EMBED 或 EXTERNAL_PAGE");
+        }
+        return type;
     }
 
     private ResourceOnline requireOnline(Long id) {
