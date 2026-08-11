@@ -128,6 +128,77 @@ class CrawlerControllerTest {
                     .andExpect(jsonPath("$.code").value(200))
                     .andExpect(jsonPath("$.data").value(true));
         }
+
+        @Test
+        @DisplayName("运行字段即使由陈旧表单提交也不会进入配置更新")
+        void saveSchedule_shouldIgnoreRuntimeOwnedFields() throws Exception {
+            when(scheduleService.saveSchedule(any())).thenReturn(true);
+
+            String request = """
+                    {
+                      "id": 9,
+                      "name": "电影增量",
+                      "contentType": "movie",
+                      "crawlMode": "latest",
+                      "sourceId": 1,
+                      "sourceSite": "pkmp4",
+                      "adapterCode": "pkmp4",
+                      "enabled": 1,
+                      "scheduleMode": "DAILY",
+                      "scheduleConfig": {"hour": 2, "minute": 0},
+                      "timezone": "Asia/Shanghai",
+                      "batchSize": 20,
+                      "rateLimitMs": 2000,
+                      "priority": "by_score",
+                      "genreTagIds": [],
+                      "status": "idle",
+                      "totalRuns": 0,
+                      "totalItems": 0,
+                      "lastRunTime": "2025-01-01T00:00:00",
+                      "nextRunTime": "2025-01-02T00:00:00",
+                      "lastCrawledPage": 1,
+                      "lastCrawledId": 2
+                    }
+                    """;
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(request))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.code").value(200));
+
+            verify(scheduleService).saveSchedule(argThat(schedule ->
+                    schedule.getId() == 9L
+                            && schedule.getStatus() == null
+                            && schedule.getTotalRuns() == null
+                            && schedule.getTotalItems() == null
+                            && schedule.getLastRunTime() == null
+                            && schedule.getNextRunTime() == null
+                            && schedule.getLastCrawledPage() == null
+                            && schedule.getLastCrawledId() == null));
+        }
+
+        @Test
+        @DisplayName("配置参数越界时在进入服务前拒绝")
+        void saveSchedule_shouldRejectUnsafeLimits() throws Exception {
+            String request = """
+                    {
+                      "name": "电影增量",
+                      "contentType": "movie",
+                      "sourceId": 1,
+                      "adapterCode": "pkmp4",
+                      "batchSize": 501,
+                      "rateLimitMs": 200
+                    }
+                    """;
+
+            mockMvc.perform(post("/api/crawler/schedule")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(request))
+                    .andExpect(status().isBadRequest());
+
+            verify(scheduleService, never()).saveSchedule(any());
+        }
     }
 
     // ========== TC-603: DELETE /api/crawler/schedule/{id} ==========

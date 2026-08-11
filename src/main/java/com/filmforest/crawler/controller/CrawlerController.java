@@ -8,6 +8,7 @@ import com.filmforest.crawler.dto.CrawlerOperationsStats;
 import com.filmforest.crawler.dto.CrawlerSourceDescriptor;
 import com.filmforest.crawler.dto.CrawlerSchedulePreview;
 import com.filmforest.crawler.dto.CrawlerSchedulePreviewRequest;
+import com.filmforest.crawler.dto.CrawlerScheduleUpsertRequest;
 import com.filmforest.crawler.entity.CrawlerJobItemFailure;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
@@ -71,7 +72,8 @@ public class CrawlerController {
 
     /** 保存/更新配置 */
     @PostMapping("/schedule")
-    public Result<Boolean> saveSchedule(@Valid @RequestBody CrawlerSchedule schedule) {
+    public Result<Boolean> saveSchedule(@Valid @RequestBody CrawlerScheduleUpsertRequest request) {
+        CrawlerSchedule schedule = request.toEntity();
         boolean saved = scheduleService.saveSchedule(schedule);
         log.info("保存爬虫配置: id={}, name={}", schedule.getId(), schedule.getName());
         return Result.ok(saved);
