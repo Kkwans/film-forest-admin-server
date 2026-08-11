@@ -3,6 +3,7 @@ package com.filmforest.content.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.filmforest.content.entity.ContentTag;
+import com.filmforest.content.dto.ContentTagTarget;
 import com.filmforest.content.entity.Tag;
 import com.filmforest.content.entity.TagContentType;
 import com.filmforest.content.entity.TagSourceAlias;
@@ -214,12 +215,77 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         return listByIds(tagIds);
     }
 
+    @Override
+    public Map<String, List<Tag>> getContentTagsBatch(List<ContentTagTarget> targets) {
+        if (targets == null || targets.isEmpty()) return Map.of();
+        if (targets.size() > 100) {
+            throw new IllegalArgumentException("批量查询内容不能超过 100 项");
+        }
+
+        LinkedHashMap<String, NormalizedTarget> normalized = new LinkedHashMap<>();
+        for (ContentTagTarget target : targets) {
+            if (target == null || target.contentId() == null || target.contentId() <= 0) {
+                throw new IllegalArgumentException("内容 ID 必须为正整数");
+            }
+            String canonicalType = canonicalContentType(target.contentType());
+            String responseKey = target.contentType().trim() + "-" + target.contentId();
+            normalized.putIfAbsent(responseKey,
+                    new NormalizedTarget(responseKey, canonicalType, target.contentId()));
+        }
+
+        Map<String, List<Long>> idsByType = normalized.values().stream()
+                .collect(Collectors.groupingBy(
+                        NormalizedTarget::contentType,
+                        LinkedHashMap::new,
+                        Collectors.mapping(NormalizedTarget::contentId, Collectors.toList())));
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<ContentTag> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
+        wrapper.and(nested -> {
+            boolean first = true;
+            for (Map.Entry<String, List<Long>> entry : idsByType.entrySet()) {
+                if (!first) nested.or();
+                nested.nested(group -> group
+                        .eq("content_type", entry.getKey())
+                        .in("content_id", entry.getValue()));
+                first = false;
+            }
+        });
+        List<ContentTag> relations = contentTagMapper.selectList(wrapper);
+        List<Long> tagIds = relations.stream().map(ContentTag::getTagId).filter(Objects::nonNull).distinct().toList();
+        Map<Long, Tag> tagsById = tagIds.isEmpty()
+                ? Map.of()
+                : listByIds(tagIds).stream().collect(Collectors.toMap(Tag::getId, tag -> tag));
+
+        Map<String, Map<Long, List<Tag>>> grouped = relations.stream()
+                .filter(relation -> relation.getContentType() != null && relation.getContentId() != null)
+                .collect(Collectors.groupingBy(
+                        ContentTag::getContentType,
+                        Collectors.groupingBy(
+                                ContentTag::getContentId,
+                                Collectors.mapping(ContentTag::getTagId,
+                                        Collectors.collectingAndThen(Collectors.toList(), ids -> ids.stream()
+                                                .map(tagsById::get)
+                                                .filter(Objects::nonNull)
+                                                .distinct()
+                                                .toList())))));
+
+        LinkedHashMap<String, List<Tag>> result = new LinkedHashMap<>();
+        normalized.values().forEach(target -> result.put(
+                target.responseKey(),
+                grouped.getOrDefault(target.contentType(), Map.of())
+                        .getOrDefault(target.contentId(), List.of())));
+        return result;
+    }
+
     private static String canonicalContentType(String contentType) {
         String canonical = "short".equals(contentType) ? "short_drama" : contentType;
         if (!Set.of("movie", "drama", "variety", "anime", "short_drama").contains(canonical)) {
             throw new IllegalArgumentException("不支持的内容类型: " + contentType);
         }
         return canonical;
+    }
+
+    private record NormalizedTarget(String responseKey, String contentType, Long contentId) {
     }
 
     private void updateAllUsageCounts() {

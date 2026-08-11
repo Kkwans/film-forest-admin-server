@@ -2,6 +2,7 @@ package com.filmforest.content.controller;
 
 import com.filmforest.common.dto.Result;
 import com.filmforest.content.entity.Tag;
+import com.filmforest.content.dto.ContentTagTarget;
 import com.filmforest.content.service.TagService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -100,17 +101,11 @@ public class TagController {
      * 返回: {"movie-1": [TagItem, ...], ...}
      */
     @PostMapping("/content/batch")
-    public Result<?> batchGetContentTags(@RequestBody List<Map<String, Object>> items) {
-        Map<String, Object> result = new java.util.HashMap<>();
-        for (Map<String, Object> item : items) {
-            String contentType = (String) item.get("contentType");
-            Number contentIdNum = (Number) item.get("contentId");
-            if (contentType != null && contentIdNum != null) {
-                Long contentId = contentIdNum.longValue();
-                String key = contentType + "-" + contentId;
-                result.put(key, tagService.getContentTags(contentId, contentType));
-            }
+    public Result<?> batchGetContentTags(@RequestBody List<ContentTagTarget> items) {
+        try {
+            return Result.ok(tagService.getContentTagsBatch(items));
+        } catch (IllegalArgumentException invalid) {
+            return Result.fail(400, invalid.getMessage());
         }
-        return Result.ok(result);
     }
 }

@@ -2,8 +2,10 @@ package com.filmforest.content.service;
 
 import com.baomidou.mybatisplus.spring.service.IService;
 import com.filmforest.content.entity.Tag;
+import com.filmforest.content.dto.ContentTagTarget;
 
 import java.util.List;
+import java.util.Map;
 
 public interface TagService extends IService<Tag> {
 
@@ -24,4 +26,6 @@ public interface TagService extends IService<Tag> {
     void setContentGenres(Long contentId, String contentType, List<Long> tagIds);
 
     List<Tag> getContentTags(Long contentId, String contentType);
+
+    Map<String, List<Tag>> getContentTagsBatch(List<ContentTagTarget> targets);
 }
