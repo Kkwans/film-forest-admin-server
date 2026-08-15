@@ -35,11 +35,14 @@ public interface ResourceOnlineMapper extends BaseMapper<ResourceOnline> {
     @Update("""
             UPDATE resource_online SET
               source_code = #{resource.sourceCode}, resource_key = #{resource.resourceKey},
-              raw_text = #{resource.rawText}, last_seen_at = #{resource.lastSeenAt},
-              removed_at = NULL, season = #{resource.season},
-              episode_number = #{resource.episodeNumber}, episode_title = #{resource.episodeTitle},
-              source_name = #{resource.sourceName}, source_url = #{resource.sourceUrl},
-              source_page_url = #{resource.sourcePageUrl}, playback_type = #{resource.playbackType},
+              raw_text = COALESCE(#{resource.rawText}, raw_text), last_seen_at = #{resource.lastSeenAt},
+              removed_at = NULL, season = COALESCE(#{resource.season}, season),
+              episode_number = COALESCE(#{resource.episodeNumber}, episode_number),
+              episode_title = COALESCE(#{resource.episodeTitle}, episode_title),
+              source_name = COALESCE(#{resource.sourceName}, source_name),
+              source_url = COALESCE(#{resource.sourceUrl}, source_url),
+              source_page_url = COALESCE(#{resource.sourcePageUrl}, source_page_url),
+              playback_type = COALESCE(#{resource.playbackType}, playback_type),
               sort = #{resource.sort}, is_deleted = 0
             WHERE id = #{resource.id}
             """)

@@ -1,6 +1,8 @@
 package com.filmforest.crawler.core;
 
 import com.filmforest.crawler.model.ParsedResource;
+import com.filmforest.crawler.model.ResourceParseStatus;
+import com.filmforest.resource.entity.ResourceCloud;
 import com.filmforest.resource.entity.ResourceMagnet;
 import com.filmforest.resource.mapper.ResourceCloudMapper;
 import com.filmforest.resource.mapper.ResourceMagnetMapper;
@@ -11,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -67,10 +70,6 @@ class CrawlerResourceDiffServiceTest {
         when(magnetMapper.selectManagedForUpdate("movie", 42L, "pkmp4"))
                 .thenReturn(List.of(existing));
         when(magnetMapper.selectLegacyForUpdate("movie", 42L)).thenReturn(List.of());
-        when(cloudMapper.selectManagedForUpdate("movie", 42L, "pkmp4")).thenReturn(List.of());
-        when(cloudMapper.selectLegacyForUpdate("movie", 42L)).thenReturn(List.of());
-        when(onlineMapper.selectManagedForUpdate("movie", 42L, "pkmp4")).thenReturn(List.of());
-        when(onlineMapper.selectLegacyForUpdate("movie", 42L)).thenReturn(List.of());
 
         var result = service.apply("pkmp4", "movie", 42L, List.of(parsed));
 
@@ -79,6 +78,88 @@ class CrawlerResourceDiffServiceTest {
         verify(magnetMapper).touchCrawlerResource(org.mockito.ArgumentMatchers.eq(7L), any());
         verify(magnetMapper, never()).insert(any(ResourceMagnet.class));
         verify(magnetMapper, never()).updateCrawlerResource(any());
+    }
+
+    @Test
+    void completeEmptyRequiresTwoObservationsBeforeRemoval() {
+        ResourceMagnet existing = new ResourceMagnet();
+        existing.setId(9L);
+        existing.setDeleted(0);
+
+        var first = service.apply("pkmp4", "movie", 43L, List.of(),
+                Map.of(ParsedResource.Kind.MAGNET, ResourceParseStatus.COMPLETE));
+        assertThat(first.protectedFromEmptyRemoval()).isTrue();
+        verify(magnetMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+
+        when(magnetMapper.selectManagedForUpdate("movie", 43L, "pkmp4"))
+                .thenReturn(List.of(existing));
+        when(magnetMapper.selectLegacyForUpdate("movie", 43L)).thenReturn(List.of());
+        when(magnetMapper.markCrawlerResourceRemoved(org.mockito.ArgumentMatchers.eq(9L),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(1);
+
+        var second = service.apply("pkmp4", "movie", 43L, List.of(),
+                Map.of(ParsedResource.Kind.MAGNET, ResourceParseStatus.COMPLETE));
+
+        assertThat(second.removed()).isEqualTo(1);
+        verify(magnetMapper).markCrawlerResourceRemoved(org.mockito.ArgumentMatchers.eq(9L), any());
+    }
+
+    @Test
+    void partialCloudResultUpdatesKnownFieldsButPreservesMissingPassword() {
+        ParsedResource parsed = new ParsedResource(ParsedResource.Kind.CLOUD, "新标题",
+                "https://pan.example.test/s/abc", "other", null, null,
+                false, false, null, null, null, 0, null, null, null);
+        String key = normalizer.normalize("pkmp4", parsed).resourceKey();
+        ResourceCloud existing = new ResourceCloud();
+        existing.setId(11L);
+        existing.setResourceKey(key);
+        existing.setSourceCode("pkmp4");
+        existing.setDiskType("other");
+        existing.setTitle("旧标题");
+        existing.setUrl(parsed.url());
+        existing.setPassword("stored-code");
+        existing.setSort(0);
+        existing.setDeleted(0);
+        when(cloudMapper.selectManagedForUpdate("movie", 44L, "pkmp4"))
+                .thenReturn(List.of(existing));
+        when(cloudMapper.selectLegacyForUpdate("movie", 44L)).thenReturn(List.of());
+
+        var result = service.apply("pkmp4", "movie", 44L, List.of(parsed),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.PARTIAL));
+
+        assertThat(result.updated()).isEqualTo(1);
+        var captor = org.mockito.ArgumentCaptor.forClass(ResourceCloud.class);
+        verify(cloudMapper).updateCrawlerResource(captor.capture());
+        assertThat(captor.getValue().getTitle()).isEqualTo("新标题");
+        assertThat(captor.getValue().getPassword()).isEqualTo("stored-code");
+        verify(cloudMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+    }
+
+    @Test
+    void failedAndNotSupportedKindsNeverClearResources() {
+        service.apply("pkmp4", "movie", 45L, List.of(),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.FAILED,
+                        ParsedResource.Kind.ONLINE, ResourceParseStatus.NOT_SUPPORTED));
+
+        verify(cloudMapper, never()).selectManagedForUpdate(any(), anyLong(), any());
+        verify(onlineMapper, never()).selectManagedForUpdate(any(), anyLong(), any());
+        verify(cloudMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+        verify(onlineMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+    }
+
+    @Test
+    void invalidResourceFieldDowngradesCompleteObservationToProtectedPartial() {
+        ParsedResource invalid = new ParsedResource(ParsedResource.Kind.ONLINE, "线路",
+                "", null, null, null, false, false, 1, 1, "第一集", 0,
+                "第一集", null, "EXTERNAL_PAGE");
+
+        var result = service.apply("pkmp4", "movie", 46L, List.of(invalid),
+                Map.of(ParsedResource.Kind.ONLINE, ResourceParseStatus.COMPLETE));
+
+        assertThat(result.protectedFromEmptyRemoval()).isTrue();
+        verify(onlineMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+        verify(onlineMapper, never()).selectManagedForUpdate(any(), anyLong(), any());
     }
 
     private static ParsedResource magnet() {

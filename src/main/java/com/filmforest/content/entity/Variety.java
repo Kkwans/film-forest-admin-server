@@ -36,7 +36,9 @@ public class Variety {
     private Integer totalEpisode;
     private String storyline;
     private BigDecimal scoreDouban;
+    private Integer scoreDoubanCount;
     private BigDecimal scoreImdb;           // IMDB评分
+    private Integer scoreImdbCount;
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

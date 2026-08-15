@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -26,7 +27,10 @@ public class ResourceNormalizer {
     private static final Pattern INFO_HASH = Pattern.compile(
             "(?i)(?:[?&])xt=urn:btih:([a-z0-9]+)(?:&|$)");
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
-            "pwd", "password", "passcode", "code", "extractioncode", "提取码", "访问码");
+            "pwd", "password", "passcode", "code", "accesscode", "access_code",
+            "extractioncode", "extraction_code", "提取码", "访问码");
+    private static final Set<String> KNOWN_DISK_TYPES = Set.of(
+            "baidu", "quark", "lanzou", "xunlei", "uc", "ali", "123", "other");
 
     public Map<ParsedResource.Kind, List<NormalizedResource>> normalizeAll(
             String sourceCode, List<ParsedResource> resources) {
@@ -95,8 +99,8 @@ public class ResourceNormalizer {
         return new NormalizedResource(resource, sha256(material), material, normalizedUrl);
     }
 
-    private static NormalizedResource preferEarlierSourceOrder(NormalizedResource first,
-                                                                 NormalizedResource second) {
+    static NormalizedResource preferEarlierSourceOrder(NormalizedResource first,
+                                                       NormalizedResource second) {
         return first.resource().sourceOrder() <= second.resource().sourceOrder() ? first : second;
     }
 
@@ -143,7 +147,7 @@ public class ResourceNormalizer {
         for (String parameter : rawQuery.split("&")) {
             if (parameter.isBlank()) continue;
             String rawKey = parameter.split("=", 2)[0];
-            String key = rawKey.toLowerCase(Locale.ROOT);
+            String key = decodeQueryPart(rawKey).toLowerCase(Locale.ROOT);
             if (key.startsWith("utm_") || "spm".equals(key)) continue;
             if (removeCredentialParameters && SENSITIVE_QUERY_KEYS.contains(key)) continue;
             values.add(parameter);
@@ -161,7 +165,8 @@ public class ResourceNormalizer {
 
     private static String normalizeDiskType(String diskType, String url) {
         if (diskType != null && !diskType.isBlank()) {
-            return diskType.trim().toLowerCase(Locale.ROOT);
+            String normalized = diskType.trim().toLowerCase(Locale.ROOT);
+            return KNOWN_DISK_TYPES.contains(normalized) ? normalized : "other";
         }
         String value = url.toLowerCase(Locale.ROOT);
         if (value.contains("pan.baidu") || value.contains("baidu.com")) return "baidu";
@@ -171,7 +176,15 @@ public class ResourceNormalizer {
         if (value.contains("drive.uc") || value.contains("uc.cn")) return "uc";
         if (value.contains("alipan") || value.contains("aliyundrive")) return "ali";
         if (value.contains("123pan") || value.contains("123.com")) return "123";
-        throw new IllegalArgumentException("Cloud resource diskType is unavailable");
+        return "other";
+    }
+
+    private static String decodeQueryPart(String value) {
+        try {
+            return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException invalidEncoding) {
+            return value;
+        }
     }
 
     private static String nullableNumber(Integer number) {

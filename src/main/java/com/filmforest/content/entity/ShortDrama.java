@@ -34,8 +34,11 @@ public class ShortDrama {
     private Integer totalEpisode;
     private Integer duration;
     private String storyline;
+    private String writer;                 // 编剧（JSON数组）
     private BigDecimal scoreDouban;         // 豆瓣评分
+    private Integer scoreDoubanCount;       // 豆瓣评分人数
     private BigDecimal scoreImdb;           // IMDB评分
+    private Integer scoreImdbCount;         // IMDB评分人数
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

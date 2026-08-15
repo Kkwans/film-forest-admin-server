@@ -8,6 +8,7 @@ import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.ParsedResource;
+import com.filmforest.crawler.model.ResourceParseStatus;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -54,5 +55,33 @@ class Pkmp4PlaybackEnricherTest {
         assertThat(enriched.playbackType()).isEqualTo("HLS");
         verify(fetcher).fetch(eq(page), anyMap(),
                 eq(Pkmp4PlaybackEnricher.MIN_PLAYBACK_PAGE_DELAY_MS), same(cancellation));
+    }
+
+    @Test
+    void failedPlaybackFetchMarksOnlineResourcesPartialWithoutDroppingSourcePage() {
+        URI page = URI.create("https://www.pkmp4.xyz/py/42-1-1.html");
+        AtomicBoolean cancellation = new AtomicBoolean();
+        HttpFetcher fetcher = mock(HttpFetcher.class);
+        when(fetcher.fetch(eq(page), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(new FetchResult(page, page, 503, "text/html", "",
+                        10, FetchCategory.SERVER_ERROR, false, Map.of()));
+
+        ParsedResource resource = new ParsedResource(ParsedResource.Kind.ONLINE, "线路",
+                page.toString(), null, null, null, false, false, 1, 1, "第一集", 0,
+                "第一集", page.toString(), "EXTERNAL_PAGE");
+        ParsedContent parsed = new ParsedContent("42", ContentType.MOVIE,
+                "https://www.pkmp4.xyz/mv/42.html", "示例", null, 2024,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
+                null, null, List.of(), null, null, null, "简介", null, List.of(resource),
+                new ParseDiagnostics(List.of(), List.of(), List.of(), "fingerprint", Map.of(),
+                        Map.of(ParsedResource.Kind.ONLINE, ResourceParseStatus.COMPLETE)));
+
+        ParsedContent enriched = new Pkmp4PlaybackEnricher(
+                new Pkmp4PlaybackPageParser(new ObjectMapper()))
+                .enrich(parsed, fetcher, 100, cancellation);
+
+        assertThat(enriched.resources()).containsExactly(resource);
+        assertThat(enriched.diagnostics().resourceStatuses())
+                .containsEntry(ParsedResource.Kind.ONLINE, ResourceParseStatus.PARTIAL);
     }
 }

@@ -6,6 +6,8 @@ import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,7 +19,12 @@ import java.util.regex.Pattern;
 @Component
 public class Pkmp4ResourceParser {
 
-    private static final Pattern PASSWORD = Pattern.compile("(?:提取码|密码|访问码)[：:]?\\s*([A-Za-z0-9]{3,8})");
+    private static final Pattern PASSWORD = Pattern.compile(
+            "(?i)(?:提取码|密码|访问码|access\\s*code|password|passcode|pwd)"
+                    + "\\s*[：:=]?\\s*([A-Za-z0-9]{3,32})");
+    private static final List<String> PASSWORD_QUERY_KEYS = List.of(
+            "pwd", "password", "passcode", "code", "accesscode", "access_code",
+            "extractioncode", "extraction_code", "提取码", "访问码");
     private static final Pattern NUMBERED_EPISODE = Pattern.compile("第\\s*(\\d+)\\s*[集期]");
     private static final Pattern LATIN_EPISODE = Pattern.compile("(?i)(?:EP?|Episode)\\s*0*(\\d+)");
     private static final Pattern UPDATED_EPISODE = Pattern.compile("更新至\\s*(\\d+)\\s*集");
@@ -38,22 +45,20 @@ public class Pkmp4ResourceParser {
         int order = 0;
         for (Element link : document.select("p.down-list3 > a[href], .down-list3 a[href], "
                 + "[class*=down-list] a[href]")) {
-            String url = link.attr("href").trim();
+            String rawUrl = link.attr("href").trim();
             String rawText = link.text().trim();
             String title = firstNonBlank(link.attr("title"), rawText);
-            if (url.startsWith("magnet:")) {
-                resources.add(new ParsedResource(ParsedResource.Kind.MAGNET, title, url,
+            if (rawUrl.regionMatches(true, 0, "magnet:", 0, 7)) {
+                resources.add(new ParsedResource(ParsedResource.Kind.MAGNET, title, rawUrl,
                         null, null, resolution(title), containsSubtitle(title), containsSpecialSubtitle(title),
                         null, null, null, order++, rawText, null, null));
                 continue;
             }
+            String url = link.absUrl("href").isBlank() ? rawUrl : link.absUrl("href");
             String diskType = diskType(url);
-            if (diskType == null) {
-                continue;
-            }
-            String context = link.parent() == null ? "" : link.parent().ownText();
+            String context = link.parent() == null ? "" : link.parent().text();
             resources.add(new ParsedResource(ParsedResource.Kind.CLOUD, title, url,
-                    diskType, password(title + " " + rawText + " " + context), null, false, false,
+                    diskType, password(url, title + " " + rawText + " " + context), null, false, false,
                     null, null, null, order++, rawText, null, null));
         }
     }
@@ -123,12 +128,35 @@ public class Pkmp4ResourceParser {
         if (normalized.contains("uc.cn") || normalized.contains("drive.uc")) return "uc";
         if (normalized.contains("alipan") || normalized.contains("aliyundrive")) return "ali";
         if (normalized.contains("123pan") || normalized.contains("123.com")) return "123";
+        return "other";
+    }
+
+    private static String password(String url, String text) {
+        String queryPassword = queryPassword(url);
+        if (queryPassword != null) return queryPassword;
+        Matcher matcher = PASSWORD.matcher(text == null ? "" : text);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private static String queryPassword(String url) {
+        try {
+            String query = URI.create(url).getRawQuery();
+            if (query == null || query.isBlank()) return null;
+            for (String parameter : query.split("&")) {
+                String[] parts = parameter.split("=", 2);
+                String key = decode(parts[0]).toLowerCase(Locale.ROOT);
+                if (!PASSWORD_QUERY_KEYS.contains(key)) continue;
+                String value = parts.length == 1 ? "" : decode(parts[1]);
+                if (!value.isBlank()) return value.trim();
+            }
+        } catch (RuntimeException ignored) {
+            // The normalizer will report an invalid URL without dropping the source item.
+        }
         return null;
     }
 
-    private static String password(String text) {
-        Matcher matcher = PASSWORD.matcher(text);
-        return matcher.find() ? matcher.group(1) : null;
+    private static String decode(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
     }
 
     private static String resolution(String text) {

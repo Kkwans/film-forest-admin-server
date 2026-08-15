@@ -337,6 +337,7 @@ public class AdminContentMutationService {
                 .set("poster_url", content.getPosterUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
+                .set("writer", content.getWriter())
                 .set("actor", content.getActor())
                 .set("genre", content.getGenre())
                 .set("region", content.getRegion())

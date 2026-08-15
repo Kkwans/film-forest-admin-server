@@ -35,10 +35,13 @@ public interface ResourceMagnetMapper extends BaseMapper<ResourceMagnet> {
     @Update("""
             UPDATE resource_magnet SET
               source_code = #{resource.sourceCode}, resource_key = #{resource.resourceKey},
-              raw_text = #{resource.rawText}, last_seen_at = #{resource.lastSeenAt},
-              removed_at = NULL, title = #{resource.title}, magnet_url = #{resource.magnetUrl},
-              resolution = #{resource.resolution}, has_subtitle = #{resource.hasSubtitle},
-              is_special_sub = #{resource.isSpecialSub}, sort = #{resource.sort}, is_deleted = 0
+              raw_text = COALESCE(#{resource.rawText}, raw_text), last_seen_at = #{resource.lastSeenAt},
+              removed_at = NULL, title = COALESCE(#{resource.title}, title),
+              magnet_url = COALESCE(#{resource.magnetUrl}, magnet_url),
+              resolution = COALESCE(#{resource.resolution}, resolution),
+              has_subtitle = COALESCE(#{resource.hasSubtitle}, has_subtitle),
+              is_special_sub = COALESCE(#{resource.isSpecialSub}, is_special_sub),
+              sort = #{resource.sort}, is_deleted = 0
             WHERE id = #{resource.id}
             """)
     int updateCrawlerResource(@Param("resource") ResourceMagnet resource);

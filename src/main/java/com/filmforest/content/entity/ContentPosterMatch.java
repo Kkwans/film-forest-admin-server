@@ -21,6 +21,8 @@ public class ContentPosterMatch {
     private String sourcePosterUrl;
     private String tmdbMediaType;
     private Long tmdbId;
+    private BigDecimal tmdbScore;
+    private Integer tmdbVoteCount;
     private String posterPath;
     private String posterLanguage;
     private BigDecimal confidence;

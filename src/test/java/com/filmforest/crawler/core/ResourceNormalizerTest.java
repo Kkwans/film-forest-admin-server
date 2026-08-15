@@ -39,6 +39,19 @@ class ResourceNormalizerTest {
                 .isNotEqualTo(normalizer.normalize("pkmp4", numbered).resourceKey());
     }
 
+    @Test
+    void unknownCloudProviderIsRetainedAsOtherAndCredentialQueryIsExcludedFromIdentity() {
+        ParsedResource resource = new ParsedResource(ParsedResource.Kind.CLOUD, "网盘",
+                "https://cloud.example.test/share?id=1&pwd=opaque-value", null, null,
+                null, false, false, null, null, null, 0, "网盘", null, null);
+
+        var normalized = normalizer.normalize("pkmp4", resource);
+
+        assertThat(normalized.resource().diskType()).isEqualTo("other");
+        assertThat(normalized.resource().url()).isEqualTo(resource.url());
+        assertThat(normalized.normalizedUrl()).isEqualTo("https://cloud.example.test/share?id=1");
+    }
+
     private static ParsedResource magnet(String url) {
         return new ParsedResource(ParsedResource.Kind.MAGNET, "资源", url, null, null,
                 "1080P", false, false, null, null, null, 0, "资源", null, null);

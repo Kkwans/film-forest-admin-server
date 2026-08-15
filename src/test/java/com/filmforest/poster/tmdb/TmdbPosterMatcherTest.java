@@ -16,7 +16,8 @@ class TmdbPosterMatcherTest {
     void exactTitleYearAndTypeSelectChinesePosterBeforeHigherRatedEnglishPoster() {
         FakeGateway gateway = new FakeGateway();
         gateway.candidates = List.of(new TmdbSearchCandidate(101, TmdbMediaType.TV,
-                "示例剧集 第二季", "Example Series", 2024, "/fallback.jpg", "zh"));
+                "示例剧集 第二季", "Example Series", 2024, "/fallback.jpg", "zh",
+                8.2, 1234));
         gateway.posters = List.of(
                 new TmdbPosterAsset("/english.jpg", "en", 9.9, 100, 1000, 1500),
                 new TmdbPosterAsset("/chinese.jpg", "zh", 7.0, 5, 1000, 1500),
@@ -28,6 +29,8 @@ class TmdbPosterMatcherTest {
 
         assertThat(result.status()).isEqualTo(TmdbPosterMatchResult.Status.ACCEPTED);
         assertThat(result.confidence()).isEqualByComparingTo("1.0000");
+        assertThat(result.tmdbScore()).isEqualByComparingTo("8.2");
+        assertThat(result.tmdbVoteCount()).isEqualTo(1234);
         assertThat(result.poster().filePath()).isEqualTo("/chinese.jpg");
         assertThat(result.imageConfiguration().imageUrl(result.poster().filePath()))
                 .isEqualTo("https://image.tmdb.org/t/p/w500/chinese.jpg");

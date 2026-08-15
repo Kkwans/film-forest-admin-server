@@ -5,6 +5,7 @@ import com.filmforest.common.util.StorylineCleaner;
 import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.ParsedResource;
+import com.filmforest.crawler.model.ResourceParseStatus;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -20,6 +21,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -68,14 +70,17 @@ public class Pkmp4DetailParser {
         List<ParsedResource> resources = resourceParser.parse(document, finalUri);
 
         Map<String, Integer> resourceCounts = new LinkedHashMap<>();
+        Map<ParsedResource.Kind, ResourceParseStatus> resourceStatuses =
+                new EnumMap<>(ParsedResource.Kind.class);
         for (ParsedResource.Kind kind : ParsedResource.Kind.values()) {
             resourceCounts.put(kind.name().toLowerCase(),
                     (int) resources.stream().filter(resource -> resource.kind() == kind).count());
+            resourceStatuses.put(kind, ResourceParseStatus.COMPLETE);
         }
 
         ParseDiagnostics diagnostics = new ParseDiagnostics(List.copyOf(matchedSelectors),
                 List.copyOf(missingRequired), List.copyOf(warnings), fingerprint(html),
-                Map.copyOf(resourceCounts));
+                Map.copyOf(resourceCounts), resourceStatuses);
         return new ParsedContent(externalId, contentType, finalUri.toString(), title, posterUrl, year,
                 tagsByLabel(document, "地区", matchedSelectors), genres(document, matchedSelectors),
                 tagsByLabel(document, "导演", matchedSelectors), tagsByLabel(document, "编剧", matchedSelectors),

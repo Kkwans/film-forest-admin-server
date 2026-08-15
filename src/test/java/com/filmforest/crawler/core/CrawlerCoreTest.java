@@ -730,14 +730,9 @@ class CrawlerCoreTest {
         }
 
         @Test
-        @DisplayName("TC-122-4: 短剧 - 无 writer 字段（与 Variety/Anime 不同）")
-        void crawlShortDramaDetail_shouldNotHaveWriter() {
-            // ShortDrama 实体无 writer 字段，crawlShortDramaDetail 不调用 extractWriter
-            // 验证 HTML 中虽然有编剧信息但 ShortDrama 实体不需要
+        @DisplayName("TC-122-4: 短剧 - 保留 writer 字段")
+        void crawlShortDramaDetail_shouldHaveWriter() {
             Document doc = Jsoup.parse(SHORT_DRAMA_DETAIL_HTML);
-            // ShortDrama entity does NOT have writer field
-            // This is a design choice: short dramas typically don't credit writers
-            // Verify the entity class has no writer field
             boolean hasWriterField = false;
             try {
                 ShortDrama.class.getDeclaredField("writer");
@@ -745,7 +740,7 @@ class CrawlerCoreTest {
             } catch (NoSuchFieldException e) {
                 hasWriterField = false;
             }
-            assertThat(hasWriterField).isFalse();
+            assertThat(hasWriterField).isTrue();
         }
 
         @Test

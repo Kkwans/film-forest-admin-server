@@ -13,12 +13,15 @@ import com.filmforest.content.service.MovieService;
 import com.filmforest.content.service.ShortDramaService;
 import com.filmforest.content.service.VarietyService;
 import com.filmforest.crawler.model.ParsedContent;
+import com.filmforest.crawler.model.ParsedResource;
+import com.filmforest.crawler.model.ResourceParseStatus;
 import com.filmforest.crawler.service.CrawlerContentIdentityService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.EnumMap;
 
 @Service
 public class CrawlerContentPersistence {
@@ -72,8 +75,21 @@ public class CrawlerContentPersistence {
             case SHORT_DRAMA -> persistShortDrama(contentId, parsed, genres.names());
         };
         genreService.replaceContentGenres(contentId, parsed.contentType(), genres);
-        CrawlerResourceDiffService.ResourceDiffResult resourceDiff = resourceDiffService.apply(
-                sourceCode, parsed.contentType().value(), contentId, parsed.resources());
+        CrawlerResourceDiffService.ResourceDiffResult resourceDiff;
+        if (parsed.diagnostics().resourceStatuses().isEmpty()) {
+            resourceDiff = resourceDiffService.apply(
+                    sourceCode, parsed.contentType().value(), contentId, parsed.resources());
+        } else {
+            EnumMap<ParsedResource.Kind, ResourceParseStatus> statuses =
+                    new EnumMap<>(ParsedResource.Kind.class);
+            statuses.putAll(parsed.diagnostics().resourceStatuses());
+            if (!parsed.diagnostics().missingRequiredFields().isEmpty()) {
+                statuses.replaceAll((kind, status) -> status == ResourceParseStatus.COMPLETE
+                        ? ResourceParseStatus.PARTIAL : status);
+            }
+            resourceDiff = resourceDiffService.apply(sourceCode, parsed.contentType().value(),
+                    contentId, parsed.resources(), statuses);
+        }
         return new PersistResult(contentId, identity.canonicalKey(), isNew, !isNew, false, resourceDiff);
     }
 
@@ -170,6 +186,7 @@ public class CrawlerContentPersistence {
         entity.setPosterUrl(parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
+        entity.setWriter(json(parsed.writers(), isNew));
         entity.setActor(json(parsed.actors(), isNew));
         entity.setGenre(json(genres, true));
         entity.setRegion(json(parsed.regions(), isNew));

@@ -46,6 +46,8 @@ public class ContentPosterMatchService {
             entity.setPosterPath(result.poster().filePath());
             entity.setPosterLanguage(result.poster().language());
         }
+        entity.setTmdbScore(result.tmdbScore());
+        entity.setTmdbVoteCount(result.tmdbVoteCount());
         entity.setConfidence(scale(result.confidence()));
         entity.setMatchStatus(result.status().name().toLowerCase(Locale.ROOT));
         entity.setDiagnostic(json(result.diagnostics()));

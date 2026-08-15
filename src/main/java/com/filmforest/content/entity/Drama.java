@@ -36,7 +36,9 @@ public class Drama {
     private Integer totalEpisode;
     private String storyline;
     private BigDecimal scoreDouban;
+    private Integer scoreDoubanCount;
     private BigDecimal scoreImdb;
+    private Integer scoreImdbCount;
     private Integer status;
 
     @TableField(fill = FieldFill.INSERT)

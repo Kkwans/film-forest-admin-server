@@ -4,7 +4,9 @@ import com.filmforest.common.type.ContentType;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 public record ParsedContent(
         String externalId,
@@ -40,5 +42,20 @@ public record ParsedContent(
                 regions, genres, directors, writers, actors, languages, durationMinutes,
                 releaseDate, rawReleaseDate, aliases, doubanScore, imdbScore,
                 rottenTomatoesScore, storyline, totalEpisodes, List.copyOf(nextResources), diagnostics);
+    }
+
+    public ParsedContent withResourceStatus(ParsedResource.Kind kind, ResourceParseStatus status) {
+        Map<ParsedResource.Kind, ResourceParseStatus> statuses =
+                new EnumMap<>(ParsedResource.Kind.class);
+        statuses.putAll(diagnostics.resourceStatuses());
+        statuses.put(kind, status);
+        ParseDiagnostics nextDiagnostics = new ParseDiagnostics(
+                diagnostics.matchedSelectors(), diagnostics.missingRequiredFields(),
+                diagnostics.warnings(), diagnostics.pageFingerprint(), diagnostics.resourceCounts(),
+                statuses);
+        return new ParsedContent(externalId, contentType, sourceUrl, title, sourcePosterUrl, year,
+                regions, genres, directors, writers, actors, languages, durationMinutes,
+                releaseDate, rawReleaseDate, aliases, doubanScore, imdbScore,
+                rottenTomatoesScore, storyline, totalEpisodes, resources, nextDiagnostics);
     }
 }

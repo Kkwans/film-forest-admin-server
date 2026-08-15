@@ -35,9 +35,10 @@ public interface ResourceCloudMapper extends BaseMapper<ResourceCloud> {
     @Update("""
             UPDATE resource_cloud SET
               source_code = #{resource.sourceCode}, resource_key = #{resource.resourceKey},
-              raw_text = #{resource.rawText}, last_seen_at = #{resource.lastSeenAt},
-              removed_at = NULL, disk_type = #{resource.diskType}, title = #{resource.title},
-              url = #{resource.url}, password = #{resource.password}, sort = #{resource.sort},
+              raw_text = COALESCE(#{resource.rawText}, raw_text), last_seen_at = #{resource.lastSeenAt},
+              removed_at = NULL, disk_type = COALESCE(#{resource.diskType}, disk_type),
+              title = COALESCE(#{resource.title}, title), url = COALESCE(#{resource.url}, url),
+              password = COALESCE(#{resource.password}, password), sort = #{resource.sort},
               is_deleted = 0
             WHERE id = #{resource.id}
             """)

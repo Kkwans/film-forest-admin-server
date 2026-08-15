@@ -43,6 +43,11 @@ class Pkmp4ProductionParserFixtureTest {
         assertThat(parsed.diagnostics().pageFingerprint()).hasSize(64);
         assertThat(parsed.diagnostics().resourceCounts())
                 .containsEntry("magnet", 1).containsEntry("cloud", 1).containsEntry("online", 7);
+        assertThat(parsed.resources()).filteredOn(resource -> resource.kind() == ParsedResource.Kind.CLOUD)
+                .singleElement().satisfies(resource -> {
+                    assertThat(resource.diskType()).isEqualTo("quark");
+                    assertThat(resource.password()).isNotBlank();
+                });
     }
 
     @Test
@@ -98,6 +103,24 @@ class Pkmp4ProductionParserFixtureTest {
                 .containsExactly(1, 2, 12, null, null, null, null);
         assertThat(online).extracting(ParsedResource::episodeTitle)
                 .contains("正片", "先导片", "特别篇 上集", "2024-06-01期");
+    }
+
+    @Test
+    void resourceParserKeepsUnknownCloudLinksAndExtractsQueryCode() {
+        var document = Jsoup.parse("""
+                <p class="down-list3">
+                  <a href="https://cloud.example.test/share?id=1&amp;code=xy%2B9">未知网盘</a>
+                </p>
+                """, "https://www.pkmp4.xyz/mv/42.html");
+
+        var resource = resourceParser.parse(document,
+                        URI.create("https://www.pkmp4.xyz/mv/42.html")).stream()
+                .findFirst().orElseThrow();
+
+        assertThat(resource.kind()).isEqualTo(ParsedResource.Kind.CLOUD);
+        assertThat(resource.diskType()).isEqualTo("other");
+        assertThat(resource.url()).isEqualTo("https://cloud.example.test/share?id=1&code=xy%2B9");
+        assertThat(resource.password()).isNotBlank();
     }
 
     @Test

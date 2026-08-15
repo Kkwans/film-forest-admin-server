@@ -4,6 +4,7 @@ import com.filmforest.crawler.http.FetchResult;
 import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.ParsedResource;
+import com.filmforest.crawler.model.ResourceParseStatus;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -26,14 +27,21 @@ public class Pkmp4PlaybackEnricher {
     public ParsedContent enrich(ParsedContent parsed, HttpFetcher httpFetcher,
                                 int rateLimitMs, AtomicBoolean cancellation) {
         List<ParsedResource> enriched = new ArrayList<>(parsed.resources().size());
+        boolean partial = false;
         for (ParsedResource resource : parsed.resources()) {
-            if (cancelled(cancellation) || resource.kind() != ParsedResource.Kind.ONLINE) {
+            if (resource.kind() != ParsedResource.Kind.ONLINE) {
+                enriched.add(resource);
+                continue;
+            }
+            if (cancelled(cancellation)) {
+                partial = true;
                 enriched.add(resource);
                 continue;
             }
             URI pageUri = trustedPlayerPage(resource.sourcePageUrl() == null
                     ? resource.url() : resource.sourcePageUrl());
             if (pageUri == null) {
+                partial = true;
                 enriched.add(resource);
                 continue;
             }
@@ -41,11 +49,13 @@ public class Pkmp4PlaybackEnricher {
                     Map.of("Referer", parsed.sourceUrl()),
                     Math.max(MIN_PLAYBACK_PAGE_DELAY_MS, rateLimitMs), cancellation);
             if (!fetch.successful()) {
+                partial = true;
                 enriched.add(resource);
                 continue;
             }
             var playback = pageParser.parse(fetch.body(), fetch.finalUrl());
             if (playback.isEmpty()) {
+                partial = true;
                 enriched.add(resource);
                 continue;
             }
@@ -54,9 +64,11 @@ public class Pkmp4PlaybackEnricher {
                     resource.password(), resource.resolution(), resource.hasSubtitle(),
                     resource.specialSubtitle(), resource.season(), resource.episodeNumber(),
                     resource.episodeTitle(), resource.sourceOrder(), resource.rawText(),
-                    pageUri.toString(), playback.get().playbackType()));
+                pageUri.toString(), playback.get().playbackType()));
         }
-        return parsed.withResources(enriched);
+        ParsedContent result = parsed.withResources(enriched);
+        return partial ? result.withResourceStatus(ParsedResource.Kind.ONLINE,
+                ResourceParseStatus.PARTIAL) : result;
     }
 
     private static URI trustedPlayerPage(String value) {
