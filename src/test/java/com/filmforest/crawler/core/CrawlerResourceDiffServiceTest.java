@@ -106,6 +106,39 @@ class CrawlerResourceDiffServiceTest {
     }
 
     @Test
+    void partialEmptyObservationBreaksCompleteEmptyStreak() {
+        var first = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.MAGNET, ResourceParseStatus.COMPLETE));
+        assertThat(first.protectedFromEmptyRemoval()).isTrue();
+
+        var partial = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.MAGNET, ResourceParseStatus.PARTIAL));
+        assertThat(partial.protectedFromEmptyRemoval()).isTrue();
+
+        var afterReset = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.MAGNET, ResourceParseStatus.COMPLETE));
+        assertThat(afterReset.protectedFromEmptyRemoval()).isTrue();
+        verify(magnetMapper, never()).selectManagedForUpdate(any(), anyLong(), any());
+        verify(magnetMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+    }
+
+    @Test
+    void completeEmptyRemovalRequiresConsecutiveObservations() {
+        var first = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.COMPLETE));
+        assertThat(first.protectedFromEmptyRemoval()).isTrue();
+
+        var partial = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.PARTIAL));
+        assertThat(partial.protectedFromEmptyRemoval()).isTrue();
+
+        var third = service.apply("pkmp4", "movie", 47L, List.of(),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.COMPLETE));
+        assertThat(third.protectedFromEmptyRemoval()).isTrue();
+        verify(cloudMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+    }
+
+    @Test
     void partialCloudResultUpdatesKnownFieldsButPreservesMissingPassword() {
         ParsedResource parsed = new ParsedResource(ParsedResource.Kind.CLOUD, "新标题",
                 "https://pan.example.test/s/abc", "other", null, null,
@@ -121,6 +154,7 @@ class CrawlerResourceDiffServiceTest {
         existing.setPassword("stored-code");
         existing.setSort(0);
         existing.setDeleted(0);
+        existing.setEnabled(0);
         when(cloudMapper.selectManagedForUpdate("movie", 44L, "pkmp4"))
                 .thenReturn(List.of(existing));
         when(cloudMapper.selectLegacyForUpdate("movie", 44L)).thenReturn(List.of());
@@ -133,6 +167,28 @@ class CrawlerResourceDiffServiceTest {
         verify(cloudMapper).updateCrawlerResource(captor.capture());
         assertThat(captor.getValue().getTitle()).isEqualTo("新标题");
         assertThat(captor.getValue().getPassword()).isEqualTo("stored-code");
+        assertThat(captor.getValue().getEnabled()).isZero();
+        verify(cloudMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
+    }
+
+    @Test
+    void partialCloudResultDoesNotRemoveMissingExistingResource() {
+        ParsedResource parsed = new ParsedResource(ParsedResource.Kind.CLOUD, "新资源",
+                "https://cloud.example.test/s/new", "other", "new-code", null,
+                false, false, null, null, null, 0, "新资源", null, null);
+        ResourceCloud existing = new ResourceCloud();
+        existing.setId(12L);
+        existing.setResourceKey(normalizer.normalize("pkmp4", new ParsedResource(
+                ParsedResource.Kind.CLOUD, "旧资源", "https://cloud.example.test/s/old", "other",
+                "old-code", null, false, false, null, null, null, 0, "旧资源", null, null)).resourceKey());
+        existing.setDeleted(0);
+        when(cloudMapper.selectManagedForUpdate("movie", 48L, "pkmp4"))
+                .thenReturn(List.of(existing));
+        when(cloudMapper.selectLegacyForUpdate("movie", 48L)).thenReturn(List.of());
+
+        service.apply("pkmp4", "movie", 48L, List.of(parsed),
+                Map.of(ParsedResource.Kind.CLOUD, ResourceParseStatus.PARTIAL));
+
         verify(cloudMapper, never()).markCrawlerResourceRemoved(anyLong(), any());
     }
 

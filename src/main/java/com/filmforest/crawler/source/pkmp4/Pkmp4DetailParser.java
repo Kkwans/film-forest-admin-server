@@ -72,10 +72,15 @@ public class Pkmp4DetailParser {
         Map<String, Integer> resourceCounts = new LinkedHashMap<>();
         Map<ParsedResource.Kind, ResourceParseStatus> resourceStatuses =
                 new EnumMap<>(ParsedResource.Kind.class);
+        ResourceParseStatus downloadStatus = resourceParser.hasDownloadSection(document)
+                ? ResourceParseStatus.COMPLETE : ResourceParseStatus.PARTIAL;
+        ResourceParseStatus onlineStatus = resourceParser.hasOnlineSection(document)
+                ? ResourceParseStatus.COMPLETE : ResourceParseStatus.PARTIAL;
         for (ParsedResource.Kind kind : ParsedResource.Kind.values()) {
             resourceCounts.put(kind.name().toLowerCase(),
                     (int) resources.stream().filter(resource -> resource.kind() == kind).count());
-            resourceStatuses.put(kind, ResourceParseStatus.COMPLETE);
+            resourceStatuses.put(kind, kind == ParsedResource.Kind.ONLINE
+                    ? onlineStatus : downloadStatus);
         }
 
         ParseDiagnostics diagnostics = new ParseDiagnostics(List.copyOf(matchedSelectors),

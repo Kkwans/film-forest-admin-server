@@ -162,7 +162,11 @@ public class CrawlerResourceDiffService {
             return ResourceDiffResult.emptyProtected();
         }
         if (incoming.isEmpty()) {
-            if (status != ResourceParseStatus.COMPLETE || !isSecondCompleteEmpty(streakKey)) {
+            if (status != ResourceParseStatus.COMPLETE) {
+                completeEmptyStreaks.remove(streakKey);
+                return ResourceDiffResult.emptyProtected();
+            }
+            if (!isSecondCompleteEmpty(streakKey)) {
                 return ResourceDiffResult.emptyProtected();
             }
         } else {
@@ -211,7 +215,11 @@ public class CrawlerResourceDiffService {
             return ResourceDiffResult.emptyProtected();
         }
         if (incoming.isEmpty()) {
-            if (status != ResourceParseStatus.COMPLETE || !isSecondCompleteEmpty(streakKey)) {
+            if (status != ResourceParseStatus.COMPLETE) {
+                completeEmptyStreaks.remove(streakKey);
+                return ResourceDiffResult.emptyProtected();
+            }
+            if (!isSecondCompleteEmpty(streakKey)) {
                 return ResourceDiffResult.emptyProtected();
             }
         } else {
@@ -260,7 +268,11 @@ public class CrawlerResourceDiffService {
             return ResourceDiffResult.emptyProtected();
         }
         if (incoming.isEmpty()) {
-            if (status != ResourceParseStatus.COMPLETE || !isSecondCompleteEmpty(streakKey)) {
+            if (status != ResourceParseStatus.COMPLETE) {
+                completeEmptyStreaks.remove(streakKey);
+                return ResourceDiffResult.emptyProtected();
+            }
+            if (!isSecondCompleteEmpty(streakKey)) {
                 return ResourceDiffResult.emptyProtected();
             }
         } else {
@@ -384,6 +396,7 @@ public class CrawlerResourceDiffService {
         entity.setContentId(contentId);
         entity.setSourceCode(sourceCode);
         entity.setResourceKey(key);
+        entity.setEnabled(existing == null ? null : existing.getEnabled());
         entity.setRawText(firstNonBlank(parsed.rawText(), existing == null ? null : existing.getRawText()));
         entity.setLastSeenAt(now);
         entity.setTitle(firstNonBlank(limit(parsed.title(), 200), existing == null ? null : existing.getTitle()));
@@ -407,6 +420,7 @@ public class CrawlerResourceDiffService {
         entity.setContentId(contentId);
         entity.setSourceCode(sourceCode);
         entity.setResourceKey(key);
+        entity.setEnabled(existing == null ? null : existing.getEnabled());
         entity.setRawText(firstNonBlank(parsed.rawText(), existing == null ? null : existing.getRawText()));
         entity.setLastSeenAt(now);
         entity.setDiskType(firstNonBlank(parsed.diskType(), existing == null ? null : existing.getDiskType()));
@@ -428,6 +442,7 @@ public class CrawlerResourceDiffService {
         entity.setContentId(contentId);
         entity.setSourceCode(sourceCode);
         entity.setResourceKey(key);
+        entity.setEnabled(existing == null ? null : existing.getEnabled());
         entity.setRawText(firstNonBlank(parsed.rawText(), existing == null ? null : existing.getRawText()));
         entity.setLastSeenAt(now);
         entity.setSeason(parsed.season() == null && existing != null ? existing.getSeason() : parsed.season());

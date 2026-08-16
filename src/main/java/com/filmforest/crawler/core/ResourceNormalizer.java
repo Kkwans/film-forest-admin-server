@@ -27,8 +27,12 @@ public class ResourceNormalizer {
     private static final Pattern INFO_HASH = Pattern.compile(
             "(?i)(?:[?&])xt=urn:btih:([a-z0-9]+)(?:&|$)");
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
-            "pwd", "password", "passcode", "code", "accesscode", "access_code",
-            "extractioncode", "extraction_code", "提取码", "访问码");
+            "pwd", "pw", "pass", "password", "passwd", "passcode", "code",
+            "accesscode", "access_code", "accesskey", "access_key",
+            "accesspassword", "access_password", "extractioncode", "extraction_code",
+            "sharecode", "share_code", "sharepassword", "share_password",
+            "提取码", "提取碼", "密码", "密碼", "访问码", "訪問碼",
+            "访问密码", "訪問密碼", "分享码", "分享碼", "分享密码", "分享密碼");
     private static final Set<String> KNOWN_DISK_TYPES = Set.of(
             "baidu", "quark", "lanzou", "xunlei", "uc", "ali", "123", "other");
 
@@ -168,15 +172,36 @@ public class ResourceNormalizer {
             String normalized = diskType.trim().toLowerCase(Locale.ROOT);
             return KNOWN_DISK_TYPES.contains(normalized) ? normalized : "other";
         }
-        String value = url.toLowerCase(Locale.ROOT);
-        if (value.contains("pan.baidu") || value.contains("baidu.com")) return "baidu";
-        if (value.contains("quark")) return "quark";
-        if (value.contains("lanzou")) return "lanzou";
-        if (value.contains("xunlei") || value.contains("thunder")) return "xunlei";
-        if (value.contains("drive.uc") || value.contains("uc.cn")) return "uc";
-        if (value.contains("alipan") || value.contains("aliyundrive")) return "ali";
-        if (value.contains("123pan") || value.contains("123.com")) return "123";
+        String value = url.trim().toLowerCase(Locale.ROOT);
+        if (value.startsWith("thunder:")) return "xunlei";
+        String host = host(value);
+        if (isDomain(host, "baidu.com")) return "baidu";
+        if (isDomain(host, "quark.cn")) return "quark";
+        if (isLanzouHost(host)) return "lanzou";
+        if (isDomain(host, "xunlei.com")) return "xunlei";
+        if (isDomain(host, "uc.cn")) return "uc";
+        if (isDomain(host, "alipan.com") || isDomain(host, "aliyundrive.com")
+                || isDomain(host, "ali.com")) return "ali";
+        if (isDomain(host, "123pan.com") || isDomain(host, "123.com")) return "123";
         return "other";
+    }
+
+    private static String host(String value) {
+        try {
+            return URI.create(value).getHost();
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
+    private static boolean isDomain(String host, String domain) {
+        return host != null && (host.equals(domain) || host.endsWith("." + domain));
+    }
+
+    private static boolean isLanzouHost(String host) {
+        return List.of("lanzou.com", "lanzouk.com", "lanzoui.com", "lanzouv.com",
+                        "lanzoux.com", "lanzouj.com", "lanzoum.com")
+                .stream().anyMatch(domain -> isDomain(host, domain));
     }
 
     private static String decodeQueryPart(String value) {

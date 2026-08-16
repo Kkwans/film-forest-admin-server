@@ -25,9 +25,15 @@ class ResourceNormalizerTest {
                 "https://PAN.BAIDU.COM:443/s/share/?pwd=abcd&utm_source=test&a=1"));
         var second = normalizer.normalize("pkmp4", cloud(
                 "https://pan.baidu.com/s/share?a=1&pwd=efgh"));
+        var alias = normalizer.normalize("pkmp4", cloud(
+                "https://pan.baidu.com/s/share?a=1&pw=ijkl"));
+        var chineseAlias = normalizer.normalize("pkmp4", cloud(
+                "https://pan.baidu.com/s/share?a=1&分享密码=中文码"));
 
         assertThat(first.normalizedUrl()).isEqualTo("https://pan.baidu.com/s/share?a=1");
-        assertThat(first.resourceKey()).isEqualTo(second.resourceKey());
+        assertThat(first.resourceKey()).isEqualTo(second.resourceKey())
+                .isEqualTo(alias.resourceKey())
+                .isEqualTo(chineseAlias.resourceKey());
     }
 
     @Test
@@ -50,6 +56,21 @@ class ResourceNormalizerTest {
         assertThat(normalized.resource().diskType()).isEqualTo("other");
         assertThat(normalized.resource().url()).isEqualTo(resource.url());
         assertThat(normalized.normalizedUrl()).isEqualTo("https://cloud.example.test/share?id=1");
+    }
+
+    @Test
+    void cloudProviderDetectionUsesHostBoundaries() {
+        ParsedResource unrelated = new ParsedResource(ParsedResource.Kind.CLOUD, "网盘",
+                "https://notbaidu.com/share?ref=quark", null, null,
+                null, false, false, null, null, null, 0, "网盘", null, null);
+        ParsedResource lanzou = new ParsedResource(ParsedResource.Kind.CLOUD, "蓝奏云",
+                "https://www.lanzou.com/s/example", null, null,
+                null, false, false, null, null, null, 1, "蓝奏云", null, null);
+
+        assertThat(normalizer.normalize("pkmp4", unrelated).resource().diskType())
+                .isEqualTo("other");
+        assertThat(normalizer.normalize("pkmp4", lanzou).resource().diskType())
+                .isEqualTo("lanzou");
     }
 
     private static ParsedResource magnet(String url) {

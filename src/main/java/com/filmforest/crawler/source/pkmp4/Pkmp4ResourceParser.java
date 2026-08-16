@@ -3,6 +3,8 @@ package com.filmforest.crawler.source.pkmp4;
 import com.filmforest.crawler.model.ParsedResource;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -13,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,11 +23,18 @@ import java.util.regex.Pattern;
 public class Pkmp4ResourceParser {
 
     private static final Pattern PASSWORD = Pattern.compile(
-            "(?i)(?:提取码|密码|访问码|access\\s*code|password|passcode|pwd)"
-                    + "\\s*[：:=]?\\s*([A-Za-z0-9]{3,32})");
-    private static final List<String> PASSWORD_QUERY_KEYS = List.of(
-            "pwd", "password", "passcode", "code", "accesscode", "access_code",
-            "extractioncode", "extraction_code", "提取码", "访问码");
+            "(?iu)(?:提取码|提取碼|密码|密碼|访问码|訪問碼|分享码|分享碼|"
+                    + "分享密码|分享密碼|访问密码|訪問密碼|access\\s*code|"
+                    + "access\\s*password|password|passcode|pwd)"
+                    + "\\s*(?:[：:=]|[\\[【(（])?\\s*"
+                    + "([^\\s,，;；。.!！？!?\\[\\]【】（）()]{1,50})");
+    private static final Set<String> PASSWORD_QUERY_KEYS = Set.of(
+            "pwd", "pw", "pass", "password", "passwd", "passcode", "code",
+            "accesscode", "access_code", "accesskey", "access_key",
+            "accesspassword", "access_password", "extractioncode", "extraction_code",
+            "sharecode", "share_code", "sharepassword", "share_password", "提取码", "提取碼",
+            "密码", "密碼", "访问码", "訪問碼", "访问密码", "訪問密碼",
+            "分享码", "分享碼", "分享密码", "分享密碼");
     private static final Pattern NUMBERED_EPISODE = Pattern.compile("第\\s*(\\d+)\\s*[集期]");
     private static final Pattern LATIN_EPISODE = Pattern.compile("(?i)(?:EP?|Episode)\\s*0*(\\d+)");
     private static final Pattern UPDATED_EPISODE = Pattern.compile("更新至\\s*(\\d+)\\s*集");
@@ -56,11 +66,19 @@ public class Pkmp4ResourceParser {
             }
             String url = link.absUrl("href").isBlank() ? rawUrl : link.absUrl("href");
             String diskType = diskType(url);
-            String context = link.parent() == null ? "" : link.parent().text();
+            String context = siblingContext(link);
             resources.add(new ParsedResource(ParsedResource.Kind.CLOUD, title, url,
                     diskType, password(url, title + " " + rawText + " " + context), null, false, false,
                     null, null, null, order++, rawText, null, null));
         }
+    }
+
+    boolean hasDownloadSection(Document document) {
+        return document.selectFirst("p.down-list3, .down-list3, [class*=down-list]") != null;
+    }
+
+    boolean hasOnlineSection(Document document) {
+        return document.selectFirst("ul.showplayul, a[href*=/py/]") != null;
     }
 
     private void parseOnline(Document document, URI finalUri, List<ParsedResource> resources) {
@@ -120,14 +138,17 @@ public class Pkmp4ResourceParser {
     }
 
     static String diskType(String url) {
-        String normalized = url.toLowerCase(Locale.ROOT);
-        if (normalized.contains("pan.baidu") || normalized.contains("baidu.com")) return "baidu";
-        if (normalized.contains("quark")) return "quark";
-        if (normalized.contains("lanzou") || normalized.contains("lanzouk")) return "lanzou";
-        if (normalized.contains("xunlei") || normalized.contains("thunder")) return "xunlei";
-        if (normalized.contains("uc.cn") || normalized.contains("drive.uc")) return "uc";
-        if (normalized.contains("alipan") || normalized.contains("aliyundrive")) return "ali";
-        if (normalized.contains("123pan") || normalized.contains("123.com")) return "123";
+        String normalized = url == null ? "" : url.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("thunder:")) return "xunlei";
+        String host = host(normalized);
+        if (isDomain(host, "baidu.com")) return "baidu";
+        if (isDomain(host, "quark.cn")) return "quark";
+        if (isLanzouHost(host)) return "lanzou";
+        if (isDomain(host, "xunlei.com")) return "xunlei";
+        if (isDomain(host, "uc.cn")) return "uc";
+        if (isDomain(host, "alipan.com") || isDomain(host, "aliyundrive.com")
+                || isDomain(host, "ali.com")) return "ali";
+        if (isDomain(host, "123pan.com") || isDomain(host, "123.com")) return "123";
         return "other";
     }
 
@@ -136,6 +157,62 @@ public class Pkmp4ResourceParser {
         if (queryPassword != null) return queryPassword;
         Matcher matcher = PASSWORD.matcher(text == null ? "" : text);
         return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private static String siblingContext(Element link) {
+        StringBuilder context = new StringBuilder();
+        Element parent = link.parent();
+        for (int depth = 0; parent != null && depth < 3; depth++) {
+            List<Node> children = parent.childNodes();
+            int linkIndex = children.indexOf(link);
+            if (linkIndex >= 0) {
+                if (parent.select("a[href]").size() <= 1) {
+                    append(context, parent.text());
+                } else {
+                    appendAdjacent(context, children, linkIndex, 1);
+                    appendAdjacent(context, children, linkIndex, -1);
+                }
+            }
+            Element container = parent.parent();
+            if (container == null) {
+                break;
+            }
+            List<Node> siblings = container.childNodes();
+            int index = siblings.indexOf(parent);
+            if (container.select("a[href]").size() <= 1) {
+                append(context, container.text());
+            } else {
+                appendAdjacent(context, siblings, index, 1);
+                appendAdjacent(context, siblings, index, -1);
+            }
+            parent = container;
+        }
+        return context.toString();
+    }
+
+    private static void appendAdjacent(StringBuilder context, List<Node> siblings,
+                                       int start, int direction) {
+        if (start < 0) return;
+        int index = start + direction;
+        int inspected = 0;
+        while (index >= 0 && index < siblings.size() && inspected++ < 6) {
+            Node node = siblings.get(index);
+            if (containsLink(node)) break;
+            String value = node instanceof TextNode textNode ? textNode.text()
+                    : node instanceof Element element ? element.text() : node.toString();
+            append(context, value);
+            index += direction;
+        }
+    }
+
+    private static boolean containsLink(Node node) {
+        return node instanceof Element element
+                && ((element.is("a") && element.hasAttr("href"))
+                || !element.select("a[href]").isEmpty());
+    }
+
+    private static void append(StringBuilder context, String value) {
+        if (value != null && !value.isBlank()) context.append(' ').append(value);
     }
 
     private static String queryPassword(String url) {
@@ -156,7 +233,25 @@ public class Pkmp4ResourceParser {
     }
 
     private static String decode(String value) {
-        return URLDecoder.decode(value, StandardCharsets.UTF_8);
+        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    private static String host(String value) {
+        try {
+            return URI.create(value).getHost();
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
+    private static boolean isDomain(String host, String domain) {
+        return host != null && (host.equals(domain) || host.endsWith("." + domain));
+    }
+
+    private static boolean isLanzouHost(String host) {
+        return List.of("lanzou.com", "lanzouk.com", "lanzoui.com", "lanzouv.com",
+                        "lanzoux.com", "lanzouj.com", "lanzoum.com")
+                .stream().anyMatch(domain -> isDomain(host, domain));
     }
 
     private static String resolution(String text) {
