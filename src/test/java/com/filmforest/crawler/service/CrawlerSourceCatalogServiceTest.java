@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,6 +43,10 @@ class CrawlerSourceCatalogServiceTest {
         CrawlerSourceBinding drama = binding("drama");
         when(sourceMapper.selectList(any())).thenReturn(List.of(source));
         when(bindingMapper.selectList(any())).thenReturn(List.of(drama, movie));
+        when(adapterRegistry.require("pkmp4")).thenReturn(adapter);
+        when(adapter.capabilities(any())).thenAnswer(invocation -> new com.filmforest.crawler.model.CrawlerSourceCapabilities(
+                "pkmp4", invocation.getArgument(0, com.filmforest.common.type.ContentType.class).value(),
+                Set.of("TIME"), Set.of(), false, "CHALLENGE", "来源页面需要复核"));
 
         var result = service.listAvailableSources();
 
