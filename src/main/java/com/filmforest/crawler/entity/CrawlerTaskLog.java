@@ -25,6 +25,7 @@ public class CrawlerTaskLog {
     private String traversalMode;
     private String queryProfileHash;
     private String querySnapshot;
+    private String sourceFilterSnapshot;
     private String configSnapshot;
     private String outcomeCode;
     private String triggerType;

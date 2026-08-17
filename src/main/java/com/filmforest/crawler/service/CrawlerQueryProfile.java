@@ -8,6 +8,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import java.util.LinkedHashMap;
 
 /** 为游标和 Job 快照生成不含凭据的稳定查询 profile。 */
 public final class CrawlerQueryProfile {
@@ -47,6 +48,26 @@ public final class CrawlerQueryProfile {
 
     public static String snapshot(CrawlerSchedule schedule) {
         return canonical(schedule);
+    }
+
+    public static String filterSnapshot(CrawlerSchedule schedule) {
+        Map<String, String> filters = schedule.getSourceFilters() == null
+                ? Map.of() : new TreeMap<>(schedule.getSourceFilters());
+        return filters.entrySet().stream()
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(Collectors.joining("&"));
+    }
+
+    public static Map<String, String> parseFilterSnapshot(String snapshot) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (snapshot == null || snapshot.isBlank()) return result;
+        for (String pair : snapshot.split("&")) {
+            int separator = pair.indexOf('=');
+            if (separator > 0 && separator < pair.length() - 1) {
+                result.put(pair.substring(0, separator), pair.substring(separator + 1));
+            }
+        }
+        return result;
     }
 
     private static String safe(String value) {

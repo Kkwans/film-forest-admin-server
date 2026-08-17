@@ -2,9 +2,15 @@ package com.filmforest.crawler.service;
 
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
+import com.filmforest.crawler.entity.CrawlerConfigurationStatus;
+import com.filmforest.crawler.entity.CrawlerSourceSort;
+import com.filmforest.crawler.entity.CrawlerTraversalMode;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
+import com.filmforest.crawler.core.CrawlerFetchException;
+import com.filmforest.crawler.core.CrawlerSourceUnavailableException;
+import com.filmforest.crawler.core.CrawlerSourceStructureException;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import org.springframework.context.ApplicationEventPublisher;
@@ -55,6 +61,10 @@ public class CrawlerJobLifecycleService {
                 || jobMapper.selectActiveByScheduleId(scheduleId) != null) {
             return null;
         }
+        if (CrawlerConfigurationStatus.NEEDS_REVIEW.getCode()
+                .equals(schedule.getConfigurationStatus())) {
+            return null;
+        }
 
         CrawlerTaskLog retriedJob = null;
         if (retryOfJobId != null) {
@@ -79,6 +89,24 @@ public class CrawlerJobLifecycleService {
         job.setSourceCode(normalizeSourceCode(
                 schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode()));
         job.setCrawlMode(crawlMode.getCode());
+        String sourceSort = schedule.getSourceSort() == null
+                ? CrawlerSourceSort.fromCode(schedule.getPriority()).getCode()
+                : CrawlerSourceSort.fromCode(schedule.getSourceSort()).getCode();
+        job.setSourceSort(sourceSort);
+        String traversal = schedule.getTraversalMode();
+        if (traversal == null || traversal.isBlank()) {
+            traversal = crawlMode == CrawlerCrawlMode.FULL
+                    ? CrawlerTraversalMode.MANUAL_FULL.getCode()
+                    : CrawlerSourceSort.TIME.getCode().equals(sourceSort)
+                    ? CrawlerTraversalMode.CONTINUOUS_SYNC.getCode()
+                    : CrawlerTraversalMode.BACKFILL_CONTINUE.getCode();
+        }
+        job.setTraversalMode(traversal);
+        job.setQueryProfileHash(schedule.getQueryProfileHash() == null
+                ? CrawlerQueryProfile.hash(schedule) : schedule.getQueryProfileHash());
+        job.setQuerySnapshot(CrawlerQueryProfile.snapshot(schedule));
+        job.setSourceFilterSnapshot(CrawlerQueryProfile.filterSnapshot(schedule));
+        job.setConfigSnapshot(CrawlerQueryProfile.canonical(schedule));
         job.setTriggerType(triggerType.getCode());
         job.setRetryOfJobId(retryOfJobId);
         job.setStatus(CrawlerStatus.QUEUED.getCode());
@@ -95,6 +123,12 @@ public class CrawlerJobLifecycleService {
         job.setUnchangedCount(0);
         job.setFilteredCount(0);
         job.setFailedCount(0);
+        job.setPagesScanned(0);
+        job.setListItemsScanned(0);
+        job.setDetailAttempted(0);
+        job.setCursorAdvanced(0);
+        job.setNewItems(0);
+        job.setBackfillItems(0);
         job.setItemsCrawled(0);
         job.setItemsAdded(0);
         job.setItemsUpdated(0);
@@ -166,6 +200,14 @@ public class CrawlerJobLifecycleService {
         job.setUnchangedCount(summary.unchanged());
         job.setFilteredCount(summary.filtered());
         job.setFailedCount(summary.failed());
+        job.setPagesScanned(summary.pagesScanned());
+        job.setListItemsScanned(summary.listItemsScanned());
+        job.setDetailAttempted(summary.detailAttempted());
+        job.setCursorAdvanced(summary.cursorAdvanced());
+        job.setNewItems(summary.newItems());
+        job.setBackfillItems(summary.backfillItems());
+        job.setOutcomeCode(outcomeCode(summary, cancellationRequested
+                || Boolean.TRUE.equals(job.getCancelRequested()), failure));
         job.setItemsCrawled(summary.discovered());
         job.setItemsAdded(summary.added());
         job.setItemsUpdated(summary.updated());
@@ -212,6 +254,36 @@ public class CrawlerJobLifecycleService {
         return CrawlerStatus.SUCCESS;
     }
 
+    private String outcomeCode(CrawlExecutionSummary summary, boolean cancellationRequested,
+                               Throwable failure) {
+        if (cancellationRequested) {
+            return "CANCELLED";
+        }
+        if (failure instanceof CrawlerFetchException fetchFailure) {
+            return switch (fetchFailure.getFetchResult().category()) {
+                case CHALLENGE_PAGE, FORBIDDEN -> "SOURCE_UNAVAILABLE";
+                case RATE_LIMITED -> "RATE_LIMITED";
+                case NETWORK_ERROR, SERVER_ERROR -> "NETWORK_FAILED";
+                default -> "FAILED";
+            };
+        }
+        if (failure instanceof CrawlerSourceUnavailableException) {
+            return "SOURCE_UNAVAILABLE";
+        }
+        if (failure instanceof CrawlerSourceStructureException) {
+            return "STRUCTURE_CHANGED";
+        }
+        if (failure instanceof CrawlerRecoveryRequiredException) {
+            return "RECOVERY_REQUIRED";
+        }
+        if (failure != null) {
+            return "FAILED";
+        }
+        return summary.failed() > 0
+                ? (summary.parseSucceeded() > 0 ? "PARTIAL" : "FAILED")
+                : "COMPLETED";
+    }
+
     private String normalizeSourceCode(String sourceSite) {
         return sourceSite == null || sourceSite.isBlank() ? "pkmp4" : sourceSite.trim();
     }
@@ -224,7 +296,9 @@ public class CrawlerJobLifecycleService {
         }
         return Integer.valueOf(1).equals(schedule.getEnabled())
                 && schedule.getNextRunTime() != null
-                && !schedule.getNextRunTime().isAfter(now);
+                && !schedule.getNextRunTime().isAfter(now)
+                && !CrawlerConfigurationStatus.NEEDS_REVIEW.getCode()
+                .equals(schedule.getConfigurationStatus());
     }
 
     private long durationMillis(LocalDateTime startedAt, LocalDateTime finishedAt) {

@@ -5,20 +5,29 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
+import com.filmforest.crawler.entity.CrawlerCursorState;
+import com.filmforest.crawler.entity.CrawlerEndPolicy;
 import com.filmforest.crawler.entity.CrawlerFailureStage;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerScheduleCursor;
+import com.filmforest.crawler.entity.CrawlerSourceSort;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
+import com.filmforest.crawler.entity.CrawlerTraversalMode;
 import com.filmforest.crawler.http.FetchCategory;
 import com.filmforest.crawler.http.FetchResult;
 import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.model.CrawlerCheckpoint;
+import com.filmforest.crawler.model.CrawlerSourceQuery;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerQueryProfile;
+import com.filmforest.crawler.service.CrawlerRecoveryRequiredException;
+import com.filmforest.crawler.service.CrawlerScheduleCursorService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.SourceFingerprint;
@@ -26,6 +35,7 @@ import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.CrawlerResourceEnricher;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Component;
@@ -55,6 +65,7 @@ public class CrawlerCore {
     private final CrawlerItemFailureService itemFailureService;
     private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
+    private final CrawlerScheduleCursorService cursorService;
     private final ThreadLocal<Long> executingJobId = new ThreadLocal<>();
 
     public CrawlerCore(CrawlerScheduleService scheduleService,
@@ -67,6 +78,23 @@ public class CrawlerCore {
                        CrawlerItemFailureService itemFailureService,
                        CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper) {
+        this(scheduleService, taskLogMapper, sourceAdapterRegistry, httpFetcher, contentPersistence,
+                genreService, sourceItemService, itemFailureService, executionProperties,
+                objectMapper, null);
+    }
+
+    @Autowired
+    public CrawlerCore(CrawlerScheduleService scheduleService,
+                       CrawlerTaskLogMapper taskLogMapper,
+                       SourceAdapterRegistry sourceAdapterRegistry,
+                       HttpFetcher httpFetcher,
+                       CrawlerContentPersistence contentPersistence,
+                       CrawlerGenreService genreService,
+                       CrawlerSourceItemService sourceItemService,
+                       CrawlerItemFailureService itemFailureService,
+                       CrawlerExecutionProperties executionProperties,
+                       ObjectMapper objectMapper,
+                       CrawlerScheduleCursorService cursorService) {
         this.scheduleService = scheduleService;
         this.taskLogMapper = taskLogMapper;
         this.sourceAdapterRegistry = sourceAdapterRegistry;
@@ -77,6 +105,7 @@ public class CrawlerCore {
         this.itemFailureService = itemFailureService;
         this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
+        this.cursorService = cursorService;
     }
 
     public CrawlExecutionSummary executeCrawl(Long scheduleId, Long logId,
@@ -86,27 +115,59 @@ public class CrawlerCore {
         if (schedule == null || job == null) {
             throw new IllegalArgumentException("Crawler schedule or job does not exist");
         }
-        ContentType contentType = parseContentType(schedule.getContentType());
+        ContentType contentType = parseContentType(job.getContentType() == null
+                ? schedule.getContentType() : job.getContentType());
         if (isCancellationRequested(cancellation)) {
             return emptySummary();
         }
-        CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(
-                schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode());
+        String sourceCode = job.getSourceCode() == null
+                ? (schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode())
+                : job.getSourceCode();
+        CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(sourceCode);
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(job.getCrawlMode() == null
                 ? schedule.getCrawlMode() : job.getCrawlMode());
-        CrawlerCheckpoint checkpoint = crawlMode == CrawlerCrawlMode.FULL
-                ? readCheckpoint(job) : CrawlerCheckpoint.atPage(1);
-        int startPage = checkpoint.nextPage();
-        int maxItems = crawlMode == CrawlerCrawlMode.FULL ? Integer.MAX_VALUE
+        CrawlerSourceSort sourceSort = CrawlerSourceSort.fromCode(job.getSourceSort() == null
+                ? (schedule.getSourceSort() == null ? schedule.getPriority() : schedule.getSourceSort())
+                : job.getSourceSort());
+        CrawlerTraversalMode traversalMode = traversalMode(job, schedule, crawlMode, sourceSort);
+        CrawlerEndPolicy endPolicy = endPolicy(schedule);
+        CrawlerScheduleCursor cursor = cursorService == null
+                ? null : cursorService.prepare(schedule, job);
+        if (cursor != null) {
+            CrawlerCursorState cursorState = cursorState(cursor.getState());
+            if (cursorState == CrawlerCursorState.INVALIDATED
+                    || cursorState == CrawlerCursorState.RECOVERY_REQUIRED) {
+                throw new CrawlerRecoveryRequiredException(
+                        cursor.getLastError() == null ? "游标需要人工恢复" : cursor.getLastError());
+            }
+            if (cursorState == CrawlerCursorState.SOURCE_UNAVAILABLE) {
+                throw new CrawlerSourceUnavailableException(
+                        cursor.getLastError() == null ? "来源当前不可用" : cursor.getLastError());
+            }
+        }
+        CrawlerCheckpoint checkpoint = cursor != null
+                ? checkpointFromCursor(cursor)
+                : crawlMode == CrawlerCrawlMode.FULL ? readCheckpoint(job) : CrawlerCheckpoint.atPage(1);
+        int newItemLimit = positiveOrDefault(schedule.getNewItemLimit(),
+                schedule.getBatchSize() == null ? 10 : schedule.getBatchSize());
+        int backfillItemLimit = positiveOrDefault(schedule.getBackfillItemLimit(),
+                schedule.getBatchSize() == null ? 10 : schedule.getBatchSize());
+        int manualRunLimit = positiveOrDefault(schedule.getManualRunLimit(),
+                schedule.getBatchSize() == null ? 100 : schedule.getBatchSize());
+        int legacyMaxItems = crawlMode == CrawlerCrawlMode.FULL ? Integer.MAX_VALUE
                 : schedule.getBatchSize() == null ? 20 : Math.max(1, schedule.getBatchSize());
         int rateLimitMs = schedule.getRateLimitMs() == null
-                ? 0 : Math.max(0, schedule.getRateLimitMs());
+                ? 2000 : Math.max(2000, schedule.getRateLimitMs());
         Set<String> genreFilter = parseGenreFilter(schedule.getGenreFilter());
+        Map<String, String> sourceFilters = cursor == null
+                ? sourceFilters(schedule)
+                : CrawlerQueryProfile.parseFilterSnapshot(job.getSourceFilterSnapshot());
 
         executingJobId.set(logId);
         try {
-            return crawl(scheduleId, adapter, contentType, crawlMode, startPage, maxItems,
-                    rateLimitMs, genreFilter, checkpoint, cancellation);
+            return crawl(scheduleId, adapter, contentType, crawlMode, sourceSort, traversalMode,
+                    endPolicy, legacyMaxItems, newItemLimit, backfillItemLimit, manualRunLimit,
+                    rateLimitMs, genreFilter, sourceFilters, checkpoint, cursor, cancellation);
         } finally {
             executingJobId.remove();
         }
@@ -114,11 +175,16 @@ public class CrawlerCore {
 
     private CrawlExecutionSummary crawl(Long scheduleId, CrawlerSourceAdapter adapter,
                                         ContentType contentType, CrawlerCrawlMode crawlMode,
-                                        int startPage, int maxItems, int rateLimitMs,
-                                        Set<String> genreFilter, CrawlerCheckpoint resumeCheckpoint,
+                                        CrawlerSourceSort sourceSort, CrawlerTraversalMode traversalMode,
+                                        CrawlerEndPolicy endPolicy, int legacyMaxItems,
+                                        int newItemLimit, int backfillItemLimit, int manualRunLimit,
+                                        int rateLimitMs, Set<String> genreFilter,
+                                        Map<String, String> sourceFilters,
+                                        CrawlerCheckpoint resumeCheckpoint,
+                                        CrawlerScheduleCursor cursor,
                                         AtomicBoolean cancellation) {
         MutableStats stats = new MutableStats();
-        int page = startPage;
+        int page = resumeCheckpoint.nextPage();
         int consecutiveStructureFailures = 0;
         int consecutiveOldItems = 0;
         int latestStopThreshold = Math.max(1,
@@ -127,17 +193,60 @@ public class CrawlerCore {
         boolean latestBoundaryReached = false;
         CrawlerCheckpoint checkpoint = resumeCheckpoint;
         String lastCommittedExternalId = checkpoint.lastCommittedExternalId();
-        while (stats.discovered < maxItems && !isCancellationRequested(cancellation)) {
-            URI listUri = adapter.listUri(contentType, page);
+        boolean restartedCycle = false;
+        while (canContinue(stats, crawlMode, traversalMode, legacyMaxItems,
+                newItemLimit, backfillItemLimit, manualRunLimit, cursor != null)
+                && !isCancellationRequested(cancellation)) {
+            URI listUri = cursor == null
+                    ? adapter.listUri(contentType, page)
+                    : adapter.listUri(new CrawlerSourceQuery(contentType, sourceSort, sourceFilters, page));
+            if (listUri == null) {
+                throw new IllegalStateException("来源未生成有效列表 URL: " + adapter.sourceCode());
+            }
             FetchResult listFetch = httpFetcher.fetch(listUri, Map.of(), rateLimitMs, cancellation);
             if (listFetch.category() == FetchCategory.CANCELLED) {
                 break;
             }
             if (!listFetch.successful()) {
+                markCursorUnavailable(cursor, listFetch);
                 throw new CrawlerFetchException("List fetch failed", listFetch);
             }
-            List<SourceListItem> items = adapter.parseList(listFetch.body(), listFetch.finalUrl());
+            List<SourceListItem> items;
+            try {
+                items = adapter.parseList(listFetch.body(), listFetch.finalUrl());
+            } catch (RuntimeException parseFailure) {
+                if (cursor != null) {
+                    cursorService.mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
+                            "列表结构无法解析：" + parseFailure.getClass().getSimpleName());
+                }
+                throw new CrawlerSourceStructureException(adapter.sourceCode(),
+                        STRUCTURE_FAILURE_THRESHOLD, parseFailure.getMessage());
+            }
+            stats.pagesScanned++;
+            stats.listItemsScanned += items.size();
+            if (cursor != null && anchorMissing(checkpoint, items)) {
+                NearbyPage recovered = recoverNearbyPage(adapter, contentType, sourceSort,
+                        sourceFilters, page, checkpoint, rateLimitMs, cancellation, stats, cursor);
+                page = recovered.page();
+                items = recovered.items();
+                checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page, 0,
+                        checkpoint.nextExternalId(), checkpoint.lastCommittedExternalId());
+                log.info("恢复分页锚点: scheduleId={}, page={}, anchor={}",
+                        scheduleId, page, anchorOf(checkpoint));
+            }
             if (items.isEmpty()) {
+                if (cursor != null && shouldHoldAtEnd(sourceSort, endPolicy)) {
+                    cursorService.mark(cursor, CrawlerCursorState.COMPLETE, null);
+                } else if (cursor != null && !restartedCycle
+                        && CrawlerEndPolicy.RESTART_CYCLE == endPolicy) {
+                    restartedCycle = true;
+                    page = 1;
+                    checkpoint = CrawlerCheckpoint.atPage(1);
+                    lastCommittedExternalId = null;
+                    cursorService.advance(cursor, null, null, 1, 0,
+                            null, CrawlerCursorState.ACTIVE.getCode(), "开始新的来源遍历周期");
+                    continue;
+                }
                 break;
             }
 
@@ -146,7 +255,9 @@ public class CrawlerCore {
                     ? checkpoint.resumeItemIndex(items) : 0;
             for (int itemIndex = firstItemIndex; itemIndex < items.size(); itemIndex++) {
                 SourceListItem item = items.get(itemIndex);
-                if (stats.discovered >= maxItems || isCancellationRequested(cancellation)) {
+                if (!canProcessNextItem(stats, crawlMode, traversalMode, legacyMaxItems,
+                        newItemLimit, backfillItemLimit, manualRunLimit, cursor != null)
+                        || isCancellationRequested(cancellation)) {
                     pageCompleted = false;
                     break;
                 }
@@ -155,14 +266,14 @@ public class CrawlerCore {
                 stats.discovered++;
                 CrawlerCheckpoint beforeItem = CrawlerCheckpoint.beforeItem(page, itemIndex,
                         item.externalId(), lastCommittedExternalId);
-                recordProgress(beforeItem, item.sourceUrl(), stats);
+                recordProgress(beforeItem, item.sourceUrl(), stats, cursor, false);
                 ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
                         genreFilter, cancellation, stats, observation,
                         crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
                 if (result.outcome() == ItemOutcome.STRUCTURE_FAILURE) {
                     consecutiveStructureFailures++;
                     if (consecutiveStructureFailures >= STRUCTURE_FAILURE_THRESHOLD) {
-                        recordProgress(beforeItem, item.sourceUrl(), stats);
+                        recordProgress(beforeItem, item.sourceUrl(), stats, cursor, false);
                         throw new CrawlerSourceStructureException(adapter.sourceCode(),
                                 consecutiveStructureFailures, result.diagnostic());
                     }
@@ -174,7 +285,7 @@ public class CrawlerCore {
                 if (result.outcome() == ItemOutcome.CANCELLED) {
                     pageCompleted = false;
                     checkpoint = beforeItem;
-                    recordProgress(checkpoint, item.sourceUrl(), stats);
+                    recordProgress(checkpoint, item.sourceUrl(), stats, cursor, false);
                     break;
                 }
                 if (isCommitted(result.outcome())) {
@@ -182,7 +293,10 @@ public class CrawlerCore {
                 }
                 checkpoint = checkpointAfter(items, page, itemIndex, lastCommittedExternalId);
                 consecutiveOldItems = result.oldItem() ? consecutiveOldItems + 1 : 0;
-                recordProgress(checkpoint, nextItemUrl(items, itemIndex), stats);
+                boolean backfill = isBackfillItem(crawlMode, traversalMode, page, latestRecentPages,
+                        result.oldItem());
+                if (backfill) stats.backfillItems++; else stats.newItems++;
+                recordProgress(checkpoint, nextItemUrl(items, itemIndex), stats, cursor, true);
                 if (crawlMode == CrawlerCrawlMode.LATEST && page >= latestRecentPages
                         && consecutiveOldItems >= latestStopThreshold) {
                     pageCompleted = false;
@@ -193,7 +307,7 @@ public class CrawlerCore {
             if (pageCompleted) {
                 checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION,
                         page + 1, 0, null, lastCommittedExternalId);
-                recordProgress(checkpoint, null, stats);
+                recordProgress(checkpoint, null, stats, cursor, false);
             }
             if (!pageCompleted) {
                 break;
@@ -205,9 +319,189 @@ public class CrawlerCore {
                     scheduleId, page, consecutiveOldItems);
         }
         if (isCancellationRequested(cancellation)) {
-            recordProgress(checkpoint, null, stats);
+            recordProgress(checkpoint, null, stats, cursor, false);
         }
         return stats.toSummary();
+    }
+
+    private NearbyPage recoverNearbyPage(CrawlerSourceAdapter adapter, ContentType contentType,
+                                         CrawlerSourceSort sourceSort, Map<String, String> sourceFilters,
+                                         int currentPage, CrawlerCheckpoint checkpoint,
+                                         int rateLimitMs, AtomicBoolean cancellation,
+                                         MutableStats stats, CrawlerScheduleCursor cursor) {
+        for (int distance = 1; distance <= 2; distance++) {
+            int before = currentPage - distance;
+            NearbyPage result = before < 1 ? null : fetchNearbyPage(adapter, contentType, sourceSort,
+                    sourceFilters, before, checkpoint, rateLimitMs, cancellation, stats, cursor);
+            if (result != null) return result;
+            int after = currentPage + distance;
+            result = fetchNearbyPage(adapter, contentType, sourceSort, sourceFilters, after,
+                    checkpoint, rateLimitMs, cancellation, stats, cursor);
+            if (result != null) return result;
+        }
+        cursorService.mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
+                "分页锚点在当前页前后 2 页内均未找到，需人工确认后重置游标");
+        throw new CrawlerRecoveryRequiredException(
+                "分页发生漂移且无法在前后 2 页恢复锚点：" + anchorOf(checkpoint));
+    }
+
+    private NearbyPage fetchNearbyPage(CrawlerSourceAdapter adapter, ContentType contentType,
+                                       CrawlerSourceSort sourceSort, Map<String, String> sourceFilters,
+                                       int page, CrawlerCheckpoint checkpoint, int rateLimitMs,
+                                       AtomicBoolean cancellation, MutableStats stats,
+                                       CrawlerScheduleCursor cursor) {
+        URI uri = adapter.listUri(new CrawlerSourceQuery(contentType, sourceSort, sourceFilters, page));
+        FetchResult fetched = httpFetcher.fetch(uri, Map.of(), rateLimitMs, cancellation);
+        if (!fetched.successful()) {
+            markCursorUnavailable(cursor, fetched);
+            throw new CrawlerFetchException("恢复分页时列表读取失败", fetched);
+        }
+        List<SourceListItem> items;
+        try {
+            items = adapter.parseList(fetched.body(), fetched.finalUrl());
+        } catch (RuntimeException parseFailure) {
+            cursorService.mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
+                    "恢复分页时列表结构无法解析");
+            throw new CrawlerSourceStructureException(adapter.sourceCode(),
+                    STRUCTURE_FAILURE_THRESHOLD, parseFailure.getMessage());
+        }
+        stats.pagesScanned++;
+        stats.listItemsScanned += items.size();
+        return containsAnchor(checkpoint, items) ? new NearbyPage(page, items) : null;
+    }
+
+    private static boolean anchorMissing(CrawlerCheckpoint checkpoint, List<SourceListItem> items) {
+        return hasAnchor(checkpoint) && !containsAnchor(checkpoint, items);
+    }
+
+    private static boolean containsAnchor(CrawlerCheckpoint checkpoint, List<SourceListItem> items) {
+        if (checkpoint.nextExternalId() != null
+                && items.stream().anyMatch(item -> checkpoint.nextExternalId().equals(item.externalId()))) {
+            return true;
+        }
+        return checkpoint.lastCommittedExternalId() != null
+                && items.stream().anyMatch(item -> checkpoint.lastCommittedExternalId().equals(item.externalId()));
+    }
+
+    private static boolean hasAnchor(CrawlerCheckpoint checkpoint) {
+        return checkpoint.nextExternalId() != null || checkpoint.lastCommittedExternalId() != null;
+    }
+
+    private static String anchorOf(CrawlerCheckpoint checkpoint) {
+        return checkpoint.nextExternalId() == null
+                ? checkpoint.lastCommittedExternalId() : checkpoint.nextExternalId();
+    }
+
+    private record NearbyPage(int page, List<SourceListItem> items) {
+    }
+
+    private CrawlerTraversalMode traversalMode(CrawlerTaskLog job, CrawlerSchedule schedule,
+                                               CrawlerCrawlMode crawlMode,
+                                               CrawlerSourceSort sourceSort) {
+        String configured = job.getTraversalMode() == null
+                ? schedule.getTraversalMode() : job.getTraversalMode();
+        if (configured != null && !configured.isBlank()) {
+            try {
+                return CrawlerTraversalMode.valueOf(configured.trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                log.warn("忽略未知遍历模式，使用默认值: {}", configured);
+            }
+        }
+        if (crawlMode == CrawlerCrawlMode.FULL) return CrawlerTraversalMode.MANUAL_FULL;
+        return sourceSort == CrawlerSourceSort.TIME
+                ? CrawlerTraversalMode.CONTINUOUS_SYNC
+                : CrawlerTraversalMode.BACKFILL_CONTINUE;
+    }
+
+    private static CrawlerEndPolicy endPolicy(CrawlerSchedule schedule) {
+        if (schedule.getEndPolicy() == null || schedule.getEndPolicy().isBlank()) {
+            return CrawlerEndPolicy.HOLD_COMPLETED;
+        }
+        try {
+            return CrawlerEndPolicy.valueOf(schedule.getEndPolicy().trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return CrawlerEndPolicy.HOLD_COMPLETED;
+        }
+    }
+
+    private static CrawlerCheckpoint checkpointFromCursor(CrawlerScheduleCursor cursor) {
+        return new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION,
+                positiveOrDefault(cursor.getNextPage(), 1),
+                Math.max(0, cursor.getNextItemIndex() == null ? 0 : cursor.getNextItemIndex()),
+                cursor.getNextExternalId(), cursor.getLastCommittedExternalId());
+    }
+
+    private static CrawlerCursorState cursorState(String value) {
+        if (value == null || value.isBlank()) return CrawlerCursorState.ACTIVE;
+        try {
+            return CrawlerCursorState.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            return CrawlerCursorState.RECOVERY_REQUIRED;
+        }
+    }
+
+    private static int positiveOrDefault(Integer value, int fallback) {
+        return value == null ? Math.max(1, fallback) : Math.max(1, value);
+    }
+
+    private static Map<String, String> sourceFilters(CrawlerSchedule schedule) {
+        if (schedule.getSourceFilters() == null || schedule.getSourceFilters().isEmpty()) {
+            return Map.of();
+        }
+        return schedule.getSourceFilters().entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getValue() != null)
+                .collect(java.util.stream.Collectors.toUnmodifiableMap(
+                        Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private static boolean canContinue(MutableStats stats, CrawlerCrawlMode crawlMode,
+                                       CrawlerTraversalMode traversalMode, int legacyMaxItems,
+                                       int newItemLimit, int backfillItemLimit, int manualRunLimit,
+                                       boolean cursorDriven) {
+        if (!cursorDriven) {
+            return stats.discovered < legacyMaxItems;
+        }
+        if (traversalMode == CrawlerTraversalMode.MANUAL_FULL || crawlMode == CrawlerCrawlMode.FULL) {
+            return stats.discovered < manualRunLimit;
+        }
+        if (traversalMode == CrawlerTraversalMode.BACKFILL_CONTINUE) {
+            return stats.backfillItems < backfillItemLimit;
+        }
+        if (legacyMaxItems != Integer.MAX_VALUE && stats.discovered < legacyMaxItems) {
+            return true;
+        }
+        return stats.newItems < newItemLimit || stats.backfillItems < backfillItemLimit;
+    }
+
+    private static boolean canProcessNextItem(MutableStats stats, CrawlerCrawlMode crawlMode,
+                                              CrawlerTraversalMode traversalMode, int legacyMaxItems,
+                                              int newItemLimit, int backfillItemLimit, int manualRunLimit,
+                                              boolean cursorDriven) {
+        return canContinue(stats, crawlMode, traversalMode, legacyMaxItems,
+                newItemLimit, backfillItemLimit, manualRunLimit, cursorDriven);
+    }
+
+    private static boolean isBackfillItem(CrawlerCrawlMode crawlMode,
+                                          CrawlerTraversalMode traversalMode, int page,
+                                          int latestRecentPages, boolean oldItem) {
+        return traversalMode == CrawlerTraversalMode.BACKFILL_CONTINUE
+                || (traversalMode == CrawlerTraversalMode.CONTINUOUS_SYNC
+                && (page > latestRecentPages || oldItem))
+                || (crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
+    }
+
+    private static boolean shouldHoldAtEnd(CrawlerSourceSort sourceSort, CrawlerEndPolicy endPolicy) {
+        return sourceSort != CrawlerSourceSort.TIME
+                && endPolicy == CrawlerEndPolicy.HOLD_COMPLETED;
+    }
+
+    private void markCursorUnavailable(CrawlerScheduleCursor cursor, FetchResult fetch) {
+        if (cursor == null || fetch == null) return;
+        if (fetch.category() == FetchCategory.CHALLENGE_PAGE
+                || fetch.category() == FetchCategory.FORBIDDEN) {
+            cursorService.mark(cursor, CrawlerCursorState.SOURCE_UNAVAILABLE,
+                    "来源不可用：" + fetch.category());
+        }
     }
 
     private ItemProcessingResult processItem(CrawlerSourceAdapter adapter, ContentType contentType,
@@ -229,6 +523,7 @@ public class CrawlerCore {
             }
         }
 
+        stats.detailAttempted++;
         FetchResult detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
                 rateLimitMs, cancellation);
         if (detailFetch.category() == FetchCategory.CANCELLED) {
@@ -390,15 +685,25 @@ public class CrawlerCore {
         return false;
     }
 
-    private void recordProgress(CrawlerCheckpoint checkpoint, String currentItem, MutableStats stats) {
+    private void recordProgress(CrawlerCheckpoint checkpoint, String currentItem, MutableStats stats,
+                                CrawlerScheduleCursor cursor, boolean advanceCursor) {
         Long jobId = executingJobId.get();
+        if (advanceCursor && cursor != null) {
+            cursorService.advance(cursor, checkpoint.nextExternalId(),
+                    checkpoint.lastCommittedExternalId(), checkpoint.nextPage(),
+                    checkpoint.nextItemIndex(), currentItem,
+                    CrawlerCursorState.ACTIVE.getCode(), null);
+            stats.cursorAdvanced++;
+        }
         if (jobId == null) return;
         try {
             String checkpointJson = objectMapper.writeValueAsString(checkpoint);
             taskLogMapper.updateProgress(jobId, checkpoint.nextPage(), currentItem,
                     stats.discovered, stats.fetchSucceeded, stats.parseSucceeded,
                     stats.added, stats.updated, stats.unchanged, stats.filtered, stats.failed,
-                    checkpointJson, CrawlerTime.nowUtc());
+                    checkpointJson, stats.pagesScanned, stats.listItemsScanned,
+                    stats.detailAttempted, stats.cursorAdvanced, stats.newItems,
+                    stats.backfillItems, CrawlerTime.nowUtc());
         } catch (Exception error) {
             log.warn("Failed to update crawler progress: jobId={}, error={}",
                     jobId, error.getClass().getSimpleName());
@@ -497,10 +802,17 @@ public class CrawlerCore {
         private int unchanged;
         private int filtered;
         private int failed;
+        private int pagesScanned;
+        private int listItemsScanned;
+        private int detailAttempted;
+        private int cursorAdvanced;
+        private int newItems;
+        private int backfillItems;
 
         private CrawlExecutionSummary toSummary() {
             return new CrawlExecutionSummary(discovered, fetchSucceeded, parseSucceeded,
-                    added, updated, unchanged, filtered, failed);
+                    added, updated, unchanged, filtered, failed, pagesScanned,
+                    listItemsScanned, detailAttempted, cursorAdvanced, newItems, backfillItems);
         }
     }
 

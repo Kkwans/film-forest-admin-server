@@ -15,6 +15,7 @@ import com.filmforest.crawler.entity.CrawlerJobItemFailure;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
+import com.filmforest.crawler.entity.CrawlerScheduleCursor;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
@@ -23,6 +24,7 @@ import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import com.filmforest.crawler.service.CrawlerSourceQueryPreviewService;
+import com.filmforest.crawler.service.CrawlerScheduleCursorService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +50,7 @@ public class CrawlerController {
     private final CrawlerScheduleDefinitionService scheduleDefinitionService;
     private final CrawlerItemFailureService itemFailureService;
     private final CrawlerSourceQueryPreviewService sourceQueryPreviewService;
+    private final CrawlerScheduleCursorService cursorService;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
@@ -59,7 +62,6 @@ public class CrawlerController {
                 scheduleDefinitionService, itemFailureService, null);
     }
 
-    @Autowired
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
                              CrawlerTaskLogMapper taskLogMapper,
@@ -67,6 +69,19 @@ public class CrawlerController {
                              CrawlerScheduleDefinitionService scheduleDefinitionService,
                              CrawlerItemFailureService itemFailureService,
                              CrawlerSourceQueryPreviewService sourceQueryPreviewService) {
+        this(scheduleService, operationsQueryService, taskLogMapper, sourceCatalogService,
+                scheduleDefinitionService, itemFailureService, sourceQueryPreviewService, null);
+    }
+
+    @Autowired
+    public CrawlerController(CrawlerScheduleService scheduleService,
+                             CrawlerOperationsQueryService operationsQueryService,
+                             CrawlerTaskLogMapper taskLogMapper,
+                             CrawlerSourceCatalogService sourceCatalogService,
+                             CrawlerScheduleDefinitionService scheduleDefinitionService,
+                             CrawlerItemFailureService itemFailureService,
+                             CrawlerSourceQueryPreviewService sourceQueryPreviewService,
+                             CrawlerScheduleCursorService cursorService) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
@@ -74,6 +89,7 @@ public class CrawlerController {
         this.scheduleDefinitionService = scheduleDefinitionService;
         this.itemFailureService = itemFailureService;
         this.sourceQueryPreviewService = sourceQueryPreviewService;
+        this.cursorService = cursorService;
     }
 
     /** 获取所有定时配置 */
@@ -231,6 +247,29 @@ public class CrawlerController {
             return Result.ok(sourceQueryPreviewService.preview(request));
         } catch (IllegalArgumentException invalid) {
             return Result.fail(400, invalid.getMessage());
+        }
+    }
+
+    /** 获取跨 Job 续爬游标；游标不混入旧 Job 日志。 */
+    @GetMapping("/schedules/{id}/cursor")
+    public Result<CrawlerScheduleCursor> getCursor(@PathVariable Long id) {
+        if (cursorService == null) {
+            return Result.fail(503, "续爬游标服务未启用");
+        }
+        CrawlerScheduleCursor cursor = cursorService.get(id);
+        return cursor == null ? Result.fail(404, "爬虫游标不存在") : Result.ok(cursor);
+    }
+
+    /** 人工重置续爬游标，不删除历史 Job 或内容数据。 */
+    @PostMapping("/schedules/{id}/cursor/reset")
+    public Result<CrawlerScheduleCursor> resetCursor(@PathVariable Long id) {
+        if (cursorService == null) {
+            return Result.fail(503, "续爬游标服务未启用");
+        }
+        try {
+            return Result.ok(cursorService.reset(id));
+        } catch (BusinessException failure) {
+            return Result.fail(failure.getCode(), failure.getMessage());
         }
     }
 

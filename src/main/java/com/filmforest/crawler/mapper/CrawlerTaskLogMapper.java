@@ -109,6 +109,9 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                 added_count = #{added}, updated_count = #{updated},
                 unchanged_count = #{unchanged}, filtered_count = #{filtered},
                 failed_count = #{failed}, checkpoint = #{checkpoint},
+                pages_scanned = #{pagesScanned}, list_items_scanned = #{listItemsScanned},
+                detail_attempted = #{detailAttempted}, cursor_advanced = #{cursorAdvanced},
+                new_items = #{newItems}, backfill_items = #{backfillItems},
                 items_crawled = #{discovered}, items_added = #{added}, items_updated = #{updated},
                 heartbeat_at = #{now}, progress_updated_at = #{now}
             WHERE id = #{jobId} AND status IN ('running', 'cancel_requested')
@@ -125,6 +128,12 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
                        @Param("filtered") int filtered,
                        @Param("failed") int failed,
                        @Param("checkpoint") String checkpoint,
+                       @Param("pagesScanned") int pagesScanned,
+                       @Param("listItemsScanned") int listItemsScanned,
+                       @Param("detailAttempted") int detailAttempted,
+                       @Param("cursorAdvanced") int cursorAdvanced,
+                       @Param("newItems") int newItems,
+                       @Param("backfillItems") int backfillItems,
                        @Param("now") LocalDateTime now);
 
     @Update("""

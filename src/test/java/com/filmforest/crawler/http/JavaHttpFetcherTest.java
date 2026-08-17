@@ -19,6 +19,8 @@ class JavaHttpFetcherTest {
                 .isEqualTo(FetchCategory.NOT_FOUND);
         assertThat(JavaHttpFetcher.classify(403, "text/html", "forbidden"))
                 .isEqualTo(FetchCategory.FORBIDDEN);
+        assertThat(JavaHttpFetcher.classify(403, "text/html", "<div class=cf-turnstile></div>"))
+                .isEqualTo(FetchCategory.CHALLENGE_PAGE);
         assertThat(JavaHttpFetcher.classify(429, "application/json", "{}"))
                 .isEqualTo(FetchCategory.RATE_LIMITED);
         assertThat(JavaHttpFetcher.classify(503, "text/html", "later"))

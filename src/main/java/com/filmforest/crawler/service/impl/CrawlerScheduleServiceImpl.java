@@ -261,6 +261,16 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
     }
 
     private String capabilityIssue(CrawlerSchedule schedule, CrawlerSourceCapabilities capabilities) {
+        if (capabilities == null) {
+            return "来源能力尚未验证，请先执行来源查询预览";
+        }
+        if (!capabilities.verified()
+                || "CHALLENGE".equalsIgnoreCase(capabilities.availability())
+                || "UNAVAILABLE".equalsIgnoreCase(capabilities.availability())) {
+            return capabilities.message() == null || capabilities.message().isBlank()
+                    ? "来源当前不可用，请先完成来源查询预览"
+                    : capabilities.message();
+        }
         if (!capabilities.supportsSort(schedule.getSourceSort())) {
             return "来源未声明支持排序：" + schedule.getSourceSort();
         }

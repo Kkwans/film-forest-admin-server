@@ -146,6 +146,12 @@ public class JavaHttpFetcher implements HttpFetcher {
     }
 
     static FetchCategory classify(int statusCode, String contentType, String body) {
+        // Cloudflare/Turnstile 等挑战页可能以 403 返回。先检查页面特征，避免把
+        // 需要人工复核的来源误报成普通权限拒绝，也不允许调用方尝试绕过挑战。
+        String normalizedBody = body == null ? "" : body.toLowerCase(Locale.ROOT);
+        if (CHALLENGE_MARKERS.stream().anyMatch(normalizedBody::contains)) {
+            return FetchCategory.CHALLENGE_PAGE;
+        }
         if (statusCode == 404) {
             return FetchCategory.NOT_FOUND;
         }
@@ -169,10 +175,6 @@ public class JavaHttpFetcher implements HttpFetcher {
         }
         if (body == null || body.isBlank()) {
             return FetchCategory.EMPTY_BODY;
-        }
-        String normalizedBody = body.toLowerCase(Locale.ROOT);
-        if (CHALLENGE_MARKERS.stream().anyMatch(normalizedBody::contains)) {
-            return FetchCategory.CHALLENGE_PAGE;
         }
         return FetchCategory.SUCCESS;
     }
