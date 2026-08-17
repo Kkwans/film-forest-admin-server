@@ -38,7 +38,7 @@ END;
 
 CREATE TABLE `crawler_schedule_cursor` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `schedule_id` bigint NOT NULL,
+  `schedule_id` bigint unsigned NOT NULL,
   `profile_hash` varchar(64) NOT NULL,
   `source_code` varchar(64) NOT NULL,
   `content_type` varchar(32) NOT NULL,
