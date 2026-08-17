@@ -37,6 +37,13 @@ public record CrawlerScheduleUpsertRequest(
         @Max(value = 500, message = "单次处理数量不能超过 500") Integer batchSize,
         @Min(value = 500, message = "请求间隔不能小于 500 毫秒")
         @Max(value = 60000, message = "请求间隔不能超过 60000 毫秒") Integer rateLimitMs,
+        String sourceSort,
+        Map<String, String> sourceFilters,
+        String traversalMode,
+        String endPolicy,
+        @Min(value = 1, message = "新内容上限不能小于 1") Integer newItemLimit,
+        @Min(value = 1, message = "历史回填上限不能小于 1") Integer backfillItemLimit,
+        @Min(value = 1, message = "人工全量上限不能小于 1") Integer manualRunLimit,
         String priority,
         String genreFilter,
         @Size(max = 100, message = "题材选择不能超过 100 项") List<@Positive Long> genreTagIds
@@ -58,6 +65,13 @@ public record CrawlerScheduleUpsertRequest(
         schedule.setTimezone(timezone);
         schedule.setBatchSize(batchSize);
         schedule.setRateLimitMs(rateLimitMs);
+        schedule.setSourceSort(sourceSort);
+        schedule.setSourceFilters(sourceFilters);
+        schedule.setTraversalMode(traversalMode);
+        schedule.setEndPolicy(endPolicy);
+        schedule.setNewItemLimit(newItemLimit);
+        schedule.setBackfillItemLimit(backfillItemLimit);
+        schedule.setManualRunLimit(manualRunLimit);
         schedule.setPriority(priority);
         schedule.setGenreFilter(genreFilter);
         schedule.setGenreTagIds(genreTagIds);

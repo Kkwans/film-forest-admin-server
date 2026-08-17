@@ -21,6 +21,12 @@ public class CrawlerTaskLog {
     private String contentType;
     private String sourceCode;
     private String crawlMode;
+    private String sourceSort;
+    private String traversalMode;
+    private String queryProfileHash;
+    private String querySnapshot;
+    private String configSnapshot;
+    private String outcomeCode;
     private String triggerType;
     private Long retryOfJobId;
     private String status;
@@ -35,6 +41,12 @@ public class CrawlerTaskLog {
     private Integer unchangedCount;
     private Integer filteredCount;
     private Integer failedCount;
+    private Integer pagesScanned;
+    private Integer listItemsScanned;
+    private Integer detailAttempted;
+    private Integer cursorAdvanced;
+    private Integer newItems;
+    private Integer backfillItems;
     private String checkpoint;
     private LocalDateTime heartbeatAt;
     private LocalDateTime progressUpdatedAt;

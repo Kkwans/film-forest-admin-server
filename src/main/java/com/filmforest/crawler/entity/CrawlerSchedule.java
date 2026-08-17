@@ -43,6 +43,18 @@ public class CrawlerSchedule {
     private String timezone;
     private Integer batchSize;
     private Integer rateLimitMs;
+    /** 新契约字段；priority 仅保留兼容读取。 */
+    private String sourceSort;
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private Map<String, String> sourceFilters;
+    private String traversalMode;
+    private String endPolicy;
+    private Integer newItemLimit;
+    private Integer backfillItemLimit;
+    private Integer manualRunLimit;
+    private String configurationStatus;
+    private String configurationIssue;
+    private String queryProfileHash;
     private String priority;
     private String genreFilter;
     @TableField(exist = false)

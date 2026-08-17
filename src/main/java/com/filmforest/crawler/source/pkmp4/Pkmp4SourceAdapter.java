@@ -2,6 +2,8 @@ package com.filmforest.crawler.source.pkmp4;
 
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.model.ParsedContent;
+import com.filmforest.crawler.model.CrawlerSourceCapabilities;
+import com.filmforest.crawler.model.CrawlerSourceQuery;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
 import com.filmforest.crawler.source.CrawlerResourceEnricher;
@@ -51,6 +53,18 @@ public class Pkmp4SourceAdapter implements CrawlerSourceAdapter, CrawlerResource
     @Override
     public URI listUri(ContentType contentType, int page) {
         return urlBuilder.listUri(contentType, page);
+    }
+
+    @Override
+    public URI listUri(CrawlerSourceQuery query) {
+        return urlBuilder.listUri(query);
+    }
+
+    @Override
+    public CrawlerSourceCapabilities capabilities(ContentType contentType) {
+        return new CrawlerSourceCapabilities(
+                sourceCode(), contentType.value(), Set.of("TIME"), Set.of(),
+                false, "CHALLENGE", "公开入口当前返回访问验证页面，未确认来源原生排序和筛选参数");
     }
 
     @Override

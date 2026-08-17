@@ -9,6 +9,8 @@ import com.filmforest.crawler.dto.CrawlerSourceDescriptor;
 import com.filmforest.crawler.dto.CrawlerSchedulePreview;
 import com.filmforest.crawler.dto.CrawlerSchedulePreviewRequest;
 import com.filmforest.crawler.dto.CrawlerScheduleUpsertRequest;
+import com.filmforest.crawler.dto.CrawlerSourceQueryPreview;
+import com.filmforest.crawler.dto.CrawlerSourceQueryPreviewRequest;
 import com.filmforest.crawler.entity.CrawlerJobItemFailure;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
@@ -20,10 +22,12 @@ import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
 import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerSourceCatalogService;
+import com.filmforest.crawler.service.CrawlerSourceQueryPreviewService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -43,6 +47,7 @@ public class CrawlerController {
     private final CrawlerSourceCatalogService sourceCatalogService;
     private final CrawlerScheduleDefinitionService scheduleDefinitionService;
     private final CrawlerItemFailureService itemFailureService;
+    private final CrawlerSourceQueryPreviewService sourceQueryPreviewService;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
@@ -50,12 +55,25 @@ public class CrawlerController {
                              CrawlerSourceCatalogService sourceCatalogService,
                              CrawlerScheduleDefinitionService scheduleDefinitionService,
                              CrawlerItemFailureService itemFailureService) {
+        this(scheduleService, operationsQueryService, taskLogMapper, sourceCatalogService,
+                scheduleDefinitionService, itemFailureService, null);
+    }
+
+    @Autowired
+    public CrawlerController(CrawlerScheduleService scheduleService,
+                             CrawlerOperationsQueryService operationsQueryService,
+                             CrawlerTaskLogMapper taskLogMapper,
+                             CrawlerSourceCatalogService sourceCatalogService,
+                             CrawlerScheduleDefinitionService scheduleDefinitionService,
+                             CrawlerItemFailureService itemFailureService,
+                             CrawlerSourceQueryPreviewService sourceQueryPreviewService) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
         this.taskLogMapper = taskLogMapper;
         this.sourceCatalogService = sourceCatalogService;
         this.scheduleDefinitionService = scheduleDefinitionService;
         this.itemFailureService = itemFailureService;
+        this.sourceQueryPreviewService = sourceQueryPreviewService;
     }
 
     /** 获取所有定时配置 */
@@ -203,6 +221,17 @@ public class CrawlerController {
     @GetMapping("/sources")
     public Result<List<CrawlerSourceDescriptor>> listSources() {
         return Result.ok(sourceCatalogService.listAvailableSources());
+    }
+
+    /** 仅验证来源查询并读取少量列表样本，不写内容、不创建 Job、不推进游标。 */
+    @PostMapping("/source-query/preview")
+    public Result<CrawlerSourceQueryPreview> previewSourceQuery(
+            @Valid @RequestBody CrawlerSourceQueryPreviewRequest request) {
+        try {
+            return Result.ok(sourceQueryPreviewService.preview(request));
+        } catch (IllegalArgumentException invalid) {
+            return Result.fail(400, invalid.getMessage());
+        }
     }
 
     /** 获取爬虫每日运行趋势（近7天） */

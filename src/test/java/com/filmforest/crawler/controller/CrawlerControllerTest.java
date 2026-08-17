@@ -13,6 +13,7 @@ import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerSourceCatalogService;
+import com.filmforest.crawler.service.CrawlerSourceQueryPreviewService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -75,6 +76,9 @@ class CrawlerControllerTest {
 
     @MockBean
     private CrawlerItemFailureService itemFailureService;
+
+    @MockBean
+    private CrawlerSourceQueryPreviewService sourceQueryPreviewService;
 
     // ========== TC-600: GET /api/crawler/schedules ==========
 

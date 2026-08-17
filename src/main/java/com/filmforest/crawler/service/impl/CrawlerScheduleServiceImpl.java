@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.common.exception.BusinessException;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
+import com.filmforest.crawler.entity.CrawlerConfigurationStatus;
+import com.filmforest.crawler.entity.CrawlerEndPolicy;
+import com.filmforest.crawler.entity.CrawlerSourceSort;
+import com.filmforest.crawler.entity.CrawlerTraversalMode;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTriggerType;
@@ -16,6 +20,8 @@ import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerScheduleGenreService;
 import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import com.filmforest.crawler.service.CrawlerTime;
+import com.filmforest.crawler.service.CrawlerQueryProfile;
+import com.filmforest.crawler.model.CrawlerSourceCapabilities;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -23,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
@@ -87,6 +94,15 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         schedule.setTimezone(scheduleDefinitionService.normalizeTimezone(schedule.getTimezone()));
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(schedule.getCrawlMode());
         schedule.setCrawlMode(crawlMode.getCode());
+        normalizeQueryFields(schedule, crawlMode);
+        CrawlerSourceCapabilities capabilities = sourceCatalogService.capabilities(
+                schedule.getAdapterCode(), schedule.getContentType());
+        String capabilityIssue = capabilityIssue(schedule, capabilities);
+        schedule.setConfigurationStatus(capabilityIssue == null
+                ? CrawlerConfigurationStatus.VALIDATED.getCode()
+                : CrawlerConfigurationStatus.NEEDS_REVIEW.getCode());
+        schedule.setConfigurationIssue(capabilityIssue);
+        schedule.setQueryProfileHash(CrawlerQueryProfile.hash(schedule));
         if (crawlMode == CrawlerCrawlMode.FULL || definition.cronExpression() == null) {
             schedule.setEnabled(0);
             schedule.setNextRunTime(null);
@@ -174,6 +190,10 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         if (enabled && CrawlerCrawlMode.fromCode(schedule.getCrawlMode()) == CrawlerCrawlMode.FULL) {
             return false;
         }
+        if (enabled && CrawlerConfigurationStatus.NEEDS_REVIEW.getCode()
+                .equals(schedule.getConfigurationStatus())) {
+            return false;
+        }
         schedule.setEnabled(enabled ? 1 : 0);
         if (enabled && schedule.getCronExpression() != null && !schedule.getCronExpression().isEmpty()) {
             schedule.setNextRunTime(computeNextRunTime(schedule));
@@ -205,6 +225,53 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
                     scheduleId, triggerType.getCode());
             return false;
         }
+    }
+
+    private void normalizeQueryFields(CrawlerSchedule schedule, CrawlerCrawlMode crawlMode) {
+        CrawlerSourceSort sort = CrawlerSourceSort.fromCode(
+                schedule.getSourceSort() == null ? schedule.getPriority() : schedule.getSourceSort());
+        schedule.setSourceSort(sort.getCode());
+        schedule.setSourceFilters(schedule.getSourceFilters() == null
+                ? Map.of() : schedule.getSourceFilters());
+        CrawlerTraversalMode traversal = crawlMode == CrawlerCrawlMode.FULL
+                ? CrawlerTraversalMode.MANUAL_FULL
+                : CrawlerSourceSort.TIME == sort
+                ? CrawlerTraversalMode.CONTINUOUS_SYNC
+                : CrawlerTraversalMode.BACKFILL_CONTINUE;
+        if (schedule.getTraversalMode() != null && !schedule.getTraversalMode().isBlank()) {
+            try {
+                traversal = CrawlerTraversalMode.valueOf(schedule.getTraversalMode().trim().toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                // 根据排序和抓取模式恢复确定性默认值。
+            }
+        }
+        schedule.setTraversalMode(traversal.getCode());
+        schedule.setEndPolicy(schedule.getEndPolicy() == null || schedule.getEndPolicy().isBlank()
+                ? CrawlerEndPolicy.HOLD_COMPLETED.getCode() : schedule.getEndPolicy());
+        int batch = schedule.getBatchSize() == null ? 10 : Math.max(1, schedule.getBatchSize());
+        schedule.setBatchSize(batch);
+        schedule.setNewItemLimit(schedule.getNewItemLimit() == null
+                ? batch : Math.max(1, schedule.getNewItemLimit()));
+        schedule.setBackfillItemLimit(schedule.getBackfillItemLimit() == null
+                ? batch : Math.max(1, schedule.getBackfillItemLimit()));
+        schedule.setManualRunLimit(schedule.getManualRunLimit() == null
+                ? Math.max(100, batch) : Math.max(1, schedule.getManualRunLimit()));
+        schedule.setRateLimitMs(schedule.getRateLimitMs() == null
+                ? 2000 : Math.max(2000, schedule.getRateLimitMs()));
+    }
+
+    private String capabilityIssue(CrawlerSchedule schedule, CrawlerSourceCapabilities capabilities) {
+        if (!capabilities.supportsSort(schedule.getSourceSort())) {
+            return "来源未声明支持排序：" + schedule.getSourceSort();
+        }
+        if (schedule.getSourceFilters() != null) {
+            for (String key : schedule.getSourceFilters().keySet()) {
+                if (!capabilities.supportsFilter(key)) {
+                    return "来源未声明支持筛选字段：" + key;
+                }
+            }
+        }
+        return null;
     }
 
     private CrawlerJobStartResult enqueueManual(Long scheduleId,

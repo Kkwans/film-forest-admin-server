@@ -11,7 +11,19 @@ public record CrawlExecutionSummary(
         int updated,
         int unchanged,
         int filtered,
-        int failed) {
+        int failed,
+        int pagesScanned,
+        int listItemsScanned,
+        int detailAttempted,
+        int cursorAdvanced,
+        int newItems,
+        int backfillItems) {
+
+    public CrawlExecutionSummary(int discovered, int fetchSucceeded, int parseSucceeded,
+                                 int added, int updated, int unchanged, int filtered, int failed) {
+        this(discovered, fetchSucceeded, parseSucceeded, added, updated, unchanged, filtered,
+                failed, 0, discovered, discovered, 0, 0, 0);
+    }
 
     public static CrawlExecutionSummary fromLegacyStats(int[] stats) {
         if (stats == null || stats.length < 3) {
@@ -25,6 +37,7 @@ public record CrawlExecutionSummary(
         int unchanged = stats.length > 7 ? stats[7] : 0;
         return new CrawlExecutionSummary(
                 discovered, fetchSucceeded, parseSucceeded,
-                stats[0], stats[1], unchanged, filtered, failed);
+                stats[0], stats[1], unchanged, filtered, failed,
+                0, discovered, discovered, 0, 0, 0);
     }
 }

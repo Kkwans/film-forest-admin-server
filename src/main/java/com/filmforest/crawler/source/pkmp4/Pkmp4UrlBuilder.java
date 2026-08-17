@@ -1,6 +1,8 @@
 package com.filmforest.crawler.source.pkmp4;
 
 import com.filmforest.common.type.ContentType;
+import com.filmforest.crawler.entity.CrawlerSourceSort;
+import com.filmforest.crawler.model.CrawlerSourceQuery;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -28,6 +30,13 @@ public class Pkmp4UrlBuilder {
         }
         String path = "/vt/" + typeCode + (page == 1 ? "" : "-" + page) + ".html";
         return BASE_URI.resolve(path);
+    }
+
+    public URI listUri(CrawlerSourceQuery query) {
+        if (query.sort() != CrawlerSourceSort.TIME || !query.sourceFilters().isEmpty()) {
+            throw new IllegalArgumentException("pkmp4 当前仅确认支持按时间分页，来源筛选参数尚未验证");
+        }
+        return listUri(query.contentType(), query.page());
     }
 
     public URI resolve(URI pageUri, String href) {

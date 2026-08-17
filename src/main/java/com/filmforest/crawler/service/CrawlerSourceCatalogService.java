@@ -7,11 +7,15 @@ import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerSourceBinding;
 import com.filmforest.crawler.mapper.CrawlerSourceBindingMapper;
 import com.filmforest.crawler.source.SourceAdapterRegistry;
+import com.filmforest.crawler.model.CrawlerSourceCapabilities;
+import com.filmforest.common.type.ContentType;
 import com.filmforest.resource.entity.ResourceSource;
 import com.filmforest.resource.mapper.ResourceSourceMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class CrawlerSourceCatalogService {
@@ -34,16 +38,24 @@ public class CrawlerSourceCatalogService {
                         .orderByAsc(ResourceSource::getSort)
                         .orderByAsc(ResourceSource::getId))
                 .stream()
-                .map(source -> new CrawlerSourceDescriptor(
-                        source.getId(), source.getCode(), source.getName(), source.getUrl(),
-                        bindingMapper.selectList(new LambdaQueryWrapper<CrawlerSourceBinding>()
+                .map(source -> {
+                    List<CrawlerSourceBinding> bindings = bindingMapper.selectList(new LambdaQueryWrapper<CrawlerSourceBinding>()
                                         .eq(CrawlerSourceBinding::getSourceId, source.getId())
                                         .eq(CrawlerSourceBinding::getEnabled, 1)
-                                        .orderByAsc(CrawlerSourceBinding::getContentType))
-                                .stream()
+                                        .orderByAsc(CrawlerSourceBinding::getContentType));
+                    Map<String, CrawlerSourceCapabilities> capabilities = new LinkedHashMap<>();
+                    bindings.forEach(binding -> {
+                        ContentType.fromValue(binding.getContentType()).ifPresent(type ->
+                                capabilities.put(type.value(), adapterRegistry.require(binding.getAdapterCode())
+                                        .capabilities(type)));
+                    });
+                    return new CrawlerSourceDescriptor(
+                        source.getId(), source.getCode(), source.getName(), source.getUrl(),
+                        bindings.stream()
                                 .map(binding -> new CrawlerAdapterDescriptor(
                                         binding.getAdapterCode(), binding.getContentType()))
-                                .toList()))
+                                .toList(), capabilities);
+                })
                 .filter(source -> !source.adapters().isEmpty())
                 .toList();
     }
@@ -70,5 +82,13 @@ public class CrawlerSourceCatalogService {
         }
         schedule.setAdapterCode(adapterCode);
         schedule.setSourceSite(adapterCode);
+    }
+
+    public CrawlerSourceCapabilities capabilities(String adapterCode, String contentType) {
+        ContentType type = "short".equals(contentType)
+                ? ContentType.SHORT_DRAMA
+                : ContentType.fromValue(contentType)
+                .orElseThrow(() -> new IllegalArgumentException("不支持的内容类型: " + contentType));
+        return adapterRegistry.require(adapterCode).capabilities(type);
     }
 }
