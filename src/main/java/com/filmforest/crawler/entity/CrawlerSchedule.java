@@ -45,7 +45,7 @@ public class CrawlerSchedule {
     private Integer rateLimitMs;
     /** 新契约字段；priority 仅保留兼容读取。 */
     private String sourceSort;
-    @TableField(typeHandler = JacksonTypeHandler.class)
+    @TableField(value = "source_filter_json", typeHandler = JacksonTypeHandler.class)
     private Map<String, String> sourceFilters;
     private String traversalMode;
     private String endPolicy;
