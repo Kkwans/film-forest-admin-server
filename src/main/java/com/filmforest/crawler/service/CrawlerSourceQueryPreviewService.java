@@ -39,6 +39,16 @@ public class CrawlerSourceQueryPreviewService {
         CrawlerSourceAdapter adapter = adapterRegistry.require(request.sourceCode());
         CrawlerSourceSort sort = CrawlerSourceSort.fromCode(request.sort());
         CrawlerSourceCapabilities capabilities = adapter.capabilities(contentType);
+        // 能力尚未通过真实来源页面验证时，先返回来源不可用，而不是把用户选择的
+        // 评分/热度误判成“明确不支持”。配置仍可保存为 NEEDS_REVIEW，待来源恢复后
+        // 再执行真实的排序和筛选能力校验。
+        if (!capabilities.verified()
+                || "CHALLENGE".equalsIgnoreCase(capabilities.availability())
+                || "UNAVAILABLE".equalsIgnoreCase(capabilities.availability())) {
+            return result("SOURCE_UNAVAILABLE", adapter, contentType, sort,
+                    null, capabilities.message() == null || capabilities.message().isBlank()
+                            ? "来源当前不可用，未写入数据或推进游标" : capabilities.message(), List.of());
+        }
         if (!capabilities.supportsSort(sort.getCode())) {
             return result("UNSUPPORTED", adapter, contentType, sort,
                     null, "来源未声明支持“" + sort.getCode() + "”排序", List.of());
