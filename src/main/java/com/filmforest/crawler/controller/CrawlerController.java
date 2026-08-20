@@ -12,12 +12,14 @@ import com.filmforest.crawler.dto.CrawlerScheduleUpsertRequest;
 import com.filmforest.crawler.dto.CrawlerSourceQueryPreview;
 import com.filmforest.crawler.dto.CrawlerSourceQueryPreviewRequest;
 import com.filmforest.crawler.entity.CrawlerJobItemFailure;
+import com.filmforest.crawler.entity.CrawlerJobItemSuccess;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerScheduleCursor;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerItemSuccessService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerTime;
@@ -49,6 +51,7 @@ public class CrawlerController {
     private final CrawlerSourceCatalogService sourceCatalogService;
     private final CrawlerScheduleDefinitionService scheduleDefinitionService;
     private final CrawlerItemFailureService itemFailureService;
+    private final CrawlerItemSuccessService itemSuccessService;
     private final CrawlerSourceQueryPreviewService sourceQueryPreviewService;
     private final CrawlerScheduleCursorService cursorService;
 
@@ -59,7 +62,7 @@ public class CrawlerController {
                              CrawlerScheduleDefinitionService scheduleDefinitionService,
                              CrawlerItemFailureService itemFailureService) {
         this(scheduleService, operationsQueryService, taskLogMapper, sourceCatalogService,
-                scheduleDefinitionService, itemFailureService, null);
+                scheduleDefinitionService, itemFailureService, null, null);
     }
 
     public CrawlerController(CrawlerScheduleService scheduleService,
@@ -70,7 +73,20 @@ public class CrawlerController {
                              CrawlerItemFailureService itemFailureService,
                              CrawlerSourceQueryPreviewService sourceQueryPreviewService) {
         this(scheduleService, operationsQueryService, taskLogMapper, sourceCatalogService,
-                scheduleDefinitionService, itemFailureService, sourceQueryPreviewService, null);
+                scheduleDefinitionService, itemFailureService, sourceQueryPreviewService, null, null);
+    }
+
+    public CrawlerController(CrawlerScheduleService scheduleService,
+                             CrawlerOperationsQueryService operationsQueryService,
+                             CrawlerTaskLogMapper taskLogMapper,
+                             CrawlerSourceCatalogService sourceCatalogService,
+                             CrawlerScheduleDefinitionService scheduleDefinitionService,
+                             CrawlerItemFailureService itemFailureService,
+                             CrawlerSourceQueryPreviewService sourceQueryPreviewService,
+                             CrawlerScheduleCursorService cursorService) {
+        this(scheduleService, operationsQueryService, taskLogMapper, sourceCatalogService,
+                scheduleDefinitionService, itemFailureService, sourceQueryPreviewService,
+                null, cursorService);
     }
 
     @Autowired
@@ -81,6 +97,7 @@ public class CrawlerController {
                              CrawlerScheduleDefinitionService scheduleDefinitionService,
                              CrawlerItemFailureService itemFailureService,
                              CrawlerSourceQueryPreviewService sourceQueryPreviewService,
+                             CrawlerItemSuccessService itemSuccessService,
                              CrawlerScheduleCursorService cursorService) {
         this.scheduleService = scheduleService;
         this.operationsQueryService = operationsQueryService;
@@ -88,6 +105,7 @@ public class CrawlerController {
         this.sourceCatalogService = sourceCatalogService;
         this.scheduleDefinitionService = scheduleDefinitionService;
         this.itemFailureService = itemFailureService;
+        this.itemSuccessService = itemSuccessService;
         this.sourceQueryPreviewService = sourceQueryPreviewService;
         this.cursorService = cursorService;
     }
@@ -184,6 +202,26 @@ public class CrawlerController {
         try {
             return Result.ok(itemFailureService.listFailures(
                     jobId, stage, category, retryExhausted, safePage, safeSize));
+        } catch (IllegalArgumentException invalid) {
+            return Result.fail(400, invalid.getMessage());
+        }
+    }
+
+    /** 查询单个 Job 成功处理的内容快照，结果严格限定在该 Job 内。 */
+    @GetMapping("/jobs/{jobId}/successes")
+    public Result<PageResult<CrawlerJobItemSuccess>> listJobSuccesses(
+            @PathVariable Long jobId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer size) {
+        if (jobId == null || jobId <= 0) {
+            return Result.fail(400, "jobId 必须为正整数");
+        }
+        if (taskLogMapper.selectById(jobId) == null) {
+            return Result.fail(404, "爬虫 Job 不存在");
+        }
+        try {
+            return Result.ok(itemSuccessService.listSuccesses(jobId, keyword, page, size));
         } catch (IllegalArgumentException invalid) {
             return Result.fail(400, invalid.getMessage());
         }

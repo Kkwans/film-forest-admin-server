@@ -25,6 +25,7 @@ import com.filmforest.crawler.service.CrawlExecutionSummary;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerItemSuccessService;
 import com.filmforest.crawler.service.CrawlerQueryProfile;
 import com.filmforest.crawler.service.CrawlerRecoveryRequiredException;
 import com.filmforest.crawler.service.CrawlerScheduleCursorService;
@@ -63,6 +64,7 @@ public class CrawlerCore {
     private final CrawlerGenreService genreService;
     private final CrawlerSourceItemService sourceItemService;
     private final CrawlerItemFailureService itemFailureService;
+    private final CrawlerItemSuccessService itemSuccessService;
     private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
     private final CrawlerScheduleCursorService cursorService;
@@ -80,7 +82,23 @@ public class CrawlerCore {
                        ObjectMapper objectMapper) {
         this(scheduleService, taskLogMapper, sourceAdapterRegistry, httpFetcher, contentPersistence,
                 genreService, sourceItemService, itemFailureService, executionProperties,
-                objectMapper, null);
+                objectMapper, null, null);
+    }
+
+    public CrawlerCore(CrawlerScheduleService scheduleService,
+                       CrawlerTaskLogMapper taskLogMapper,
+                       SourceAdapterRegistry sourceAdapterRegistry,
+                       HttpFetcher httpFetcher,
+                       CrawlerContentPersistence contentPersistence,
+                       CrawlerGenreService genreService,
+                       CrawlerSourceItemService sourceItemService,
+                       CrawlerItemFailureService itemFailureService,
+                       CrawlerExecutionProperties executionProperties,
+                       ObjectMapper objectMapper,
+                       CrawlerScheduleCursorService cursorService) {
+        this(scheduleService, taskLogMapper, sourceAdapterRegistry, httpFetcher, contentPersistence,
+                genreService, sourceItemService, itemFailureService, executionProperties,
+                objectMapper, null, cursorService);
     }
 
     @Autowired
@@ -94,6 +112,7 @@ public class CrawlerCore {
                        CrawlerItemFailureService itemFailureService,
                        CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper,
+                       CrawlerItemSuccessService itemSuccessService,
                        CrawlerScheduleCursorService cursorService) {
         this.scheduleService = scheduleService;
         this.taskLogMapper = taskLogMapper;
@@ -103,6 +122,7 @@ public class CrawlerCore {
         this.genreService = genreService;
         this.sourceItemService = sourceItemService;
         this.itemFailureService = itemFailureService;
+        this.itemSuccessService = itemSuccessService;
         this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
         this.cursorService = cursorService;
@@ -519,6 +539,8 @@ public class CrawlerCore {
             if ("parsed".equals(observation.previousParseStatus())
                     && observation.internalContentId() != null) {
                 stats.unchanged++;
+                recordItemSuccessExisting(adapter, contentType, item,
+                        observation.internalContentId());
                 return new ItemProcessingResult(ItemOutcome.UNCHANGED, "list-unchanged", true);
             }
         }
@@ -593,6 +615,8 @@ public class CrawlerCore {
                     SourceFingerprint.forCanonicalContent(contentType, parsed.title(), parsed.year()),
                     detailFingerprint);
             stats.unchanged++;
+            recordItemSuccessExisting(adapter, contentType, item,
+                    observation.internalContentId());
             return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
         }
         if (!matchesGenreFilter(resolvedGenres.names(), genreFilter)) {
@@ -618,6 +642,9 @@ public class CrawlerCore {
                 if (persisted.added()) stats.added++;
                 if (persisted.updated()) stats.updated++;
                 if (persisted.unchanged()) stats.unchanged++;
+                recordItemSuccess(adapter, contentType, item, parsed, resolvedGenres,
+                        internalContentId, persisted.added() ? "ADDED"
+                                : persisted.updated() ? "UPDATED" : "UNCHANGED");
                 return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
             } catch (RuntimeException persistenceFailure) {
                 boolean retryable = isRetryablePersistenceFailure(persistenceFailure);
@@ -659,6 +686,37 @@ public class CrawlerCore {
                     errorCategory, attempts, retryExhausted, diagnostic);
         } catch (RuntimeException recordFailure) {
             log.warn("Failed to record crawler item failure: jobId={}, source={}, externalId={}, error={}",
+                    jobId, adapter.sourceCode(), item.externalId(),
+                    recordFailure.getClass().getSimpleName());
+        }
+    }
+
+    private void recordItemSuccess(CrawlerSourceAdapter adapter, ContentType contentType,
+                                   SourceListItem item, ParsedContent parsed,
+                                   CrawlerGenreService.ResolvedGenres resolvedGenres,
+                                   long internalContentId, String resultType) {
+        Long jobId = executingJobId.get();
+        if (jobId == null || itemSuccessService == null) return;
+        try {
+            itemSuccessService.record(jobId, adapter.sourceCode(), contentType, item, parsed,
+                    resolvedGenres.names(), internalContentId, resultType);
+        } catch (RuntimeException recordFailure) {
+            log.warn("Failed to record crawler item success: jobId={}, source={}, externalId={}, error={}",
+                    jobId, adapter.sourceCode(), item.externalId(),
+                    recordFailure.getClass().getSimpleName());
+        }
+    }
+
+    private void recordItemSuccessExisting(CrawlerSourceAdapter adapter,
+                                            ContentType contentType, SourceListItem item,
+                                            long internalContentId) {
+        Long jobId = executingJobId.get();
+        if (jobId == null || itemSuccessService == null) return;
+        try {
+            itemSuccessService.recordExisting(jobId, adapter.sourceCode(), contentType, item,
+                    internalContentId);
+        } catch (RuntimeException recordFailure) {
+            log.warn("Failed to snapshot unchanged crawler item: jobId={}, source={}, externalId={}, error={}",
                     jobId, adapter.sourceCode(), item.externalId(),
                     recordFailure.getClass().getSimpleName());
         }

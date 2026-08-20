@@ -22,6 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.EnumMap;
+import java.time.LocalDate;
+import java.math.BigDecimal;
+import java.util.Map;
 
 @Service
 public class CrawlerContentPersistence {
@@ -91,6 +94,111 @@ public class CrawlerContentPersistence {
                     contentId, parsed.resources(), statuses);
         }
         return new PersistResult(contentId, identity.canonicalKey(), isNew, !isNew, false, resourceDiff);
+    }
+
+    /**
+     * 为列表指纹短路的成功条目读取当前内容快照，保证 Job 明细仍能展示可识别的信息。
+     * 该方法只读内容表，不触碰资源差异、题材关联或任何爬虫状态。
+     */
+    public ParsedContent snapshot(com.filmforest.common.type.ContentType contentType,
+                                  long contentId, String externalId, String sourceUrl) {
+        return switch (contentType) {
+            case MOVIE -> {
+                Movie item = movieService.getById(contentId);
+                yield item == null
+                        ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
+                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
+                        item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
+                        item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), item.getScoreRt(),
+                        null, externalId, sourceUrl);
+            }
+            case DRAMA -> {
+                Drama item = dramaService.getById(contentId);
+                yield item == null
+                        ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
+                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
+                        item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
+                        item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
+                        item.getTotalEpisode(), externalId, sourceUrl);
+            }
+            case VARIETY -> {
+                Variety item = varietyService.getById(contentId);
+                yield item == null
+                        ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
+                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
+                        item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
+                        item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
+                        item.getTotalEpisode(), externalId, sourceUrl);
+            }
+            case ANIME -> {
+                Anime item = animeService.getById(contentId);
+                yield item == null
+                        ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
+                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
+                        item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
+                        item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
+                        item.getTotalEpisode(), externalId, sourceUrl);
+            }
+            case SHORT_DRAMA -> {
+                ShortDrama item = shortDramaService.getById(contentId);
+                yield item == null
+                        ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
+                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
+                        item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
+                        item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
+                        item.getTotalEpisode(), externalId, sourceUrl);
+            }
+        };
+    }
+
+    private ParsedContent snapshot(com.filmforest.common.type.ContentType contentType,
+                                   String title, String posterUrl, Integer year,
+                                   String regions, String genres, String directors,
+                                   String writers, String actors, String languages,
+                                   Integer duration, String releaseDate, String aliases,
+                                   BigDecimal doubanScore, BigDecimal imdbScore,
+                                   BigDecimal rottenTomatoesScore, Integer totalEpisodes,
+                                   String externalId, String sourceUrl) {
+        return new ParsedContent(
+                externalId, contentType, sourceUrl,
+                title == null || title.isBlank() ? "内容" : title,
+                posterUrl, year, list(regions), list(genres), list(directors), list(writers),
+                list(actors), list(languages), duration, parseDate(releaseDate), releaseDate,
+                list(aliases), doubanScore, imdbScore, rottenTomatoesScore, null,
+                totalEpisodes, List.of(),
+                new com.filmforest.crawler.model.ParseDiagnostics(
+                        List.of(), List.of(), List.of(), null, Map.of()));
+    }
+
+    private ParsedContent emptySnapshot(com.filmforest.common.type.ContentType contentType,
+                                        long contentId, String externalId, String sourceUrl) {
+        return snapshot(contentType, "内容 #" + contentId, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
+                externalId, sourceUrl);
+    }
+
+    private List<String> list(String value) {
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            return objectMapper.readValue(value,
+                    objectMapper.getTypeFactory().constructCollectionType(List.class, String.class));
+        } catch (Exception ignored) {
+            return List.of(value);
+        }
+    }
+
+    private static LocalDate parseDate(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalDate.parse(value.trim().substring(0, Math.min(10, value.trim().length())));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private boolean persistMovie(long id, ParsedContent parsed, List<String> genres) {

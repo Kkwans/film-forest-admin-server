@@ -9,6 +9,7 @@ import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerItemSuccessService;
 import com.filmforest.crawler.service.CrawlerOperationsQueryService;
 import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerScheduleService;
@@ -77,6 +78,9 @@ class CrawlerControllerTest {
 
     @MockBean
     private CrawlerItemFailureService itemFailureService;
+
+    @MockBean
+    private CrawlerItemSuccessService itemSuccessService;
 
     @MockBean
     private CrawlerSourceQueryPreviewService sourceQueryPreviewService;

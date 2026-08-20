@@ -46,6 +46,18 @@ public class ResourceOnline {
     private String playbackType;     // HLS/VIDEO/EMBED/EXTERNAL_PAGE
     private Integer sort;
 
+    /** 管理端展示用关联内容摘要，不映射资源表字段。 */
+    @TableField(exist = false)
+    private String contentTitle;
+    @TableField(exist = false)
+    private String contentAlias;
+    @TableField(exist = false)
+    private String contentPosterUrl;
+    @TableField(exist = false)
+    private Integer contentYear;
+    @TableField(exist = false)
+    private String contentReleaseDate;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

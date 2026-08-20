@@ -2,6 +2,7 @@ package com.filmforest.resource.service.impl;
 
 import com.filmforest.common.type.ContentType;
 import com.filmforest.resource.dto.ResourcePageQuery;
+import com.filmforest.resource.dto.ResourceContentContext;
 import com.filmforest.resource.entity.ResourceAdminStatus;
 import com.filmforest.resource.entity.ResourceOnline;
 import com.filmforest.resource.entity.ResourceMagnet;
@@ -19,17 +20,27 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.LocalDateTime;
 import java.net.URI;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Collection;
 
 @Service
 public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, ResourceOnline>
         implements ResourceService {
+
+    private static final Logger log = LoggerFactory.getLogger(ResourceServiceImpl.class);
 
     private static final Set<String> SORT_FIELDS = Set.of(
             "createdAt", "updatedAt", "contentId", "title", "sort");
@@ -37,14 +48,23 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
     private final ResourceMagnetMapper magnetMapper;
     private final ResourceCloudMapper cloudMapper;
     private final ResourceSourceMapper sourceMapper;
+    private final JdbcTemplate jdbcTemplate;
 
     public ResourceServiceImpl(ResourceOnlineMapper onlineMapper,
                               ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper,
                               ResourceSourceMapper sourceMapper) {
+        this(onlineMapper, magnetMapper, cloudMapper, sourceMapper, null);
+    }
+
+    @Autowired
+    public ResourceServiceImpl(ResourceOnlineMapper onlineMapper,
+                              ResourceMagnetMapper magnetMapper, ResourceCloudMapper cloudMapper,
+                              ResourceSourceMapper sourceMapper, JdbcTemplate jdbcTemplate) {
         this.baseMapper = onlineMapper;
         this.magnetMapper = magnetMapper;
         this.cloudMapper = cloudMapper;
         this.sourceMapper = sourceMapper;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // ===== 在线资源 =====
@@ -75,7 +95,9 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                         .or().like(ResourceOnline::getSourceUrl, keyword));
         applyOnlineStatus(wrapper, ResourceAdminStatus.from(query.getStatus()));
         applyOnlineSort(wrapper, query);
-        return page(page, wrapper);
+        IPage<ResourceOnline> result = page(page, wrapper);
+        enrichOnline(result.getRecords());
+        return result;
     }
 
     @Override
@@ -232,7 +254,9 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                         .or().like(ResourceMagnet::getRawText, keyword));
         applyMagnetStatus(wrapper, ResourceAdminStatus.from(query.getStatus()));
         applyMagnetSort(wrapper, query);
-        return magnetMapper.selectPage(page, wrapper);
+        IPage<ResourceMagnet> result = magnetMapper.selectPage(page, wrapper);
+        enrichMagnets(result.getRecords());
+        return result;
     }
 
     @Override
@@ -320,7 +344,9 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                         .or().like(ResourceCloud::getRawText, keyword));
         applyCloudStatus(wrapper, ResourceAdminStatus.from(query.getStatus()));
         applyCloudSort(wrapper, query);
-        return cloudMapper.selectPage(page, wrapper);
+        IPage<ResourceCloud> result = cloudMapper.selectPage(page, wrapper);
+        enrichClouds(result.getRecords());
+        return result;
     }
 
     @Override
@@ -330,6 +356,102 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                 .set("enabled", enabled ? 1 : 0);
         if (enabled) update.set("removed_at", null);
         return cloudMapper.update(null, update) > 0;
+    }
+
+    /** 给管理端分页结果补齐关联内容摘要；失败时保留资源本身，不影响资源操作。 */
+    private void enrichOnline(Collection<ResourceOnline> records) {
+        Set<ContentRef> refs = records.stream()
+                .filter(item -> item.getContentId() != null)
+                .map(item -> new ContentRef(item.getContentType(), item.getContentId()))
+                .collect(java.util.stream.Collectors.toSet());
+        Map<ContentRef, ResourceContentContext> contexts = loadContentContexts(refs);
+        records.forEach(item -> apply(item, contexts.get(new ContentRef(item.getContentType(), item.getContentId()))));
+    }
+
+    private void enrichMagnets(Collection<ResourceMagnet> records) {
+        Set<ContentRef> refs = records.stream()
+                .filter(item -> item.getContentId() != null)
+                .map(item -> new ContentRef(item.getContentType(), item.getContentId()))
+                .collect(java.util.stream.Collectors.toSet());
+        Map<ContentRef, ResourceContentContext> contexts = loadContentContexts(refs);
+        records.forEach(item -> apply(item, contexts.get(new ContentRef(item.getContentType(), item.getContentId()))));
+    }
+
+    private void enrichClouds(Collection<ResourceCloud> records) {
+        Set<ContentRef> refs = records.stream()
+                .filter(item -> item.getContentId() != null)
+                .map(item -> new ContentRef(item.getContentType(), item.getContentId()))
+                .collect(java.util.stream.Collectors.toSet());
+        Map<ContentRef, ResourceContentContext> contexts = loadContentContexts(refs);
+        records.forEach(item -> apply(item, contexts.get(new ContentRef(item.getContentType(), item.getContentId()))));
+    }
+
+    private Map<ContentRef, ResourceContentContext> loadContentContexts(Collection<ContentRef> refs) {
+        Map<ContentRef, ResourceContentContext> result = new HashMap<>();
+        if (jdbcTemplate == null || refs.isEmpty()) return result;
+        Map<String, List<Long>> grouped = new HashMap<>();
+        refs.forEach(ref -> grouped.computeIfAbsent(ref.contentType(), ignored -> new ArrayList<>())
+                .add(ref.contentId()));
+        grouped.forEach((contentType, rawIds) -> {
+            String table = contentTable(contentType);
+            if (table == null) return;
+            List<Long> ids = rawIds.stream().distinct().toList();
+            String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+            String sql = "SELECT id, title, alias, poster_url, year, release_date FROM " + table
+                    + " WHERE is_deleted = 0 AND id IN (" + placeholders + ")";
+            try {
+                jdbcTemplate.query(sql, ids.toArray(), (rs, rowNum) -> {
+                    Object yearValue = rs.getObject("year");
+                    result.put(new ContentRef(contentType, rs.getLong("id")),
+                            new ResourceContentContext(rs.getString("title"),
+                                    rs.getString("alias"), rs.getString("poster_url"),
+                                    yearValue instanceof Number number ? number.intValue() : null,
+                                    rs.getString("release_date")));
+                    return null;
+                });
+            } catch (RuntimeException error) {
+                log.warn("加载资源关联内容摘要失败: contentType={}, count={}, error={}",
+                        contentType, ids.size(), error.getClass().getSimpleName());
+            }
+        });
+        return result;
+    }
+
+    private static String contentTable(String contentType) {
+        return switch (contentType) {
+            case "movie", "drama", "variety", "anime", "short_drama" -> contentType;
+            default -> null;
+        };
+    }
+
+    private static void apply(ResourceOnline resource, ResourceContentContext context) {
+        if (context == null) return;
+        resource.setContentTitle(context.title());
+        resource.setContentAlias(context.alias());
+        resource.setContentPosterUrl(context.posterUrl());
+        resource.setContentYear(context.year());
+        resource.setContentReleaseDate(context.releaseDate());
+    }
+
+    private static void apply(ResourceMagnet resource, ResourceContentContext context) {
+        if (context == null) return;
+        resource.setContentTitle(context.title());
+        resource.setContentAlias(context.alias());
+        resource.setContentPosterUrl(context.posterUrl());
+        resource.setContentYear(context.year());
+        resource.setContentReleaseDate(context.releaseDate());
+    }
+
+    private static void apply(ResourceCloud resource, ResourceContentContext context) {
+        if (context == null) return;
+        resource.setContentTitle(context.title());
+        resource.setContentAlias(context.alias());
+        resource.setContentPosterUrl(context.posterUrl());
+        resource.setContentYear(context.year());
+        resource.setContentReleaseDate(context.releaseDate());
+    }
+
+    private record ContentRef(String contentType, Long contentId) {
     }
 
     // ===== 资源来源 =====
