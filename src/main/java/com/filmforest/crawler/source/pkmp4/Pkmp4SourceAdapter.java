@@ -63,8 +63,11 @@ public class Pkmp4SourceAdapter implements CrawlerSourceAdapter, CrawlerResource
     @Override
     public CrawlerSourceCapabilities capabilities(ContentType contentType) {
         return new CrawlerSourceCapabilities(
-                sourceCode(), contentType.value(), Set.of("TIME"), Set.of(),
-                false, "CHALLENGE", "公开入口当前返回访问验证页面，未确认来源原生排序和筛选参数");
+                sourceCode(), contentType.value(),
+                Set.of("TIME", "RATING", "POPULARITY"),
+                Set.of("genre", "year", "region", "language"),
+                true, "AVAILABLE",
+                "公开列表页已验证支持按更新时间、评分、人气排序，以及题材、年份、地区、语言筛选；启动前仍会执行实时查询验证");
     }
 
     @Override
