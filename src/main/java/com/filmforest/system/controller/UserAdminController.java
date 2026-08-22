@@ -83,22 +83,23 @@ public class UserAdminController {
     @PostMapping
     @Transactional(rollbackFor = Exception.class)
     public Result<User> create(@Valid @RequestBody CreateUserRequest req) {
+        String username = req.getUsername().trim();
         // 检查用户名唯一
         Long count = userMapper.selectCount(
-            new LambdaQueryWrapper<User>().eq(User::getUsername, req.getUsername())
+            new LambdaQueryWrapper<User>().eq(User::getUsername, username)
         );
         if (count > 0) return Result.fail("用户名已存在");
 
         User user = new User();
-        user.setUsername(req.getUsername());
+        user.setUsername(username);
         user.setPasswordHash(passwordService.encode(req.getPassword()));
         user.setPasswordAlgorithm(PasswordAlgorithm.BCRYPT);
         user.setMustChangePassword(true);
-        user.setNickname(req.getNickname() != null ? req.getNickname() : req.getUsername());
+        user.setNickname(req.getNickname() != null ? req.getNickname() : username);
         user.setEmail(req.getEmail());
         user.setPhone(req.getPhone());
         user.setStatus(req.getStatus() != null ? req.getStatus() : 1);
-        user.setRole(UserRole.USER);
+        user.setRole(req.getRole() != null ? req.getRole() : UserRole.USER);
         userMapper.insert(user);
         defaultListProvisioner.createFor(user.getId());
 
@@ -109,15 +110,40 @@ public class UserAdminController {
 
     /** 更新用户信息（不含密码） */
     @PutMapping("/{id}")
-    public Result<User> update(@PathVariable Long id, @RequestBody UpdateUserRequest req) {
+    public Result<User> update(@PathVariable Long id, @Valid @RequestBody UpdateUserRequest req,
+                               HttpServletRequest request) {
         User user = userMapper.selectById(id);
         if (user == null) return Result.fail("用户不存在");
 
+        if (req.getUsername() != null && !req.getUsername().isBlank()) {
+            String username = req.getUsername().trim();
+            if (!username.equals(user.getUsername())) {
+                Long count = userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getUsername, username)
+                    .ne(User::getId, id));
+                if (count > 0) return Result.fail("用户名已存在");
+                user.setUsername(username);
+            }
+        }
         if (req.getNickname() != null) user.setNickname(req.getNickname());
         if (req.getEmail() != null) user.setEmail(req.getEmail());
         if (req.getPhone() != null) user.setPhone(req.getPhone());
         if (req.getAvatarUrl() != null) user.setAvatarUrl(req.getAvatarUrl());
         if (req.getStatus() != null) user.setStatus(req.getStatus());
+        if (req.getRole() != null && req.getRole() != user.getRole()) {
+            Long actorUserId = (Long) request.getAttribute("userId");
+            if (Objects.equals(actorUserId, id) && req.getRole() != UserRole.ADMIN) {
+                return Result.fail("不能取消当前登录账号的管理员权限");
+            }
+            if (user.getRole() == UserRole.ADMIN && req.getRole() == UserRole.USER) {
+                Long adminCount = userMapper.selectCount(new LambdaQueryWrapper<User>()
+                    .eq(User::getRole, UserRole.ADMIN));
+                if (adminCount != null && adminCount <= 1) {
+                    return Result.fail("系统至少需要保留一个管理员账号");
+                }
+            }
+            user.setRole(req.getRole());
+        }
 
         userMapper.updateById(user);
         user.setPasswordHash(null);
@@ -176,6 +202,7 @@ public class UserAdminController {
         private String email;
         private String phone;
         private Integer status;
+        private UserRole role;
 
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
@@ -189,15 +216,22 @@ public class UserAdminController {
         public void setPhone(String phone) { this.phone = phone; }
         public Integer getStatus() { return status; }
         public void setStatus(Integer status) { this.status = status; }
+        public UserRole getRole() { return role; }
+        public void setRole(UserRole role) { this.role = role; }
     }
 
     public static class UpdateUserRequest {
+        @Size(min = 3, max = 30, message = "用户名长度 3~30 位")
+        private String username;
         private String nickname;
         private String email;
         private String phone;
         private String avatarUrl;
         private Integer status;
+        private UserRole role;
 
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
         public String getNickname() { return nickname; }
         public void setNickname(String nickname) { this.nickname = nickname; }
         public String getEmail() { return email; }
@@ -208,6 +242,8 @@ public class UserAdminController {
         public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
         public Integer getStatus() { return status; }
         public void setStatus(Integer status) { this.status = status; }
+        public UserRole getRole() { return role; }
+        public void setRole(UserRole role) { this.role = role; }
     }
 
     public static class ResetPasswordRequest {

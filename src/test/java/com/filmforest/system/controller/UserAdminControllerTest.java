@@ -67,6 +67,42 @@ class UserAdminControllerTest {
         assertThat(user.getMustChangePassword()).isTrue();
     }
 
+    @Test
+    void updatesLoginUsernameAndRole() {
+        User user = user(8L);
+        user.setRole(UserRole.USER);
+        when(userMapper.selectById(8L)).thenReturn(user);
+        when(userMapper.selectCount(any())).thenReturn(0L);
+        UserAdminController.UpdateUserRequest request = new UserAdminController.UpdateUserRequest();
+        request.setUsername("operator");
+        request.setRole(UserRole.ADMIN);
+
+        UserAdminController.UpdateUserRequest body = request;
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        httpRequest.setAttribute("userId", 7L);
+        User result = controller.update(8L, body, httpRequest).getData();
+
+        assertThat(result.getUsername()).isEqualTo("operator");
+        assertThat(result.getRole()).isEqualTo(UserRole.ADMIN);
+        verify(userMapper).updateById(user);
+    }
+
+    @Test
+    void refusesSelfDemotion() {
+        User user = user(7L);
+        user.setRole(UserRole.ADMIN);
+        when(userMapper.selectById(7L)).thenReturn(user);
+        UserAdminController.UpdateUserRequest request = new UserAdminController.UpdateUserRequest();
+        request.setRole(UserRole.USER);
+        MockHttpServletRequest httpRequest = new MockHttpServletRequest();
+        httpRequest.setAttribute("userId", 7L);
+
+        var result = controller.update(7L, request, httpRequest);
+
+        assertThat(result.getCode()).isEqualTo(500);
+        assertThat(result.getMessage()).contains("当前登录账号");
+    }
+
     private User user(Long id) {
         User user = new User();
         user.setId(id);
