@@ -251,8 +251,8 @@ public class CrawlerCore {
                 items = recovered.items();
                 checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page, 0,
                         checkpoint.nextExternalId(), checkpoint.lastCommittedExternalId());
-                log.info("恢复分页锚点: scheduleId={}, page={}, anchor={}",
-                        scheduleId, page, anchorOf(checkpoint));
+                log.info("恢复分页锚点: jobId={}, scheduleId={}, page={}, anchor={}",
+                        executingJobId.get(), scheduleId, page, anchorOf(checkpoint));
             }
             if (items.isEmpty()) {
                 if (cursor != null && shouldHoldAtEnd(sourceSort, endPolicy)) {
@@ -390,8 +390,21 @@ public class CrawlerCore {
         return containsAnchor(checkpoint, items) ? new NearbyPage(page, items) : null;
     }
 
-    private static boolean anchorMissing(CrawlerCheckpoint checkpoint, List<SourceListItem> items) {
-        return hasAnchor(checkpoint) && !containsAnchor(checkpoint, items);
+    /**
+     * 只有在页内续爬时才需要校验锚点。
+     *
+     * 页处理完成后的检查点形如「nextPage=N+1、nextItemIndex=0、
+     * nextExternalId=null、lastCommittedExternalId=上一页最后一项」。
+     * 上一页最后一项不属于下一页，不能把它当作下一页的必需锚点，否则每次
+     * 翻页都会回到上一页恢复，形成无限恢复循环。
+     */
+    static boolean anchorMissing(CrawlerCheckpoint checkpoint, List<SourceListItem> items) {
+        if (checkpoint.nextExternalId() != null) {
+            return items.stream().noneMatch(item -> checkpoint.nextExternalId().equals(item.externalId()));
+        }
+        return checkpoint.nextItemIndex() > 0
+                && checkpoint.lastCommittedExternalId() != null
+                && items.stream().noneMatch(item -> checkpoint.lastCommittedExternalId().equals(item.externalId()));
     }
 
     private static boolean containsAnchor(CrawlerCheckpoint checkpoint, List<SourceListItem> items) {
@@ -401,10 +414,6 @@ public class CrawlerCore {
         }
         return checkpoint.lastCommittedExternalId() != null
                 && items.stream().anyMatch(item -> checkpoint.lastCommittedExternalId().equals(item.externalId()));
-    }
-
-    private static boolean hasAnchor(CrawlerCheckpoint checkpoint) {
-        return checkpoint.nextExternalId() != null || checkpoint.lastCommittedExternalId() != null;
     }
 
     private static String anchorOf(CrawlerCheckpoint checkpoint) {

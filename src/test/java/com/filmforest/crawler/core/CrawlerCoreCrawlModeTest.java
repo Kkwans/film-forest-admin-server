@@ -3,7 +3,9 @@ package com.filmforest.crawler.core;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
+import com.filmforest.crawler.entity.CrawlerCursorState;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerScheduleCursor;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.http.FetchCategory;
 import com.filmforest.crawler.http.FetchResult;
@@ -12,10 +14,12 @@ import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.model.ParseDiagnostics;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.CrawlerCheckpoint;
+import com.filmforest.crawler.model.CrawlerSourceQuery;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerScheduleCursorService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.SourceFingerprint;
 import com.filmforest.crawler.source.CrawlerSourceAdapter;
@@ -53,6 +57,7 @@ class CrawlerCoreCrawlModeTest {
     @Mock private CrawlerGenreService genres;
     @Mock private CrawlerSourceItemService sourceItems;
     @Mock private CrawlerItemFailureService itemFailures;
+    @Mock private CrawlerScheduleCursorService cursorService;
     @Mock private CrawlerSourceAdapter adapter;
 
     private CrawlerExecutionProperties properties;
@@ -64,7 +69,7 @@ class CrawlerCoreCrawlModeTest {
         properties.setLatestConsecutiveUnchanged(20);
         properties.setLatestRecentPages(2);
         crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
-                sourceItems, itemFailures, properties, new ObjectMapper());
+                sourceItems, itemFailures, properties, new ObjectMapper(), cursorService);
     }
 
     @Test
@@ -223,6 +228,80 @@ class CrawlerCoreCrawlModeTest {
                 throw new AssertionError(error);
             }
         });
+    }
+
+    @Test
+    void pageBoundaryCheckpointDoesNotTreatPreviousPageAsMissingAnchor() {
+        CrawlerCheckpoint checkpoint = new CrawlerCheckpoint(
+                CrawlerCheckpoint.CURRENT_VERSION, 2, 0, null, "last-page-item");
+
+        assertThat(CrawlerCore.anchorMissing(checkpoint, List.of(item("next-page-item"))))
+                .isFalse();
+    }
+
+    @Test
+    void inPageCheckpointStillRequiresNextItemAnchor() {
+        CrawlerCheckpoint checkpoint = new CrawlerCheckpoint(
+                CrawlerCheckpoint.CURRENT_VERSION, 2, 3, "resume-item", "last-page-item");
+
+        assertThat(CrawlerCore.anchorMissing(checkpoint, List.of(item("other-item"))))
+                .isTrue();
+    }
+
+    @Test
+    void cursorAtPageBoundaryContinuesToNextPageWithoutRecoveryLoop() {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(2);
+        schedule.setSourceSort("RATING");
+        schedule.setTraversalMode("BACKFILL_CONTINUE");
+        CrawlerTaskLog job = job("latest", 2);
+        job.setSourceSort("RATING");
+        job.setTraversalMode("BACKFILL_CONTINUE");
+        job.setQueryProfileHash("profile");
+
+        CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
+        cursor.setScheduleId(1L);
+        cursor.setProfileHash("profile");
+        cursor.setState("ACTIVE");
+        cursor.setNextPage(2);
+        cursor.setNextItemIndex(0);
+        cursor.setLastCommittedExternalId("last-page-item");
+
+        URI listTwo = URI.create("https://source.test/list/2?sort=rating");
+        URI listThree = URI.create("https://source.test/list/3?sort=rating");
+        SourceListItem next = item("next-page-item");
+        ParsedContent parsed = parsed(URI.create(next.sourceUrl()), next.externalId());
+        prepare(schedule, job, cancellation);
+        when(cursorService.prepare(schedule, job)).thenReturn(cursor);
+        when(adapter.listUri(any(CrawlerSourceQuery.class))).thenAnswer(invocation -> {
+            CrawlerSourceQuery query = invocation.getArgument(0);
+            return query.page() == 2 ? listTwo : listThree;
+        });
+        when(fetcher.fetch(eq(listTwo), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listTwo, "page-two"));
+        when(fetcher.fetch(eq(listThree), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listThree, "empty"));
+        when(adapter.parseList("page-two", listTwo)).thenReturn(List.of(next));
+        when(adapter.parseList("empty", listThree)).thenReturn(List.of());
+        when(sourceItems.observeListItem("pkmp4", ContentType.MOVIE, next))
+                .thenReturn(new CrawlerSourceItemService.Observation(
+                        null, false, true, null, null, "discovered"));
+        when(fetcher.fetch(eq(URI.create(next.sourceUrl())), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(URI.create(next.sourceUrl()), "detail"));
+        when(adapter.parseDetail(ContentType.MOVIE, "detail", URI.create(next.sourceUrl())))
+                .thenReturn(parsed);
+        CrawlerGenreService.ResolvedGenres resolved = new CrawlerGenreService.ResolvedGenres(List.of(), List.of());
+        when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
+        when(persistence.persist("pkmp4", parsed, resolved, null)).thenReturn(persisted(101L, "next"));
+
+        var summary = crawler.executeCrawl(1L, 9L, cancellation);
+
+        assertThat(summary.discovered()).isEqualTo(1);
+        assertThat(summary.added()).isEqualTo(1);
+        verify(fetcher, never()).fetch(eq(URI.create("https://source.test/list/1?sort=rating")),
+                anyMap(), anyInt(), same(cancellation));
+        verify(fetcher).fetch(eq(listTwo), anyMap(), anyInt(), same(cancellation));
+        verify(cursorService).mark(cursor, CrawlerCursorState.COMPLETE, null);
     }
 
     private void prepare(CrawlerSchedule schedule, CrawlerTaskLog job,
