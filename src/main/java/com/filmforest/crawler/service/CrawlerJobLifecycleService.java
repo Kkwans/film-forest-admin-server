@@ -13,6 +13,7 @@ import com.filmforest.crawler.core.CrawlerSourceUnavailableException;
 import com.filmforest.crawler.core.CrawlerSourceStructureException;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,6 +39,7 @@ public class CrawlerJobLifecycleService {
         this(scheduleMapper, jobMapper, coordinator, eventPublisher, null);
     }
 
+    @Autowired
     public CrawlerJobLifecycleService(CrawlerScheduleMapper scheduleMapper,
                                       CrawlerTaskLogMapper jobMapper,
                                       CrawlerJobCoordinator coordinator,
