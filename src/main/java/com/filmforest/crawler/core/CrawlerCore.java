@@ -27,6 +27,7 @@ import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
 import com.filmforest.crawler.service.CrawlerItemSuccessService;
+import com.filmforest.crawler.service.CrawlerProgressEventService;
 import com.filmforest.crawler.service.CrawlerQueryProfile;
 import com.filmforest.crawler.service.CrawlerRecoveryRequiredException;
 import com.filmforest.crawler.service.CrawlerScheduleCursorService;
@@ -69,6 +70,7 @@ public class CrawlerCore {
     private final CrawlerExecutionProperties executionProperties;
     private final ObjectMapper objectMapper;
     private final CrawlerScheduleCursorService cursorService;
+    private final CrawlerProgressEventService progressEvents;
     private final ThreadLocal<Long> executingJobId = new ThreadLocal<>();
 
     public CrawlerCore(CrawlerScheduleService scheduleService,
@@ -83,7 +85,7 @@ public class CrawlerCore {
                        ObjectMapper objectMapper) {
         this(scheduleService, taskLogMapper, sourceAdapterRegistry, httpFetcher, contentPersistence,
                 genreService, sourceItemService, itemFailureService, executionProperties,
-                objectMapper, null, null);
+                objectMapper, null, null, null);
     }
 
     public CrawlerCore(CrawlerScheduleService scheduleService,
@@ -99,7 +101,7 @@ public class CrawlerCore {
                        CrawlerScheduleCursorService cursorService) {
         this(scheduleService, taskLogMapper, sourceAdapterRegistry, httpFetcher, contentPersistence,
                 genreService, sourceItemService, itemFailureService, executionProperties,
-                objectMapper, null, cursorService);
+                objectMapper, null, cursorService, null);
     }
 
     @Autowired
@@ -114,7 +116,8 @@ public class CrawlerCore {
                        CrawlerExecutionProperties executionProperties,
                        ObjectMapper objectMapper,
                        CrawlerItemSuccessService itemSuccessService,
-                       CrawlerScheduleCursorService cursorService) {
+                       CrawlerScheduleCursorService cursorService,
+                       CrawlerProgressEventService progressEvents) {
         this.scheduleService = scheduleService;
         this.taskLogMapper = taskLogMapper;
         this.sourceAdapterRegistry = sourceAdapterRegistry;
@@ -127,6 +130,7 @@ public class CrawlerCore {
         this.executionProperties = executionProperties;
         this.objectMapper = objectMapper;
         this.cursorService = cursorService;
+        this.progressEvents = progressEvents;
     }
 
     public CrawlExecutionSummary executeCrawl(Long scheduleId, Long logId,
@@ -561,8 +565,16 @@ public class CrawlerCore {
         }
 
         stats.detailAttempted++;
-        FetchResult detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
-                rateLimitMs, cancellation);
+        FetchResult detailFetch;
+        if (httpFetcher.supportsProgressCallbacks()) {
+            detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
+                    rateLimitMs, cancellation, progress -> reportItemProgress(item, item.title(),
+                            "FETCHING", 10, progress.message()));
+        } else {
+            reportItemProgress(item, item.title(), "FETCHING", 10, "正在读取影片详情");
+            detailFetch = httpFetcher.fetch(URI.create(item.sourceUrl()), Map.of(),
+                    rateLimitMs, cancellation);
+        }
         if (detailFetch.category() == FetchCategory.CANCELLED) {
             return new ItemProcessingResult(ItemOutcome.CANCELLED, "cancelled", false);
         }
@@ -717,6 +729,7 @@ public class CrawlerCore {
         try {
             itemFailureService.record(jobId, adapter.sourceCode(), contentType, item, stage,
                     errorCategory, attempts, retryExhausted, diagnostic);
+            publishProgress("item-failed");
         } catch (RuntimeException recordFailure) {
             log.warn("Failed to record crawler item failure: jobId={}, source={}, externalId={}, error={}",
                     jobId, adapter.sourceCode(), item.externalId(),
@@ -795,6 +808,7 @@ public class CrawlerCore {
                     checkpointJson, stats.pagesScanned, stats.listItemsScanned,
                     stats.detailAttempted, stats.cursorAdvanced, stats.newItems,
                     stats.backfillItems, CrawlerTime.nowUtc());
+            publishProgress("progress");
         } catch (Exception error) {
             log.warn("Failed to update crawler progress: jobId={}, error={}",
                     jobId, error.getClass().getSimpleName());
@@ -823,9 +837,17 @@ public class CrawlerCore {
                     truncate(title == null || title.isBlank() ? item.title() : title, 200),
                     stage, Math.max(0, Math.min(100, percent)), truncate(message, 255),
                     CrawlerTime.nowUtc());
+            publishProgress("COMPLETED".equals(stage) ? "item-completed" : "progress");
         } catch (RuntimeException error) {
             log.debug("Failed to update visible crawler item progress: jobId={}, error={}",
                     jobId, error.getClass().getSimpleName());
+        }
+    }
+
+    private void publishProgress(String type) {
+        Long jobId = executingJobId.get();
+        if (progressEvents != null && jobId != null) {
+            progressEvents.publish(jobId, type);
         }
     }
 

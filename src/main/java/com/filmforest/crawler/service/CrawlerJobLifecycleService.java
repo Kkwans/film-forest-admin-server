@@ -29,15 +29,25 @@ public class CrawlerJobLifecycleService {
     private final CrawlerTaskLogMapper jobMapper;
     private final CrawlerJobCoordinator coordinator;
     private final ApplicationEventPublisher eventPublisher;
+    private final CrawlerProgressEventService progressEvents;
 
     public CrawlerJobLifecycleService(CrawlerScheduleMapper scheduleMapper,
                                       CrawlerTaskLogMapper jobMapper,
                                       CrawlerJobCoordinator coordinator,
                                       ApplicationEventPublisher eventPublisher) {
+        this(scheduleMapper, jobMapper, coordinator, eventPublisher, null);
+    }
+
+    public CrawlerJobLifecycleService(CrawlerScheduleMapper scheduleMapper,
+                                      CrawlerTaskLogMapper jobMapper,
+                                      CrawlerJobCoordinator coordinator,
+                                      ApplicationEventPublisher eventPublisher,
+                                      CrawlerProgressEventService progressEvents) {
         this.scheduleMapper = scheduleMapper;
         this.jobMapper = jobMapper;
         this.coordinator = coordinator;
         this.eventPublisher = eventPublisher;
+        this.progressEvents = progressEvents;
     }
 
     /**
@@ -145,6 +155,7 @@ public class CrawlerJobLifecycleService {
         }
 
         eventPublisher.publishEvent(new CrawlerJobQueuedEvent(job.getId()));
+        if (progressEvents != null) progressEvents.publish(job.getId(), "queued");
         return job;
     }
 
@@ -223,6 +234,7 @@ public class CrawlerJobLifecycleService {
         }
         jobMapper.updateById(job);
         scheduleMapper.recordJobFinished(job.getScheduleId(), summary.discovered());
+        if (progressEvents != null) progressEvents.publish(jobId, "terminal");
         eventPublisher.publishEvent(new CrawlerJobTerminalEvent(
                 job.getId(),
                 job.getScheduleId(),

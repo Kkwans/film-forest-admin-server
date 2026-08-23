@@ -27,12 +27,17 @@ import com.filmforest.crawler.service.CrawlerScheduleDefinitionService;
 import com.filmforest.crawler.service.CrawlerSourceCatalogService;
 import com.filmforest.crawler.service.CrawlerSourceQueryPreviewService;
 import com.filmforest.crawler.service.CrawlerScheduleCursorService;
+import com.filmforest.crawler.service.CrawlerProgressEventService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -54,6 +59,9 @@ public class CrawlerController {
     private final CrawlerItemSuccessService itemSuccessService;
     private final CrawlerSourceQueryPreviewService sourceQueryPreviewService;
     private final CrawlerScheduleCursorService cursorService;
+
+    @Autowired(required = false)
+    private CrawlerProgressEventService progressEvents;
 
     public CrawlerController(CrawlerScheduleService scheduleService,
                              CrawlerOperationsQueryService operationsQueryService,
@@ -233,11 +241,35 @@ public class CrawlerController {
         return Result.ok(taskLogMapper.selectActiveJobs());
     }
 
+    /** 认证后的单 Job 实时进度流；客户端断线后重新连接会先收到权威快照。 */
+    @GetMapping(value = "/jobs/{jobId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> streamJobEvents(@PathVariable Long jobId) {
+        if (progressEvents == null || jobId == null || jobId <= 0
+                || taskLogMapper.selectById(jobId) == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return stream(progressEvents.subscribeJob(jobId));
+    }
+
+    /** 认证后的所有活动 Job 实时进度流，用于运行任务页和配置页状态同步。 */
+    @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<SseEmitter> streamActiveJobEvents() {
+        if (progressEvents == null) return ResponseEntity.notFound().build();
+        return stream(progressEvents.subscribeAllJobs());
+    }
+
     /** 按 Job ID 请求取消；运行中 Job 会完成当前内容项后退出。 */
     @PostMapping("/jobs/{jobId}/cancel")
     public Result<Boolean> cancelJob(@PathVariable Long jobId) {
         log.info("请求取消爬虫 Job: jobId={}", jobId);
         return Result.ok(scheduleService.cancelJob(jobId));
+    }
+
+    private static ResponseEntity<SseEmitter> stream(SseEmitter emitter) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-transform")
+                .header("X-Accel-Buffering", "no")
+                .body(emitter);
     }
 
     /** 切换启用状态 */

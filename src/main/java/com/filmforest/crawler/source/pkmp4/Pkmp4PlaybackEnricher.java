@@ -59,11 +59,23 @@ public class Pkmp4PlaybackEnricher {
                 report(progress, onlineProcessed, onlineTotal, "在线播放页面地址无效");
                 continue;
             }
+            int currentIndex = onlineProcessed + 1;
+            int completedBeforeRequest = onlineProcessed;
             report(progress, onlineProcessed, onlineTotal,
-                    "正在解析在线播放 " + (onlineProcessed + 1) + "/" + onlineTotal);
-            FetchResult fetch = httpFetcher.fetch(pageUri,
-                    Map.of("Referer", parsed.sourceUrl()),
-                    Math.max(MIN_PLAYBACK_PAGE_DELAY_MS, rateLimitMs), cancellation);
+                    "正在解析在线播放 " + currentIndex + "/" + onlineTotal);
+            FetchResult fetch;
+            if (httpFetcher.supportsProgressCallbacks()) {
+                fetch = httpFetcher.fetch(pageUri,
+                        Map.of("Referer", parsed.sourceUrl()),
+                        Math.max(MIN_PLAYBACK_PAGE_DELAY_MS, rateLimitMs), cancellation,
+                        requestProgress -> report(progress, completedBeforeRequest, onlineTotal,
+                                "正在解析在线播放 " + currentIndex + "/" + onlineTotal + " · "
+                                        + requestProgress.message()));
+            } else {
+                fetch = httpFetcher.fetch(pageUri,
+                        Map.of("Referer", parsed.sourceUrl()),
+                        Math.max(MIN_PLAYBACK_PAGE_DELAY_MS, rateLimitMs), cancellation);
+            }
             onlineProcessed++;
             if (!fetch.successful()) {
                 partial = true;

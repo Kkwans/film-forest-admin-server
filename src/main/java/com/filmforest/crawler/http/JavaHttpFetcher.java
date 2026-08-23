@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 @Slf4j
 @Component
@@ -50,26 +51,49 @@ public class JavaHttpFetcher implements HttpFetcher {
     }
 
     @Override
+    public boolean supportsProgressCallbacks() {
+        return true;
+    }
+
+    @Override
     public FetchResult fetch(URI uri, Map<String, String> headers, int rateLimitMs,
                              AtomicBoolean cancellation, Set<String> sensitiveQueryParameters) {
+        return fetch(uri, headers, rateLimitMs, cancellation, sensitiveQueryParameters, progress -> { });
+    }
+
+    @Override
+    public FetchResult fetch(URI uri, Map<String, String> headers, int rateLimitMs,
+                             AtomicBoolean cancellation, Set<String> sensitiveQueryParameters,
+                             Consumer<FetchProgress> progress) {
         URI publicUri = redactUri(uri, sensitiveQueryParameters);
-        if (!sleepCancellable(Math.max(0, rateLimitMs), cancellation)) {
+        Consumer<FetchProgress> observer = progress == null ? ignored -> { } : progress;
+        int attempts = Math.max(1, properties.getMaxAttempts());
+        long waitingStarted = System.nanoTime();
+        emit(observer, 0, attempts, 0L, FetchProgressPhase.WAITING,
+                "等待来源请求间隔");
+        if (!sleepCancellable(Math.max(0, rateLimitMs), cancellation, observer,
+                0, attempts, waitingStarted, FetchProgressPhase.WAITING, "等待来源请求间隔")) {
             return cancelled(publicUri, 0L);
         }
 
-        int attempts = Math.max(1, properties.getMaxAttempts());
         FetchResult last = null;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             if (isCancelled(cancellation)) {
                 return cancelled(publicUri, last == null ? 0L : last.elapsedMs());
             }
-            last = fetchOnce(uri, publicUri, headers, cancellation, sensitiveQueryParameters)
+            emit(observer, attempt, attempts, 0L, FetchProgressPhase.REQUESTING,
+                    "正在请求来源详情（第 " + attempt + "/" + attempts + " 次）");
+            last = fetchOnce(uri, publicUri, headers, cancellation, sensitiveQueryParameters,
+                    observer, attempt, attempts)
                     .withAttemptCount(attempt);
             if (!last.retryable() || attempt == attempts) {
                 return last;
             }
             long delayMs = retryDelayMs(last, attempt);
-            if (!sleepCancellable(delayMs, cancellation)) {
+            long retryStarted = System.nanoTime();
+            if (!sleepCancellable(delayMs, cancellation, observer, attempt, attempts,
+                    retryStarted, FetchProgressPhase.RETRYING,
+                    "来源响应异常，等待重试（" + formatSeconds(delayMs) + "）")) {
                 return cancelled(publicUri, last.elapsedMs());
             }
         }
@@ -77,7 +101,8 @@ public class JavaHttpFetcher implements HttpFetcher {
     }
 
     private FetchResult fetchOnce(URI uri, URI publicUri, Map<String, String> headers,
-                                  AtomicBoolean cancellation, Set<String> sensitiveQueryParameters) {
+                                  AtomicBoolean cancellation, Set<String> sensitiveQueryParameters,
+                                  Consumer<FetchProgress> progress, int attempt, int maxAttempts) {
         long started = System.nanoTime();
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .GET()
@@ -89,7 +114,7 @@ public class JavaHttpFetcher implements HttpFetcher {
         CompletableFuture<HttpResponse<byte[]>> future = httpClient.sendAsync(
                 builder.build(), HttpResponse.BodyHandlers.ofByteArray());
         try {
-            HttpResponse<byte[]> response = await(future, cancellation);
+            HttpResponse<byte[]> response = await(future, cancellation, progress, attempt, maxAttempts, started);
             long elapsedMs = elapsedMs(started);
             if (response == null) {
                 return cancelled(publicUri, elapsedMs);
@@ -129,12 +154,21 @@ public class JavaHttpFetcher implements HttpFetcher {
     }
 
     private HttpResponse<byte[]> await(CompletableFuture<HttpResponse<byte[]>> future,
-                                       AtomicBoolean cancellation)
+                                       AtomicBoolean cancellation, Consumer<FetchProgress> progress,
+                                       int attempt, int maxAttempts, long started)
             throws InterruptedException, ExecutionException, TimeoutException {
+        long lastReportedAt = System.nanoTime();
         while (!future.isDone()) {
             if (isCancelled(cancellation)) {
                 future.cancel(true);
                 return null;
+            }
+            long now = System.nanoTime();
+            if (TimeUnit.NANOSECONDS.toMillis(now - lastReportedAt) >= 5_000L) {
+                long elapsed = elapsedMs(started);
+                emit(progress, attempt, maxAttempts, elapsed, FetchProgressPhase.WAITING,
+                        "来源请求仍在等待响应（已等待 " + formatSeconds(elapsed) + "）");
+                lastReportedAt = now;
             }
             try {
                 return future.get(100, TimeUnit.MILLISECONDS);
@@ -225,11 +259,20 @@ public class JavaHttpFetcher implements HttpFetcher {
         return builder.build();
     }
 
-    private static boolean sleepCancellable(long delayMs, AtomicBoolean cancellation) {
+    private static boolean sleepCancellable(long delayMs, AtomicBoolean cancellation,
+                                             Consumer<FetchProgress> progress, int attempt,
+                                             int maxAttempts, long started,
+                                             FetchProgressPhase phase, String message) {
         long remaining = delayMs;
+        long lastReportedAt = System.nanoTime();
         while (remaining > 0) {
             if (isCancelled(cancellation)) {
                 return false;
+            }
+            long now = System.nanoTime();
+            if (TimeUnit.NANOSECONDS.toMillis(now - lastReportedAt) >= 5_000L) {
+                emit(progress, attempt, maxAttempts, elapsedMs(started), phase, message);
+                lastReportedAt = now;
             }
             long slice = Math.min(remaining, 100L);
             try {
@@ -244,6 +287,20 @@ public class JavaHttpFetcher implements HttpFetcher {
             remaining -= slice;
         }
         return !isCancelled(cancellation);
+    }
+
+    private static void emit(Consumer<FetchProgress> progress, int attempt, int maxAttempts,
+                             long elapsedMs, FetchProgressPhase phase, String message) {
+        try {
+            progress.accept(new FetchProgress(attempt, maxAttempts, elapsedMs, phase, message));
+        } catch (RuntimeException callbackFailure) {
+            log.debug("Crawler request progress callback failed: {}",
+                    callbackFailure.getClass().getSimpleName());
+        }
+    }
+
+    private static String formatSeconds(long milliseconds) {
+        return Math.max(1L, milliseconds / 1_000L) + " 秒";
     }
 
     private static boolean isCancelled(AtomicBoolean cancellation) {

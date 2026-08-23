@@ -69,4 +69,17 @@ class JavaHttpFetcherTest {
         assertThat(redacted.toString()).contains("query=title", "api_key=REDACTED", "page=1");
         assertThat(redacted.toString()).doesNotContain("secret-value");
     }
+
+    @Test
+    void fetchProgressCarriesAttemptAndElapsedWaitForVisibleRequestState() {
+        HttpFetcher.FetchProgress progress = new HttpFetcher.FetchProgress(
+                2, 3, 7_500L, HttpFetcher.FetchProgressPhase.WAITING,
+                "来源请求仍在等待响应");
+
+        assertThat(progress.attempt()).isEqualTo(2);
+        assertThat(progress.maxAttempts()).isEqualTo(3);
+        assertThat(progress.elapsedMs()).isEqualTo(7_500L);
+        assertThat(progress.phase()).isEqualTo(HttpFetcher.FetchProgressPhase.WAITING);
+        assertThat(progress.message()).contains("等待");
+    }
 }
