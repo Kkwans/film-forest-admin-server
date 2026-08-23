@@ -6,6 +6,7 @@ import com.filmforest.common.dto.PageResult;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.content.dto.AdminContentItem;
 import com.filmforest.content.dto.ContentStatusBatchRequest;
+import com.filmforest.content.dto.ContentStatusBatchAllRequest;
 import com.filmforest.content.dto.ContentStatusBatchResult;
 import com.filmforest.content.dto.ContentStatusTarget;
 import com.filmforest.content.entity.*;
@@ -69,6 +70,18 @@ public class ContentController {
         ContentStatusBatchResult result = adminContentStatusService.updateStatuses(
                 request.items(), request.status());
         log.info("批量切换内容状态: requested={}, updated={}, status={}",
+                result.requested(), result.updated(), result.status());
+        return Result.ok(result);
+    }
+
+    /** 按当前列表筛选条件跨分页批量更新；不受当前页和 100 条单页上限限制。 */
+    @PostMapping("/status/batch-all")
+    @CacheEvict(value = {"stats", "genres"}, allEntries = true)
+    public Result<ContentStatusBatchResult> batchUpdateAllStatus(
+            @Valid @RequestBody ContentStatusBatchAllRequest request) {
+        ContentStatusBatchResult result = adminContentStatusService.updateAllStatuses(request);
+        log.info("按筛选条件批量切换内容状态: type={}, currentStatus={}, keyword={}, requested={}, updated={}, status={}",
+                request.type(), request.currentStatus(), request.keyword(),
                 result.requested(), result.updated(), result.status());
         return Result.ok(result);
     }

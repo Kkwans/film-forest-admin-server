@@ -3,6 +3,7 @@ package com.filmforest.content.service;
 import com.filmforest.common.exception.BusinessException;
 import com.filmforest.common.type.ContentType;
 import com.filmforest.content.dto.ContentStatusBatchResult;
+import com.filmforest.content.dto.ContentStatusBatchAllRequest;
 import com.filmforest.content.dto.ContentStatusTarget;
 import com.filmforest.content.model.ContentStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -63,6 +64,76 @@ public class AdminContentStatusService {
             updated += rows;
         }
         return new ContentStatusBatchResult(targets.size(), updated, status);
+    }
+
+    /**
+     * 按当前内容列表筛选条件跨分页更新状态。
+     * 筛选条件和更新在同一个事务中执行，避免前端逐页循环造成漏项或部分完成。
+     */
+    @Transactional
+    public ContentStatusBatchResult updateAllStatuses(ContentStatusBatchAllRequest request) {
+        if (request == null || request.targetStatus() == null
+                || !ContentStatus.isValid(request.targetStatus())) {
+            throw new IllegalArgumentException("状态只允许 0、1 或 2");
+        }
+        if (request.currentStatus() != null && !ContentStatus.isValid(request.currentStatus())) {
+            throw new IllegalArgumentException("筛选状态只允许 0、1 或 2");
+        }
+
+        List<ContentType> contentTypes = resolveTypes(request.type());
+        int requested = 0;
+        int updated = 0;
+        for (ContentType type : contentTypes) {
+            StringBuilder predicate = new StringBuilder(" WHERE is_deleted = 0");
+            List<Object> arguments = new ArrayList<>();
+            if (request.currentStatus() != null) {
+                predicate.append(" AND status = ?");
+                arguments.add(request.currentStatus());
+            }
+            predicate.append(" AND status <> ?");
+            arguments.add(request.targetStatus());
+            if (request.keyword() != null && !request.keyword().isBlank()) {
+                predicate.append(" AND (title LIKE ? OR CAST(alias AS CHAR) LIKE ?)");
+                String pattern = "%" + request.keyword().trim() + "%";
+                arguments.add(pattern);
+                arguments.add(pattern);
+            }
+
+            Integer matching = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM " + type.value() + predicate,
+                    Integer.class,
+                    arguments.toArray()
+            );
+            int count = matching == null ? 0 : matching;
+            requested += count;
+
+            if (count > 0) {
+                List<Object> updateArguments = new ArrayList<>();
+                updateArguments.add(request.targetStatus());
+                updateArguments.addAll(arguments);
+                int rows = jdbcTemplate.update(
+                        "UPDATE " + type.value()
+                                + " SET status = ?, updated_at = NOW()"
+                                + predicate,
+                        updateArguments.toArray()
+                );
+                if (rows != count) {
+                    throw new BusinessException(409, "内容状态在提交期间发生变化，请刷新后重试");
+                }
+                updated += rows;
+            }
+        }
+        return new ContentStatusBatchResult(requested, updated, request.targetStatus());
+    }
+
+    private List<ContentType> resolveTypes(String rawType) {
+        if (rawType == null || rawType.isBlank()) {
+            return List.of(ContentType.values());
+        }
+        String canonicalType = "short".equalsIgnoreCase(rawType.trim())
+                ? "short_drama" : rawType.trim().toLowerCase(Locale.ROOT);
+        return List.of(ContentType.fromValue(canonicalType)
+                .orElseThrow(() -> new IllegalArgumentException("不支持的内容类型: " + rawType)));
     }
 
     private Map<ContentType, LinkedHashSet<Long>> normalizeTargets(List<ContentStatusTarget> targets) {
