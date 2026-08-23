@@ -20,6 +20,21 @@ class CrawlerTaskLogMapperContractTest {
     }
 
     @Test
+    void itemProgressPulseUpdatesVisibleStageAndBusinessProgress() throws Exception {
+        String sql = updateSql("updateItemProgress", Long.class, String.class,
+                String.class, String.class, Integer.class, String.class, LocalDateTime.class);
+
+        assertThat(sql).contains(
+                "current_item_title = #{currentItemTitle}",
+                "current_stage = #{currentStage}",
+                "current_stage_progress = #{currentStageProgress}",
+                "current_stage_message = #{currentStageMessage}",
+                "heartbeat_at = #{now}",
+                "progress_updated_at = #{now}",
+                "status IN ('running', 'cancel_requested')");
+    }
+
+    @Test
     void stalledProgressRequestsSafeCancellationWithoutReleasingActiveScheduleLock() throws Exception {
         String sql = updateSql("requestProgressStalledCancellation",
                 Long.class, LocalDateTime.class);

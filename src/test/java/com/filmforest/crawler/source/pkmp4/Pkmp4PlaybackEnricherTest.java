@@ -15,6 +15,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -55,6 +56,32 @@ class Pkmp4PlaybackEnricherTest {
         assertThat(enriched.playbackType()).isEqualTo("HLS");
         verify(fetcher).fetch(eq(page), anyMap(),
                 eq(Pkmp4PlaybackEnricher.MIN_PLAYBACK_PAGE_DELAY_MS), same(cancellation));
+    }
+
+    @Test
+    void reportsProgressAroundEachPlaybackPageFetch() {
+        URI page = URI.create("https://www.pkmp4.xyz/py/42-1-1.html");
+        AtomicBoolean cancellation = new AtomicBoolean();
+        AtomicInteger progressPulses = new AtomicInteger();
+        HttpFetcher fetcher = mock(HttpFetcher.class);
+        when(fetcher.fetch(eq(page), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(new FetchResult(page, page, 200, "text/html",
+                        "<script>var player_aaaa={\"url\":\"https://cdn.example.test/42.m3u8\"}</script>",
+                        10, FetchCategory.SUCCESS, false, Map.of()));
+
+        ParsedResource resource = new ParsedResource(ParsedResource.Kind.ONLINE, "天堂 · HD",
+                page.toString(), null, null, null, false, false, 1, null, "HD", 0, "HD",
+                page.toString(), "EXTERNAL_PAGE");
+        ParsedContent parsed = new ParsedContent("42", ContentType.MOVIE,
+                "https://www.pkmp4.xyz/mv/42.html", "示例", null, 2024,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null,
+                null, null, List.of(), null, null, null, "简介", null, List.of(resource),
+                new ParseDiagnostics(List.of(), List.of(), List.of(), "fingerprint", Map.of()));
+
+        new Pkmp4PlaybackEnricher(new Pkmp4PlaybackPageParser(new ObjectMapper()))
+                .enrich(parsed, fetcher, 100, cancellation, progress -> progressPulses.incrementAndGet());
+
+        assertThat(progressPulses).hasValue(2);
     }
 
     @Test

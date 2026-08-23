@@ -143,6 +143,24 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
             """)
     int touchHeartbeat(@Param("jobId") Long jobId, @Param("now") LocalDateTime now);
 
+    @Update("""
+            UPDATE crawler_task_log
+            SET current_item = #{currentItem},
+                current_item_title = #{currentItemTitle},
+                current_stage = #{currentStage},
+                current_stage_progress = #{currentStageProgress},
+                current_stage_message = #{currentStageMessage},
+                heartbeat_at = #{now}, progress_updated_at = #{now}
+            WHERE id = #{jobId} AND status IN ('running', 'cancel_requested')
+            """)
+    int updateItemProgress(@Param("jobId") Long jobId,
+                           @Param("currentItem") String currentItem,
+                           @Param("currentItemTitle") String currentItemTitle,
+                           @Param("currentStage") String currentStage,
+                           @Param("currentStageProgress") Integer currentStageProgress,
+                           @Param("currentStageMessage") String currentStageMessage,
+                           @Param("now") LocalDateTime now);
+
     @Select("""
             SELECT id FROM crawler_task_log
             WHERE status IN ('running', 'cancel_requested')

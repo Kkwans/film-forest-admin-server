@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Component
@@ -86,6 +87,13 @@ public class Pkmp4SourceAdapter implements CrawlerSourceAdapter, CrawlerResource
     public ParsedContent enrichResources(ParsedContent parsed, HttpFetcher httpFetcher,
                                          int rateLimitMs, AtomicBoolean cancellation) {
         return playbackEnricher.enrich(parsed, httpFetcher, rateLimitMs, cancellation);
+    }
+
+    @Override
+    public ParsedContent enrichResources(ParsedContent parsed, HttpFetcher httpFetcher,
+                                         int rateLimitMs, AtomicBoolean cancellation,
+                                         Consumer<Progress> progress) {
+        return playbackEnricher.enrich(parsed, httpFetcher, rateLimitMs, cancellation, progress);
     }
 
     private void requirePageKind(String html, URI finalUri, Pkmp4PageClassifier.PageKind expected) {

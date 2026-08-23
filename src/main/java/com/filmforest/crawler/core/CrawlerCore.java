@@ -19,6 +19,7 @@ import com.filmforest.crawler.http.HttpFetcher;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.model.CrawlerCheckpoint;
 import com.filmforest.crawler.model.CrawlerSourceQuery;
+import com.filmforest.crawler.model.ParsedResource;
 import com.filmforest.crawler.model.ParsedContent;
 import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlExecutionSummary;
@@ -287,6 +288,7 @@ public class CrawlerCore {
                 CrawlerCheckpoint beforeItem = CrawlerCheckpoint.beforeItem(page, itemIndex,
                         item.externalId(), lastCommittedExternalId);
                 recordProgress(beforeItem, item.sourceUrl(), stats, cursor, false);
+                reportItemProgress(item, item.title(), "FETCHING", 10, "正在读取影片详情");
                 ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
                         genreFilter, cancellation, stats, observation,
                         crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
@@ -543,6 +545,8 @@ public class CrawlerCore {
                 && !observation.listChanged() && observation.previousDetailFingerprint() != null) {
             if ("filtered".equals(observation.previousParseStatus())) {
                 stats.filtered++;
+                reportItemProgress(item, item.title(), "COMPLETED", 100,
+                        "来源未变化，已按题材过滤");
                 return new ItemProcessingResult(ItemOutcome.FILTERED, "list-unchanged", true);
             }
             if ("parsed".equals(observation.previousParseStatus())
@@ -550,6 +554,8 @@ public class CrawlerCore {
                 stats.unchanged++;
                 recordItemSuccessExisting(adapter, contentType, item,
                         observation.internalContentId());
+                reportItemProgress(item, item.title(), "COMPLETED", 100,
+                        "来源未变化，内容未发生变化");
                 return new ItemProcessingResult(ItemOutcome.UNCHANGED, "list-unchanged", true);
             }
         }
@@ -581,8 +587,19 @@ public class CrawlerCore {
         ParsedContent parsed;
         try {
             parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
+            reportItemProgress(item, parsed.title(), "BASIC_INFO", 25, "基础信息解析完成");
+            reportResourceStage(item, parsed, ParsedResource.Kind.MAGNET,
+                    "MAGNET", 40, "磁力链接解析完成");
+            reportResourceStage(item, parsed, ParsedResource.Kind.CLOUD,
+                    "CLOUD", 55, "网盘资源解析完成");
             if (adapter instanceof CrawlerResourceEnricher enricher) {
-                parsed = enricher.enrichResources(parsed, httpFetcher, rateLimitMs, cancellation);
+                String parsedTitle = parsed.title();
+                if (hasResourceKind(parsed, ParsedResource.Kind.ONLINE)) {
+                    reportItemProgress(item, parsedTitle, "ONLINE", 65, "准备解析在线播放");
+                }
+                parsed = enricher.enrichResources(parsed, httpFetcher, rateLimitMs, cancellation,
+                        progress -> reportItemProgress(item, parsedTitle, progress.stage(),
+                                progress.percent(), progress.message()));
             }
         } catch (RuntimeException parseFailure) {
             stats.failed++;
@@ -615,6 +632,7 @@ public class CrawlerCore {
             sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
                     item.externalId(), detailFingerprint);
             stats.filtered++;
+            reportItemProgress(item, parsed.title(), "COMPLETED", 100, "解析完成，已按题材过滤");
             return new ItemProcessingResult(ItemOutcome.FILTERED, "detail-unchanged", true);
         }
         if (detailUnchanged && "parsed".equals(observation.previousParseStatus())
@@ -626,14 +644,17 @@ public class CrawlerCore {
             stats.unchanged++;
             recordItemSuccessExisting(adapter, contentType, item,
                     observation.internalContentId());
+            reportItemProgress(item, parsed.title(), "COMPLETED", 100, "解析完成，内容未发生变化");
             return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
         }
         if (!matchesGenreFilter(resolvedGenres.names(), genreFilter)) {
             sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
                     item.externalId(), detailFingerprint);
             stats.filtered++;
+            reportItemProgress(item, parsed.title(), "COMPLETED", 100, "解析完成，已按题材过滤");
             return new ItemProcessingResult(ItemOutcome.FILTERED, "filtered", detailUnchanged);
         }
+        reportItemProgress(item, parsed.title(), "SAVING", 92, "正在保存影片和资源");
         int maxPersistenceAttempts = Math.min(5, Math.max(1,
                 executionProperties.getItemPersistenceMaxAttempts()));
         for (int attempt = 1; attempt <= maxPersistenceAttempts; attempt++) {
@@ -654,6 +675,9 @@ public class CrawlerCore {
                 recordItemSuccess(adapter, contentType, item, parsed, resolvedGenres,
                         internalContentId, persisted.added() ? "ADDED"
                                 : persisted.updated() ? "UPDATED" : "UNCHANGED");
+                reportItemProgress(item, parsed.title(), "COMPLETED", 100,
+                        persisted.added() ? "影片新增完成"
+                                : persisted.updated() ? "影片更新完成" : "解析完成，内容未发生变化");
                 return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
             } catch (RuntimeException persistenceFailure) {
                 boolean retryable = isRetryablePersistenceFailure(persistenceFailure);
@@ -775,6 +799,39 @@ public class CrawlerCore {
             log.warn("Failed to update crawler progress: jobId={}, error={}",
                     jobId, error.getClass().getSimpleName());
         }
+    }
+
+    private void reportResourceStage(SourceListItem item, ParsedContent parsed,
+                                     ParsedResource.Kind kind,
+                                     String stage, int percent, String message) {
+        if (hasResourceKind(parsed, kind)) {
+            reportItemProgress(item, parsed.title(), stage, percent, message);
+        }
+    }
+
+    private static boolean hasResourceKind(ParsedContent parsed, ParsedResource.Kind kind) {
+        return parsed.resources() != null && parsed.resources().stream()
+                .anyMatch(resource -> resource.kind() == kind);
+    }
+
+    private void reportItemProgress(SourceListItem item, String title, String stage,
+                                    int percent, String message) {
+        Long jobId = executingJobId.get();
+        if (jobId == null) return;
+        try {
+            taskLogMapper.updateItemProgress(jobId, item.sourceUrl(),
+                    truncate(title == null || title.isBlank() ? item.title() : title, 200),
+                    stage, Math.max(0, Math.min(100, percent)), truncate(message, 255),
+                    CrawlerTime.nowUtc());
+        } catch (RuntimeException error) {
+            log.debug("Failed to update visible crawler item progress: jobId={}, error={}",
+                    jobId, error.getClass().getSimpleName());
+        }
+    }
+
+    private static String truncate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) return value;
+        return value.substring(0, Math.max(0, maxLength - 1)) + "…";
     }
 
     private CrawlerCheckpoint readCheckpoint(CrawlerTaskLog job) {

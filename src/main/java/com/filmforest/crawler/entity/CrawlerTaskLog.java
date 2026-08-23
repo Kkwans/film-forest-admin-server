@@ -34,6 +34,10 @@ public class CrawlerTaskLog {
     private Boolean cancelRequested;
     private Integer currentPage;
     private String currentItem;
+    private String currentItemTitle;
+    private String currentStage;
+    private Integer currentStageProgress;
+    private String currentStageMessage;
     private Integer discoveredCount;
     private Integer fetchSucceededCount;
     private Integer parseSucceededCount;
