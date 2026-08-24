@@ -147,6 +147,7 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
             UPDATE crawler_task_log
             SET current_item = #{currentItem},
                 current_item_title = #{currentItemTitle},
+                current_item_year = #{currentItemYear},
                 current_stage = #{currentStage},
                 current_stage_progress = #{currentStageProgress},
                 current_stage_message = #{currentStageMessage},
@@ -156,6 +157,7 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
     int updateItemProgress(@Param("jobId") Long jobId,
                            @Param("currentItem") String currentItem,
                            @Param("currentItemTitle") String currentItemTitle,
+                           @Param("currentItemYear") Integer currentItemYear,
                            @Param("currentStage") String currentStage,
                            @Param("currentStageProgress") Integer currentStageProgress,
                            @Param("currentStageMessage") String currentStageMessage,

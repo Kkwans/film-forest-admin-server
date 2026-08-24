@@ -35,6 +35,7 @@ public class CrawlerTaskLog {
     private Integer currentPage;
     private String currentItem;
     private String currentItemTitle;
+    private Integer currentItemYear;
     private String currentStage;
     private Integer currentStageProgress;
     private String currentStageMessage;

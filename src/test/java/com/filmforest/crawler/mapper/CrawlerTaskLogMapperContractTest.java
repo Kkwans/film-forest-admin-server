@@ -22,10 +22,12 @@ class CrawlerTaskLogMapperContractTest {
     @Test
     void itemProgressPulseUpdatesVisibleStageAndBusinessProgress() throws Exception {
         String sql = updateSql("updateItemProgress", Long.class, String.class,
-                String.class, String.class, Integer.class, String.class, LocalDateTime.class);
+                String.class, Integer.class, String.class, Integer.class, String.class,
+                LocalDateTime.class);
 
         assertThat(sql).contains(
                 "current_item_title = #{currentItemTitle}",
+                "current_item_year = #{currentItemYear}",
                 "current_stage = #{currentStage}",
                 "current_stage_progress = #{currentStageProgress}",
                 "current_stage_message = #{currentStageMessage}",
