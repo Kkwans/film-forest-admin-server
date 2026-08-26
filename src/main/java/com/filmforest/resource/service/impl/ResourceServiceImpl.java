@@ -92,6 +92,7 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                 .and(keyword != null, nested -> nested
                         .like(ResourceOnline::getEpisodeTitle, keyword)
                         .or().like(ResourceOnline::getSourceName, keyword)
+                        .or().like(ResourceOnline::getProviderName, keyword)
                         .or().like(ResourceOnline::getSourceUrl, keyword));
         applyOnlineStatus(wrapper, ResourceAdminStatus.from(query.getStatus()));
         applyOnlineSort(wrapper, query);
@@ -152,6 +153,7 @@ public class ResourceServiceImpl extends ServiceImpl<ResourceOnlineMapper, Resou
                     .set("episode_number", resource.getEpisodeNumber())
                     .set("episode_title", trimToNull(resource.getEpisodeTitle()))
                     .set("source_name", resource.getSourceName())
+                    .set("provider_name", trimToNull(resource.getProviderName()))
                     .set("source_url", resource.getSourceUrl())
                     .set("source_page_url", sourcePageUrl)
                     .set("playback_type", playbackType)

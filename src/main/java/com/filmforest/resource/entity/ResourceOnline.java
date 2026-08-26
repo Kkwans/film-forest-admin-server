@@ -39,6 +39,7 @@ public class ResourceOnline {
 
     @NotBlank(message = "来源名称不能为空")
     private String sourceName;       // 来源名称
+    private String providerName;     // 播放来源/线路名称（来源页动态提供）
     @NotBlank(message = "播放 URL 不能为空")
     private String sourceUrl;        // 播放URL
     @Size(max = 1000, message = "来源详情页 URL 不能超过 1000 个字符")

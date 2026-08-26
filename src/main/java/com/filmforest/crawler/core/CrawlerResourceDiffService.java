@@ -452,6 +452,8 @@ public class CrawlerResourceDiffService {
                 existing == null ? null : existing.getEpisodeTitle()));
         entity.setSourceName(firstNonBlank(limit(parsed.title(), 50),
                 existing == null ? null : existing.getSourceName()));
+        entity.setProviderName(firstNonBlank(limit(parsed.providerName(), 100),
+                existing == null ? null : existing.getProviderName()));
         entity.setSourceUrl(firstNonBlank(parsed.url(), existing == null ? null : existing.getSourceUrl()));
         entity.setSourcePageUrl(firstNonBlank(parsed.sourcePageUrl(),
                 existing == null ? null : existing.getSourcePageUrl()));
@@ -487,6 +489,7 @@ public class CrawlerResourceDiffService {
                 || !Objects.equals(existing.getEpisodeNumber(), candidate.getEpisodeNumber())
                 || !Objects.equals(existing.getEpisodeTitle(), candidate.getEpisodeTitle())
                 || !Objects.equals(existing.getSourceName(), candidate.getSourceName())
+                || !Objects.equals(existing.getProviderName(), candidate.getProviderName())
                 || !Objects.equals(existing.getSourceUrl(), candidate.getSourceUrl())
                 || !Objects.equals(existing.getSourcePageUrl(), candidate.getSourcePageUrl())
                 || !Objects.equals(existing.getPlaybackType(), candidate.getPlaybackType())

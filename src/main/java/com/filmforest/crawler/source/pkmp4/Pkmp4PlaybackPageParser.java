@@ -3,6 +3,7 @@ package com.filmforest.crawler.source.pkmp4;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +23,9 @@ public class Pkmp4PlaybackPageParser {
     }
 
     public Optional<PlaybackSource> parse(String html, URI pageUri) {
-        for (Element script : Jsoup.parse(html, pageUri.toString()).select("script")) {
+        Document document = Jsoup.parse(html, pageUri.toString());
+        String providerName = providerName(document, pageUri);
+        for (Element script : document.select("script")) {
             String data = script.data();
             int assignment = data.indexOf(ASSIGNMENT);
             if (assignment < 0) continue;
@@ -37,7 +40,7 @@ public class Pkmp4PlaybackPageParser {
                 if (!isSafePublicHttp(playbackUri)) return Optional.empty();
                 return Optional.of(new PlaybackSource(
                         playbackUri.toString(), playbackType(playbackUri),
-                        player.path("from").asText("")));
+                        player.path("from").asText(""), providerName));
             } catch (Exception invalidPlayerData) {
                 return Optional.empty();
             }
@@ -64,5 +67,51 @@ public class Pkmp4PlaybackPageParser {
                 && !host.equals("::1");
     }
 
-    public record PlaybackSource(String url, String playbackType, String providerCode) {}
+    private static String providerName(Document document, URI pageUri) {
+        for (Element group : document.select("ul.showplayul")) {
+            String provider = headingText(group.previousElementSibling());
+            if (provider.isBlank()) continue;
+            for (Element link : group.select("a[href]")) {
+                if (samePage(pageUri, resolve(pageUri, link.attr("href")))) {
+                    return provider;
+                }
+            }
+        }
+        for (Element link : document.select("ul.showplayul a.on")) {
+            Element group = link.closest("ul.showplayul");
+            String provider = headingText(group == null ? null : group.previousElementSibling());
+            if (!provider.isBlank()) return provider;
+        }
+        return null;
+    }
+
+    private static String headingText(Element heading) {
+        if (heading == null) return "";
+        Element label = heading.select("span").stream()
+                .filter(span -> !span.classNames().contains("right"))
+                .findFirst()
+                .orElse(null);
+        return label == null ? heading.ownText().trim() : label.text().trim();
+    }
+
+    private static URI resolve(URI base, String href) {
+        try {
+            return base.resolve(href);
+        } catch (RuntimeException invalid) {
+            return null;
+        }
+    }
+
+    private static boolean samePage(URI expected, URI actual) {
+        if (expected == null || actual == null) return false;
+        return expected.getPath() != null && expected.getPath().equals(actual.getPath())
+                && java.util.Objects.equals(expected.getRawQuery(), actual.getRawQuery());
+    }
+
+    public record PlaybackSource(String url, String playbackType, String providerCode,
+                                 String providerName) {
+        public PlaybackSource(String url, String playbackType, String providerCode) {
+            this(url, playbackType, providerCode, null);
+        }
+    }
 }

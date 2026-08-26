@@ -97,7 +97,8 @@ public class Pkmp4PlaybackEnricher {
                     resource.password(), resource.resolution(), resource.hasSubtitle(),
                     resource.specialSubtitle(), resource.season(), resource.episodeNumber(),
                     resource.episodeTitle(), resource.sourceOrder(), resource.rawText(),
-                pageUri.toString(), playback.get().playbackType()));
+                    pageUri.toString(), playback.get().playbackType(),
+                    firstNonBlank(playback.get().providerName(), resource.providerName())));
             report(progress, onlineProcessed, onlineTotal,
                     "在线播放解析完成 " + onlineProcessed + "/" + onlineTotal);
         }
@@ -130,5 +131,9 @@ public class Pkmp4PlaybackEnricher {
 
     private static boolean cancelled(AtomicBoolean cancellation) {
         return cancellation != null && cancellation.get();
+    }
+
+    private static String firstNonBlank(String preferred, String fallback) {
+        return preferred != null && !preferred.isBlank() ? preferred : fallback;
     }
 }

@@ -40,6 +40,7 @@ public interface ResourceOnlineMapper extends BaseMapper<ResourceOnline> {
               episode_number = COALESCE(#{resource.episodeNumber}, episode_number),
               episode_title = COALESCE(#{resource.episodeTitle}, episode_title),
               source_name = COALESCE(#{resource.sourceName}, source_name),
+              provider_name = COALESCE(#{resource.providerName}, provider_name),
               source_url = COALESCE(#{resource.sourceUrl}, source_url),
               source_page_url = COALESCE(#{resource.sourcePageUrl}, source_page_url),
               playback_type = COALESCE(#{resource.playbackType}, playback_type),

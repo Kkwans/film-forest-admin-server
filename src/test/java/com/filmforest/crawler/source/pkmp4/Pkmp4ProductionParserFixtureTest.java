@@ -107,6 +107,21 @@ class Pkmp4ProductionParserFixtureTest {
     }
 
     @Test
+    void resourceParserKeepsDynamicProviderSeparateFromEpisodeLabel() {
+        var document = Jsoup.parse("""
+                <div class="type"><span>动态源A</span><span class="right">高清</span></div>
+                <ul class="showplayul"><li><a href="/py/42-1-1.html">第1集</a></li></ul>
+                """, "https://www.pkmp4.xyz/mv/42.html");
+
+        var resource = resourceParser.parse(document,
+                        URI.create("https://www.pkmp4.xyz/mv/42.html")).stream()
+                .findFirst().orElseThrow();
+
+        assertThat(resource.title()).isEqualTo("第1集");
+        assertThat(resource.providerName()).isEqualTo("动态源A");
+    }
+
+    @Test
     void resourceParserKeepsUnknownCloudLinksAndExtractsQueryCode() {
         var document = Jsoup.parse("""
                 <p class="down-list3">

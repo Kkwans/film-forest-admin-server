@@ -101,14 +101,13 @@ public class Pkmp4ResourceParser {
             Element link = entry.getValue();
             String title = link.text().trim();
             String provider = providers.getOrDefault(entry.getKey(), "");
-            String sourceName = provider.isBlank() ? title : provider + " · " + title;
             String href = entry.getKey();
             URI resourceUri = finalUri.resolve(href);
             if (!resourceUri.getPath().startsWith("/py/")) continue;
-            resources.add(new ParsedResource(ParsedResource.Kind.ONLINE, sourceName,
+            resources.add(new ParsedResource(ParsedResource.Kind.ONLINE, title,
                     resourceUri.toString(), null, null, null, false, false,
                     season(title), episodeNumber(title), title, order++, title,
-                    resourceUri.toString(), "EXTERNAL_PAGE"));
+                    resourceUri.toString(), "EXTERNAL_PAGE", firstNonBlank(provider, null)));
         }
     }
 

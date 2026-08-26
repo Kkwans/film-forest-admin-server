@@ -74,6 +74,7 @@ public final class SourceFingerprint {
             digest.add(resource.episodeTitle());
             digest.add(resource.sourceOrder());
             digest.add(resource.rawText());
+            digest.add(resource.providerName());
         }
         return digest.hex();
     }
