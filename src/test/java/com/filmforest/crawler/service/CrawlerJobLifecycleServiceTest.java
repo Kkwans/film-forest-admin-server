@@ -94,17 +94,24 @@ class CrawlerJobLifecycleServiceTest {
     }
 
     @Test
-    @DisplayName("手动启动一个配置时不允许另一个配置的定时 Job 运行")
-    void enqueue_manualWhileAnotherScheduledRunning_shouldReject() {
+    @DisplayName("手动启动一个配置时取消另一个配置的定时 Job")
+    void enqueue_manualWhileAnotherScheduledRunning_shouldCancelOtherSchedule() {
         when(scheduleMapper.selectByIdForUpdate(2L)).thenReturn(schedule(2L));
         when(jobMapper.selectActiveByScheduleId(2L)).thenReturn(null);
         when(jobMapper.selectActiveManualJob()).thenReturn(null);
         when(jobMapper.selectActiveScheduledJob()).thenReturn(job(201L, 1L, "running"));
+        when(jobMapper.requestCancel(eq(201L), any(LocalDateTime.class))).thenReturn(1);
+        when(jobMapper.insert(any(CrawlerTaskLog.class))).thenAnswer(invocation -> {
+            invocation.<CrawlerTaskLog>getArgument(0).setId(204L);
+            return 1;
+        });
 
-        assertThat(lifecycleService.enqueue(2L, CrawlerTriggerType.MANUAL, null)).isNull();
+        CrawlerTaskLog created = lifecycleService.enqueueJob(2L, CrawlerTriggerType.MANUAL, null);
 
-        verify(jobMapper, never()).cancelQueuedScheduledJobsExcept(any(), any());
-        verify(jobMapper, never()).insert(any(CrawlerTaskLog.class));
+        assertThat(created.getScheduleId()).isEqualTo(2L);
+        verify(coordinator).requestCancellation(201L);
+        verify(jobMapper).cancelQueuedScheduledJobsExcept(eq(2L), any(LocalDateTime.class));
+        verify(jobMapper).insert(any(CrawlerTaskLog.class));
     }
 
     @Test

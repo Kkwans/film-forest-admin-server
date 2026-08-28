@@ -94,9 +94,19 @@ public class CrawlerJobLifecycleService {
         }
         CrawlerTaskLog activeManual = jobMapper.selectActiveManualJob();
         CrawlerTaskLog activeScheduled = jobMapper.selectActiveScheduledJob();
-        if (manualTrigger && (activeManual != null ||
-                (activeScheduled != null && !scheduleId.equals(activeScheduled.getScheduleId())))) {
+        if (manualTrigger && activeManual != null) {
             return null;
+        }
+        if (manualTrigger && activeScheduled != null
+                && !scheduleId.equals(activeScheduled.getScheduleId())) {
+            CrawlerStatus activeScheduledStatus = CrawlerStatus.fromCode(activeScheduled.getStatus());
+            if (activeScheduledStatus == null
+                    || jobMapper.requestCancel(activeScheduled.getId(), now) <= 0) {
+                return null;
+            }
+            if (activeScheduledStatus != CrawlerStatus.QUEUED) {
+                coordinator.requestCancellation(activeScheduled.getId());
+            }
         }
         if (triggerType == CrawlerTriggerType.SCHEDULED
                 && (activeManual != null || activeScheduled != null)) {
