@@ -94,6 +94,54 @@ class CrawlerJobLifecycleServiceTest {
     }
 
     @Test
+    @DisplayName("手动启动一个配置时不允许另一个配置的定时 Job 运行")
+    void enqueue_manualWhileAnotherScheduledRunning_shouldReject() {
+        when(scheduleMapper.selectByIdForUpdate(2L)).thenReturn(schedule(2L));
+        when(jobMapper.selectActiveByScheduleId(2L)).thenReturn(null);
+        when(jobMapper.selectActiveManualJob()).thenReturn(null);
+        when(jobMapper.selectActiveScheduledJob()).thenReturn(job(201L, 1L, "running"));
+
+        assertThat(lifecycleService.enqueue(2L, CrawlerTriggerType.MANUAL, null)).isNull();
+
+        verify(jobMapper, never()).cancelQueuedScheduledJobsExcept(any(), any());
+        verify(jobMapper, never()).insert(any(CrawlerTaskLog.class));
+    }
+
+    @Test
+    @DisplayName("手动启动会清理其他配置遗留的定时排队 Job，并只创建选中的配置")
+    void enqueue_manual_shouldCancelOtherQueuedSchedules() {
+        when(scheduleMapper.selectByIdForUpdate(2L)).thenReturn(schedule(2L));
+        when(jobMapper.selectActiveByScheduleId(2L)).thenReturn(null);
+        when(jobMapper.selectActiveManualJob()).thenReturn(null);
+        when(jobMapper.selectActiveScheduledJob()).thenReturn(null);
+        when(jobMapper.insert(any(CrawlerTaskLog.class))).thenAnswer(invocation -> {
+            invocation.<CrawlerTaskLog>getArgument(0).setId(202L);
+            return 1;
+        });
+
+        CrawlerTaskLog created = lifecycleService.enqueueJob(2L, CrawlerTriggerType.MANUAL, null);
+
+        assertThat(created.getScheduleId()).isEqualTo(2L);
+        verify(jobMapper).cancelQueuedScheduledJobsExcept(eq(2L), any(LocalDateTime.class));
+        ArgumentCaptor<CrawlerTaskLog> captor = ArgumentCaptor.forClass(CrawlerTaskLog.class);
+        verify(jobMapper).insert(captor.capture());
+        assertThat(captor.getValue().getScheduleId()).isEqualTo(2L);
+    }
+
+    @Test
+    @DisplayName("已有手动 Job 时跳过所有定时触发")
+    void enqueue_scheduledWhileManualActive_shouldReject() {
+        when(scheduleMapper.selectByIdForUpdate(2L)).thenReturn(schedule(2L));
+        when(jobMapper.selectActiveByScheduleId(2L)).thenReturn(null);
+        when(jobMapper.selectActiveManualJob()).thenReturn(job(203L, 1L, "queued"));
+        when(jobMapper.selectActiveScheduledJob()).thenReturn(null);
+
+        assertThat(lifecycleService.enqueue(2L, CrawlerTriggerType.SCHEDULED, null)).isNull();
+
+        verify(jobMapper, never()).insert(any(CrawlerTaskLog.class));
+    }
+
+    @Test
     @DisplayName("定时触发在锁内发现 Schedule 已禁用时不创建 Job")
     void enqueue_scheduledTriggerDisabledAfterSelection_shouldReject() {
         CrawlerSchedule schedule = schedule(1L);

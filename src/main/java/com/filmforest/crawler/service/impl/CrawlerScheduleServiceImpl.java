@@ -305,6 +305,13 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         if (taskLogMapper.selectActiveByScheduleId(scheduleId) != null) {
             throw new BusinessException(409, "该爬虫配置已有活动 Job，不能重复启动");
         }
+        if (taskLogMapper.selectActiveManualJob() != null) {
+            throw new BusinessException(409, "已有手动或重试 Job 正在运行或排队，请等待其完成");
+        }
+        CrawlerTaskLog activeScheduled = taskLogMapper.selectActiveScheduledJob();
+        if (activeScheduled != null && !scheduleId.equals(activeScheduled.getScheduleId())) {
+            throw new BusinessException(409, "另一个爬虫配置的定时 Job 正在运行，请先等待其完成");
+        }
         throw new BusinessException(409, "爬虫 Job 启动冲突，请稍后重试");
     }
 

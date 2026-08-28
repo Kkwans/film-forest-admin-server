@@ -67,11 +67,43 @@ public class CrawlerJobLifecycleService {
      */
     @Transactional
     public CrawlerTaskLog enqueueJob(Long scheduleId, CrawlerTriggerType triggerType, Long retryOfJobId) {
+        try (CrawlerJobCoordinator.LaunchLock ignored = coordinator.acquireLaunchLock()) {
+            return enqueueJobLocked(scheduleId, triggerType, retryOfJobId);
+        }
+    }
+
+    private CrawlerTaskLog enqueueJobLocked(Long scheduleId, CrawlerTriggerType triggerType,
+                                             Long retryOfJobId) {
         CrawlerSchedule schedule = scheduleMapper.selectByIdForUpdate(scheduleId);
         LocalDateTime now = CrawlerTime.nowUtc();
-        if (schedule == null || !isScheduledTriggerStillDue(schedule, triggerType, now)
-                || jobMapper.selectActiveByScheduleId(scheduleId) != null) {
+        if (schedule == null || !isScheduledTriggerStillDue(schedule, triggerType, now)) {
             return null;
+        }
+        boolean manualTrigger = triggerType == CrawlerTriggerType.MANUAL
+                || triggerType == CrawlerTriggerType.RETRY;
+        CrawlerTaskLog targetActive = jobMapper.selectActiveByScheduleId(scheduleId);
+        if (targetActive != null) {
+            CrawlerStatus targetStatus = CrawlerStatus.fromCode(targetActive.getStatus());
+            boolean replaceQueuedSchedule = manualTrigger
+                    && CrawlerTriggerType.SCHEDULED.getCode().equals(targetActive.getTriggerType())
+                    && targetStatus == CrawlerStatus.QUEUED;
+            if (!replaceQueuedSchedule
+                    || jobMapper.requestCancel(targetActive.getId(), now) <= 0) {
+                return null;
+            }
+        }
+        CrawlerTaskLog activeManual = jobMapper.selectActiveManualJob();
+        CrawlerTaskLog activeScheduled = jobMapper.selectActiveScheduledJob();
+        if (manualTrigger && (activeManual != null ||
+                (activeScheduled != null && !scheduleId.equals(activeScheduled.getScheduleId())))) {
+            return null;
+        }
+        if (triggerType == CrawlerTriggerType.SCHEDULED
+                && (activeManual != null || activeScheduled != null)) {
+            return null;
+        }
+        if (manualTrigger) {
+            jobMapper.cancelQueuedScheduledJobsExcept(scheduleId, now);
         }
         if (CrawlerConfigurationStatus.NEEDS_REVIEW.getCode()
                 .equals(schedule.getConfigurationStatus())) {
@@ -115,8 +147,7 @@ public class CrawlerJobLifecycleService {
                     : CrawlerTraversalMode.BACKFILL_CONTINUE.getCode();
         }
         job.setTraversalMode(traversal);
-        job.setQueryProfileHash(schedule.getQueryProfileHash() == null
-                ? CrawlerQueryProfile.hash(schedule) : schedule.getQueryProfileHash());
+        job.setQueryProfileHash(CrawlerQueryProfile.cursorHash(schedule));
         job.setQuerySnapshot(CrawlerQueryProfile.snapshot(schedule));
         job.setSourceFilterSnapshot(CrawlerQueryProfile.filterSnapshot(schedule));
         job.setConfigSnapshot(CrawlerQueryProfile.canonical(schedule));

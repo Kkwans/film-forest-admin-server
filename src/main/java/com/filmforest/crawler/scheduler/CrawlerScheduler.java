@@ -3,6 +3,8 @@ package com.filmforest.crawler.scheduler;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
+import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
+import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerTime;
 import lombok.extern.slf4j.Slf4j;
@@ -21,11 +23,14 @@ public class CrawlerScheduler {
 
     private final CrawlerScheduleMapper scheduleMapper;
     private final CrawlerScheduleService scheduleService;
+    private final CrawlerTaskLogMapper jobMapper;
 
     public CrawlerScheduler(CrawlerScheduleMapper scheduleMapper,
-                            CrawlerScheduleService scheduleService) {
+                            CrawlerScheduleService scheduleService,
+                            CrawlerTaskLogMapper jobMapper) {
         this.scheduleMapper = scheduleMapper;
         this.scheduleService = scheduleService;
+        this.jobMapper = jobMapper;
     }
 
     @Scheduled(fixedRateString = "${app.crawler.schedule-check-interval-ms:60000}")
@@ -37,6 +42,11 @@ public class CrawlerScheduler {
                         .isNotNull(CrawlerSchedule::getNextRunTime)
                         .le(CrawlerSchedule::getNextRunTime, now)
                         .orderByAsc(CrawlerSchedule::getNextRunTime));
+
+        if (jobMapper.selectActiveManualJob() != null) {
+            log.debug("已有手动或重试 Job 活动，跳过本轮定时调度");
+            return;
+        }
 
         for (CrawlerSchedule schedule : dueSchedules) {
             if (!Integer.valueOf(1).equals(schedule.getEnabled())

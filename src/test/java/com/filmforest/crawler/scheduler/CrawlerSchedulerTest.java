@@ -4,6 +4,7 @@ import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.config.CrawlerExecutionConfiguration;
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.mapper.CrawlerScheduleMapper;
+import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerTime;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,9 @@ class CrawlerSchedulerTest {
 
     @Mock
     private CrawlerScheduleService scheduleService;
+
+    @Mock
+    private CrawlerTaskLogMapper jobMapper;
 
     // ========== TC-500: 5段 cron 正常触发 ==========
 
@@ -179,6 +183,42 @@ class CrawlerSchedulerTest {
             scheduler.checkAndTriggerSchedules();
 
             verify(scheduleService).startScheduledCrawler(7L);
+        }
+
+        @Test
+        @DisplayName("无手动 Job 时定时配置仍按各自规则触发")
+        void checkAndTriggerSchedules_shouldStartDueSchedules() {
+            CrawlerSchedule first = new CrawlerSchedule();
+            first.setId(7L);
+            first.setEnabled(1);
+            first.setNextRunTime(CrawlerTime.nowUtc().minusSeconds(2));
+            CrawlerSchedule second = new CrawlerSchedule();
+            second.setId(8L);
+            second.setEnabled(1);
+            second.setNextRunTime(CrawlerTime.nowUtc().minusSeconds(1));
+            when(scheduleMapper.selectList(any())).thenReturn(List.of(first, second));
+            when(scheduleService.startScheduledCrawler(7L)).thenReturn(true);
+            when(scheduleService.startScheduledCrawler(8L)).thenReturn(true);
+
+            scheduler.checkAndTriggerSchedules();
+
+            verify(scheduleService).startScheduledCrawler(7L);
+            verify(scheduleService).startScheduledCrawler(8L);
+        }
+
+        @Test
+        @DisplayName("已有活动 Job 时本轮不触发任何定时配置")
+        void checkAndTriggerSchedules_shouldSkipWhenAnyJobActive() {
+            CrawlerSchedule due = new CrawlerSchedule();
+            due.setId(9L);
+            due.setEnabled(1);
+            due.setNextRunTime(CrawlerTime.nowUtc().minusSeconds(1));
+            when(scheduleMapper.selectList(any())).thenReturn(List.of(due));
+            when(jobMapper.selectActiveManualJob()).thenReturn(new com.filmforest.crawler.entity.CrawlerTaskLog());
+
+            scheduler.checkAndTriggerSchedules();
+
+            verify(scheduleService, never()).startScheduledCrawler(any());
         }
     }
 }

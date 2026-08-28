@@ -42,7 +42,7 @@ public class Pkmp4ResourceParser {
     private static final Pattern UPDATED_EPISODE = Pattern.compile("更新至\\s*(\\d+)\\s*集");
     private static final Pattern SEASON = Pattern.compile("(?:第\\s*(\\d+)\\s*季|(?i:S)0*(\\d+))");
     private static final Pattern RESOURCE_SIZE = Pattern.compile(
-            "(?iu)(?:^|[\\[\\(\\s])([0-9]+(?:[.,][0-9]+)?)\\s*(B|KB|K|MB|M|GB|G|TB|T)(?=$|[\\]\\)\\s])");
+            "(?iu)(?:^|[^0-9A-Za-z])([0-9]+(?:[.,][0-9]+)?)\\s*(B|KB|MB|M|GB|G|TB|T)(?=$|[^A-Za-z])");
 
     public List<ParsedResource> parse(Document document, URI finalUri) {
         List<ParsedResource> resources = new ArrayList<>();

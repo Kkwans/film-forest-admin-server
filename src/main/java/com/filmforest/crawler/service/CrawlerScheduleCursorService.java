@@ -38,7 +38,8 @@ public class CrawlerScheduleCursorService {
     }
 
     /**
-     * 为 Job 获取游标。profile 变化只标记 INVALIDATED，不自动回到第 1 页。
+     * 为 Job 获取游标。资源抓取范围不参与游标 profile，切换 DOWNLOADS/ONLINE/ALL 不会
+     * 让来源列表分页位置失效；真正的来源、排序、筛选变化仍然需要人工重置。
      */
     public CrawlerScheduleCursor prepare(CrawlerSchedule schedule, CrawlerTaskLog job) {
         CrawlerScheduleCursor cursor = cursorMapper.selectByScheduleId(schedule.getId());
@@ -47,14 +48,14 @@ public class CrawlerScheduleCursorService {
             cursorMapper.insert(cursor);
             return cursor;
         }
-        String profileHash = job.getQueryProfileHash();
+        String profileHash = CrawlerQueryProfile.cursorHash(schedule);
         if (profileHash != null && !profileHash.equals(cursor.getProfileHash())) {
             cursor.setProfileHash(profileHash);
-            cursor.setSourceCode(job.getSourceCode());
-            cursor.setContentType(job.getContentType());
-            cursor.setSourceSort(job.getSourceSort());
-            cursor.setTraversalMode(job.getTraversalMode());
-            cursor.setQuerySnapshot(job.getQuerySnapshot());
+            cursor.setSourceCode(schedule.getAdapterCode());
+            cursor.setContentType(schedule.getContentType());
+            cursor.setSourceSort(schedule.getSourceSort());
+            cursor.setTraversalMode(schedule.getTraversalMode());
+            cursor.setQuerySnapshot(CrawlerQueryProfile.cursorSnapshot(schedule));
             cursor.setNextPage(1);
             cursor.setNextItemIndex(0);
             cursor.setNextExternalId(null);
@@ -101,15 +102,15 @@ public class CrawlerScheduleCursorService {
         }
         CrawlerScheduleCursor cursor = cursorMapper.selectByScheduleIdForUpdate(scheduleId);
         if (cursor == null) {
-            cursor = newCursor(schedule, CrawlerQueryProfile.hash(schedule));
+            cursor = newCursor(schedule, CrawlerQueryProfile.cursorHash(schedule));
             cursorMapper.insert(cursor);
         } else {
-            cursor.setProfileHash(CrawlerQueryProfile.hash(schedule));
+            cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
             cursor.setSourceCode(schedule.getAdapterCode());
             cursor.setContentType(schedule.getContentType());
             cursor.setSourceSort(schedule.getSourceSort());
             cursor.setTraversalMode(schedule.getTraversalMode());
-            cursor.setQuerySnapshot(CrawlerQueryProfile.snapshot(schedule));
+            cursor.setQuerySnapshot(CrawlerQueryProfile.cursorSnapshot(schedule));
             cursor.setNextPage(1);
             cursor.setNextItemIndex(0);
             cursor.setNextExternalId(null);
@@ -129,12 +130,12 @@ public class CrawlerScheduleCursorService {
     private CrawlerScheduleCursor newCursor(CrawlerSchedule schedule, String profileHash) {
         CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
         cursor.setScheduleId(schedule.getId());
-        cursor.setProfileHash(profileHash == null ? CrawlerQueryProfile.hash(schedule) : profileHash);
+        cursor.setProfileHash(profileHash == null ? CrawlerQueryProfile.cursorHash(schedule) : profileHash);
         cursor.setSourceCode(schedule.getAdapterCode());
         cursor.setContentType(schedule.getContentType());
         cursor.setSourceSort(schedule.getSourceSort());
         cursor.setTraversalMode(schedule.getTraversalMode());
-        cursor.setQuerySnapshot(CrawlerQueryProfile.snapshot(schedule));
+        cursor.setQuerySnapshot(CrawlerQueryProfile.cursorSnapshot(schedule));
         cursor.setNextPage(1);
         cursor.setNextItemIndex(0);
         cursor.setState(CrawlerCursorState.ACTIVE.getCode());

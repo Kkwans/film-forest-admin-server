@@ -141,6 +141,24 @@ class Pkmp4ProductionParserFixtureTest {
     }
 
     @Test
+    void resourceParserDoesNotTreat4kResolutionAsKilobyteSize() {
+        var document = Jsoup.parse("""
+                <p class="down-list3">
+                  <a href="magnet:?xt=urn:btih:SIZE4K"
+                     title="示例.4K.WEB-DL[7.52G]">
+                    示例.4K.WEB-DL[7.52G]
+                  </a>
+                </p>
+                """, "https://www.pkmp4.xyz/mv/42.html");
+
+        var resource = resourceParser.parse(document,
+                        URI.create("https://www.pkmp4.xyz/mv/42.html")).stream()
+                .findFirst().orElseThrow();
+
+        assertThat(resource.sizeBytes()).isEqualTo(8074538516L);
+    }
+
+    @Test
     void detailParserKeepsPkmp4EroticGenreFromTypeLabel() {
         var parsed = detailParser.parse(ContentType.MOVIE, """
                 <h1>色戒 (2007)</h1>

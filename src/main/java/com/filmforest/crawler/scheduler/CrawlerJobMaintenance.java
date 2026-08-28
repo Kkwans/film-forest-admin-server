@@ -1,6 +1,7 @@
 package com.filmforest.crawler.scheduler;
 
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
+import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerJobCoordinator;
@@ -13,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Set;
 
 @Slf4j
@@ -45,9 +47,21 @@ public class CrawlerJobMaintenance {
      */
     @Scheduled(fixedDelayString = "${app.crawler.execution.queue-dispatch-interval-ms:5000}")
     public void dispatchQueuedJobs() {
-        for (CrawlerTaskLog queued : jobMapper.selectQueuedJobs(1000)) {
-            dispatcher.dispatchExisting(queued.getId());
+        CrawlerTaskLog activeManual = jobMapper.selectActiveManualJob();
+        if (activeManual != null) {
+            CrawlerStatus activeStatus = CrawlerStatus.fromCode(activeManual.getStatus());
+            if (activeStatus == CrawlerStatus.RUNNING
+                    || activeStatus == CrawlerStatus.CANCEL_REQUESTED) return;
+            for (CrawlerTaskLog queued : jobMapper.selectQueuedJobs(1000)) {
+                if ("manual".equals(queued.getTriggerType())
+                        || "retry".equals(queued.getTriggerType())) {
+                    dispatcher.dispatchExisting(queued.getId());
+                }
+            }
+            return;
         }
+        List<CrawlerTaskLog> queuedJobs = jobMapper.selectQueuedJobs(1000);
+        for (CrawlerTaskLog queued : queuedJobs) dispatcher.dispatchExisting(queued.getId());
     }
 
     @Scheduled(fixedDelayString = "${app.crawler.execution.heartbeat-interval-ms:15000}")

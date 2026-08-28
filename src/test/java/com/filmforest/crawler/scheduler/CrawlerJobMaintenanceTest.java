@@ -2,6 +2,7 @@ package com.filmforest.crawler.scheduler;
 
 import com.filmforest.crawler.config.CrawlerExecutionProperties;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
+import com.filmforest.crawler.entity.CrawlerStatus;
 import com.filmforest.crawler.mapper.CrawlerTaskLogMapper;
 import com.filmforest.crawler.service.CrawlerJobCoordinator;
 import com.filmforest.crawler.service.CrawlerJobDispatcher;
@@ -93,5 +94,20 @@ class CrawlerJobMaintenanceTest {
         maintenance.dispatchQueuedJobs();
 
         verify(dispatcher).dispatchExisting(22L);
+    }
+
+    @Test
+    @DisplayName("运行中的 Job 存在时不派发其他排队任务，并清理遗留定时队列")
+    void dispatchQueuedJobs_shouldNotDispatchWhileAnotherJobRunning() {
+        CrawlerTaskLog running = new CrawlerTaskLog();
+        running.setId(23L);
+        running.setScheduleId(3L);
+        running.setStatus(CrawlerStatus.RUNNING.getCode());
+        when(jobMapper.selectActiveManualJob()).thenReturn(running);
+
+        maintenance.dispatchQueuedJobs();
+
+        verify(jobMapper, never()).selectQueuedJobs(anyInt());
+        verifyNoInteractions(dispatcher);
     }
 }

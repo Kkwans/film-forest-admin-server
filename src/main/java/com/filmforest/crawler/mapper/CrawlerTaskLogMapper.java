@@ -30,6 +30,32 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
 
     @Select("""
             SELECT * FROM crawler_task_log
+            WHERE status IN ('queued', 'running', 'cancel_requested')
+            ORDER BY queued_at ASC, id ASC
+            LIMIT 1
+            """)
+    CrawlerTaskLog selectActiveJob();
+
+    @Select("""
+            SELECT * FROM crawler_task_log
+            WHERE trigger_type IN ('manual', 'retry')
+              AND status IN ('queued', 'running', 'cancel_requested')
+            ORDER BY queued_at ASC, id ASC
+            LIMIT 1
+            """)
+    CrawlerTaskLog selectActiveManualJob();
+
+    @Select("""
+            SELECT * FROM crawler_task_log
+            WHERE trigger_type = 'scheduled'
+              AND status IN ('queued', 'running', 'cancel_requested')
+            ORDER BY queued_at ASC, id ASC
+            LIMIT 1
+            """)
+    CrawlerTaskLog selectActiveScheduledJob();
+
+    @Select("""
+            SELECT * FROM crawler_task_log
             WHERE schedule_id = #{scheduleId}
             ORDER BY queued_at DESC, id DESC
             LIMIT 1
@@ -99,6 +125,22 @@ public interface CrawlerTaskLogMapper extends BaseMapper<CrawlerTaskLog> {
             WHERE id = #{jobId} AND status IN ('queued', 'running', 'cancel_requested')
             """)
     int requestCancel(@Param("jobId") Long jobId, @Param("now") LocalDateTime now);
+
+    @Update("""
+            UPDATE crawler_task_log
+            SET cancel_requested = 1,
+                finished_at = #{now},
+                duration_ms = 0,
+                status = 'cancelled',
+                error_summary = COALESCE(error_summary, '单任务执行策略取消排队中的定时任务'),
+                error_message = COALESCE(error_message, '单任务执行策略取消排队中的定时任务'),
+                progress_updated_at = #{now}
+            WHERE status = 'queued'
+              AND trigger_type = 'scheduled'
+              AND (#{scheduleId} IS NULL OR schedule_id <> #{scheduleId})
+            """)
+    int cancelQueuedScheduledJobsExcept(@Param("scheduleId") Long scheduleId,
+                                        @Param("now") LocalDateTime now);
 
     @Update("""
             UPDATE crawler_task_log
