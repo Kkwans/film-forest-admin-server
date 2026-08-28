@@ -22,6 +22,7 @@ public record CrawlerScheduleUpsertRequest(
         @Size(max = 100, message = "配置名称最长 100 字符") String name,
         @NotBlank(message = "内容类型不能为空") String contentType,
         String crawlMode,
+        String resourceScope,
         @Size(max = 100, message = "来源站点最长 100 字符") String sourceSite,
         @NotNull(message = "资源来源不能为空")
         @Positive(message = "资源来源 ID 必须为正整数") Long sourceId,
@@ -55,6 +56,7 @@ public record CrawlerScheduleUpsertRequest(
         schedule.setName(name);
         schedule.setContentType(contentType);
         schedule.setCrawlMode(crawlMode);
+        schedule.setResourceScope(resourceScope);
         schedule.setSourceSite(sourceSite);
         schedule.setSourceId(sourceId);
         schedule.setAdapterCode(adapterCode);

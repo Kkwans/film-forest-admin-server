@@ -21,6 +21,7 @@ public class CrawlerTaskLog {
     private String contentType;
     private String sourceCode;
     private String crawlMode;
+    private String resourceScope;
     private String sourceSort;
     private String traversalMode;
     private String queryProfileHash;

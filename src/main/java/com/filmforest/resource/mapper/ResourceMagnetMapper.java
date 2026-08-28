@@ -38,6 +38,7 @@ public interface ResourceMagnetMapper extends BaseMapper<ResourceMagnet> {
               raw_text = COALESCE(#{resource.rawText}, raw_text), last_seen_at = #{resource.lastSeenAt},
               removed_at = NULL, title = COALESCE(#{resource.title}, title),
               magnet_url = COALESCE(#{resource.magnetUrl}, magnet_url),
+              size_bytes = COALESCE(#{resource.sizeBytes}, size_bytes),
               resolution = COALESCE(#{resource.resolution}, resolution),
               has_subtitle = COALESCE(#{resource.hasSubtitle}, has_subtitle),
               is_special_sub = COALESCE(#{resource.isSpecialSub}, is_special_sub),

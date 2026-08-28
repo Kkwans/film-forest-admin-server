@@ -327,7 +327,8 @@ public class CrawlerResourceDiffService {
                     candidate.getTitle(), candidate.getMagnetUrl(), null, null,
                     candidate.getResolution(), Boolean.TRUE.equals(candidate.getHasSubtitle()),
                     Boolean.TRUE.equals(candidate.getIsSpecialSub()), null, null, null,
-                    valueOrZero(candidate.getSort()), candidate.getRawText(), null, null);
+                    valueOrZero(candidate.getSort()), candidate.getRawText(), null, null, null,
+                    candidate.getSizeBytes());
             if (normalizer.normalize(sourceCode, parsed).resourceKey().equals(key)) {
                 legacy.remove(index);
                 return candidate;
@@ -401,6 +402,8 @@ public class CrawlerResourceDiffService {
         entity.setLastSeenAt(now);
         entity.setTitle(firstNonBlank(limit(parsed.title(), 200), existing == null ? null : existing.getTitle()));
         entity.setMagnetUrl(firstNonBlank(parsed.url(), existing == null ? null : existing.getMagnetUrl()));
+        entity.setSizeBytes(parsed.sizeBytes() == null
+                ? existing == null ? null : existing.getSizeBytes() : parsed.sizeBytes());
         entity.setResolution(firstNonBlank(parsed.resolution(), existing == null ? null : existing.getResolution()));
         entity.setHasSubtitle(parsed.hasSubtitle()
                 || (existing != null && Boolean.TRUE.equals(existing.getHasSubtitle())));
@@ -468,6 +471,7 @@ public class CrawlerResourceDiffService {
     private static boolean magnetChanged(ResourceMagnet existing, ResourceMagnet candidate) {
         return !Objects.equals(existing.getTitle(), candidate.getTitle())
                 || !Objects.equals(existing.getMagnetUrl(), candidate.getMagnetUrl())
+                || !Objects.equals(existing.getSizeBytes(), candidate.getSizeBytes())
                 || !Objects.equals(existing.getResolution(), candidate.getResolution())
                 || !Objects.equals(existing.getHasSubtitle(), candidate.getHasSubtitle())
                 || !Objects.equals(existing.getIsSpecialSub(), candidate.getIsSpecialSub())

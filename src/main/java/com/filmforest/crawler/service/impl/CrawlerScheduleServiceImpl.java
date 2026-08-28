@@ -3,6 +3,7 @@ package com.filmforest.crawler.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.filmforest.common.exception.BusinessException;
 import com.filmforest.crawler.entity.CrawlerSchedule;
+import com.filmforest.crawler.entity.CrawlerResourceScope;
 import com.filmforest.crawler.entity.CrawlerCrawlMode;
 import com.filmforest.crawler.entity.CrawlerConfigurationStatus;
 import com.filmforest.crawler.entity.CrawlerEndPolicy;
@@ -94,6 +95,7 @@ public class CrawlerScheduleServiceImpl implements CrawlerScheduleService {
         schedule.setTimezone(scheduleDefinitionService.normalizeTimezone(schedule.getTimezone()));
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(schedule.getCrawlMode());
         schedule.setCrawlMode(crawlMode.getCode());
+        schedule.setResourceScope(CrawlerResourceScope.fromCode(schedule.getResourceScope()).name());
         normalizeQueryFields(schedule, crawlMode);
         CrawlerSourceCapabilities capabilities = sourceCatalogService.capabilities(
                 schedule.getAdapterCode(), schedule.getContentType());

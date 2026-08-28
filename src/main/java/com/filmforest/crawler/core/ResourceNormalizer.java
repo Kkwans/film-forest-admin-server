@@ -86,7 +86,8 @@ public class ResourceNormalizer {
                         diskType, resource.password(), resource.resolution(), resource.hasSubtitle(),
                         resource.specialSubtitle(), resource.season(), resource.episodeNumber(),
                         resource.episodeTitle(), resource.sourceOrder(), resource.rawText(),
-                        resource.sourcePageUrl(), resource.playbackType());
+                        resource.sourcePageUrl(), resource.playbackType(), resource.providerName(),
+                        resource.sizeBytes());
                 normalizedUrl = normalizeUrl(url, true);
                 material = "cloud\u0000" + diskType + '\u0000' + normalizedUrl;
             }

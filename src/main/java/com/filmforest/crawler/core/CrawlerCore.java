@@ -10,6 +10,7 @@ import com.filmforest.crawler.entity.CrawlerEndPolicy;
 import com.filmforest.crawler.entity.CrawlerFailureStage;
 import com.filmforest.crawler.entity.CrawlerSchedule;
 import com.filmforest.crawler.entity.CrawlerScheduleCursor;
+import com.filmforest.crawler.entity.CrawlerResourceScope;
 import com.filmforest.crawler.entity.CrawlerSourceSort;
 import com.filmforest.crawler.entity.CrawlerTaskLog;
 import com.filmforest.crawler.entity.CrawlerTraversalMode;
@@ -151,6 +152,8 @@ public class CrawlerCore {
         CrawlerSourceAdapter adapter = sourceAdapterRegistry.require(sourceCode);
         CrawlerCrawlMode crawlMode = CrawlerCrawlMode.fromCode(job.getCrawlMode() == null
                 ? schedule.getCrawlMode() : job.getCrawlMode());
+        CrawlerResourceScope resourceScope = CrawlerResourceScope.fromCode(job.getResourceScope() == null
+                ? schedule.getResourceScope() : job.getResourceScope());
         CrawlerSourceSort sourceSort = CrawlerSourceSort.fromCode(job.getSourceSort() == null
                 ? (schedule.getSourceSort() == null ? schedule.getPriority() : schedule.getSourceSort())
                 : job.getSourceSort());
@@ -192,7 +195,8 @@ public class CrawlerCore {
         try {
             return crawl(scheduleId, adapter, contentType, crawlMode, sourceSort, traversalMode,
                     endPolicy, legacyMaxItems, newItemLimit, backfillItemLimit, manualRunLimit,
-                    rateLimitMs, genreFilter, sourceFilters, checkpoint, cursor, cancellation);
+                    rateLimitMs, genreFilter, sourceFilters, resourceScope,
+                    checkpoint, cursor, cancellation);
         } finally {
             executingJobId.remove();
         }
@@ -205,6 +209,7 @@ public class CrawlerCore {
                                         int newItemLimit, int backfillItemLimit, int manualRunLimit,
                                         int rateLimitMs, Set<String> genreFilter,
                                         Map<String, String> sourceFilters,
+                                        CrawlerResourceScope resourceScope,
                                         CrawlerCheckpoint resumeCheckpoint,
                                         CrawlerScheduleCursor cursor,
                                         AtomicBoolean cancellation) {
@@ -294,7 +299,7 @@ public class CrawlerCore {
                 recordProgress(beforeItem, item.sourceUrl(), stats, cursor, false);
                 reportItemProgress(item, item.title(), "FETCHING", 10, "正在读取影片详情");
                 ItemProcessingResult result = processItem(adapter, contentType, item, rateLimitMs,
-                        genreFilter, cancellation, stats, observation,
+                        genreFilter, resourceScope, cancellation, stats, observation,
                         crawlMode == CrawlerCrawlMode.LATEST && page > latestRecentPages);
                 if (result.outcome() == ItemOutcome.STRUCTURE_FAILURE) {
                     consecutiveStructureFailures++;
@@ -541,7 +546,8 @@ public class CrawlerCore {
 
     private ItemProcessingResult processItem(CrawlerSourceAdapter adapter, ContentType contentType,
                                              SourceListItem item, int rateLimitMs,
-                                             Set<String> genreFilter, AtomicBoolean cancellation,
+                                             Set<String> genreFilter, CrawlerResourceScope resourceScope,
+                                             AtomicBoolean cancellation,
                                              MutableStats stats,
                                              CrawlerSourceItemService.Observation observation,
                                              boolean allowListFingerprintShortcut) {
@@ -599,12 +605,14 @@ public class CrawlerCore {
         ParsedContent parsed;
         try {
             parsed = adapter.parseDetail(contentType, detailFetch.body(), detailFetch.finalUrl());
+            parsed = applyResourceScope(parsed, resourceScope);
             reportItemProgress(item, parsed.title(), parsed.year(), "BASIC_INFO", 25, "基础信息解析完成");
             reportResourceStage(item, parsed, ParsedResource.Kind.MAGNET,
                     "MAGNET", 40, "磁力链接解析完成");
             reportResourceStage(item, parsed, ParsedResource.Kind.CLOUD,
                     "CLOUD", 55, "网盘资源解析完成");
-            if (adapter instanceof CrawlerResourceEnricher enricher) {
+            if (resourceScope.includes(ParsedResource.Kind.ONLINE)
+                    && adapter instanceof CrawlerResourceEnricher enricher) {
                 String parsedTitle = parsed.title();
                 Integer parsedYear = parsed.year();
                 if (hasResourceKind(parsed, ParsedResource.Kind.ONLINE)) {
@@ -719,6 +727,21 @@ public class CrawlerCore {
             }
         }
         throw new IllegalStateException("Unreachable persistence retry state");
+    }
+
+    private static ParsedContent applyResourceScope(ParsedContent parsed,
+                                                     CrawlerResourceScope scope) {
+        if (scope == CrawlerResourceScope.ALL) return parsed;
+        ParsedContent scoped = parsed.withResources(parsed.resources().stream()
+                .filter(resource -> resource != null && scope.includes(resource.kind()))
+                .toList());
+        for (ParsedResource.Kind kind : ParsedResource.Kind.values()) {
+            if (!scope.includes(kind)) {
+                scoped = scoped.withResourceStatus(kind,
+                        com.filmforest.crawler.model.ResourceParseStatus.NOT_SUPPORTED);
+            }
+        }
+        return scoped;
     }
 
     private void recordItemFailure(CrawlerSourceAdapter adapter, ContentType contentType,

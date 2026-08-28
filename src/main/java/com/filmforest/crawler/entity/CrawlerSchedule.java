@@ -29,6 +29,7 @@ public class CrawlerSchedule {
     private String contentType;
 
     private String crawlMode;
+    private String resourceScope;
 
     private String sourceSite;
     @NotNull(message = "资源来源不能为空")

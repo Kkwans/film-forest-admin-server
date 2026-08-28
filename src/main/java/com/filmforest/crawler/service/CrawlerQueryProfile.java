@@ -27,6 +27,7 @@ public final class CrawlerQueryProfile {
                 safe(schedule.getSourceSite()),
                 safe(schedule.getAdapterCode()),
                 safe(schedule.getContentType()),
+                safe(schedule.getResourceScope()),
                 safe(schedule.getSourceSort()),
                 safe(schedule.getTraversalMode()),
                 safe(schedule.getEndPolicy()),

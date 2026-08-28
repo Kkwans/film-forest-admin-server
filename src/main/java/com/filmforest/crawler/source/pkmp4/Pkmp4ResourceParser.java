@@ -8,6 +8,8 @@ import org.jsoup.nodes.TextNode;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -39,6 +41,8 @@ public class Pkmp4ResourceParser {
     private static final Pattern LATIN_EPISODE = Pattern.compile("(?i)(?:EP?|Episode)\\s*0*(\\d+)");
     private static final Pattern UPDATED_EPISODE = Pattern.compile("更新至\\s*(\\d+)\\s*集");
     private static final Pattern SEASON = Pattern.compile("(?:第\\s*(\\d+)\\s*季|(?i:S)0*(\\d+))");
+    private static final Pattern RESOURCE_SIZE = Pattern.compile(
+            "(?iu)(?:^|[\\[\\(\\s])([0-9]+(?:[.,][0-9]+)?)\\s*(B|KB|K|MB|M|GB|G|TB|T)(?=$|[\\]\\)\\s])");
 
     public List<ParsedResource> parse(Document document, URI finalUri) {
         List<ParsedResource> resources = new ArrayList<>();
@@ -57,13 +61,16 @@ public class Pkmp4ResourceParser {
                 + "[class*=down-list] a[href]")) {
             String rawUrl = link.attr("href").trim();
             String rawText = link.text().trim();
-            String title = firstNonBlank(link.attr("title"), rawText);
+            String rawTitle = firstNonBlank(link.attr("title"), rawText);
             if (rawUrl.regionMatches(true, 0, "magnet:", 0, 7)) {
+                Long sizeBytes = sizeBytes(rawTitle, rawText);
+                String title = stripSize(rawTitle);
                 resources.add(new ParsedResource(ParsedResource.Kind.MAGNET, title, rawUrl,
                         null, null, resolution(title), containsSubtitle(title), containsSpecialSubtitle(title),
-                        null, null, null, order++, rawText, null, null));
+                        null, null, null, order++, rawText, null, null, null, sizeBytes));
                 continue;
             }
+            String title = rawTitle;
             String url = link.absUrl("href").isBlank() ? rawUrl : link.absUrl("href");
             String diskType = diskType(url);
             String context = siblingContext(link);
@@ -71,6 +78,33 @@ public class Pkmp4ResourceParser {
                     diskType, password(url, title + " " + rawText + " " + context), null, false, false,
                     null, null, null, order++, rawText, null, null));
         }
+    }
+
+    static Long sizeBytes(String title, String rawText) {
+        for (String value : new String[]{title, rawText}) {
+            if (value == null) continue;
+            Matcher matcher = RESOURCE_SIZE.matcher(value.trim());
+            if (!matcher.find()) continue;
+            BigDecimal amount = new BigDecimal(matcher.group(1).replace(',', '.'));
+            String unit = matcher.group(2).toUpperCase(Locale.ROOT);
+            int power = switch (unit) {
+                case "TB", "T" -> 4;
+                case "GB", "G" -> 3;
+                case "MB", "M" -> 2;
+                case "KB", "K" -> 1;
+                default -> 0;
+            };
+            return amount.multiply(BigDecimal.valueOf(1024).pow(power))
+                    .setScale(0, RoundingMode.HALF_UP).longValue();
+        }
+        return null;
+    }
+
+    static String stripSize(String title) {
+        if (title == null) return null;
+        return title.replaceFirst(
+                "(?iu)\\s*[\\[\\(]\\s*[0-9]+(?:[.,][0-9]+)?\\s*(?:B|KB|K|MB|M|GB|G|TB|T)\\s*[\\]\\)]\\s*$",
+                "").trim();
     }
 
     boolean hasDownloadSection(Document document) {

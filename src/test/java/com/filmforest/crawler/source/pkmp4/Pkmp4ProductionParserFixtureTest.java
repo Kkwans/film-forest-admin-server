@@ -122,6 +122,35 @@ class Pkmp4ProductionParserFixtureTest {
     }
 
     @Test
+    void resourceParserExtractsDeclaredMagnetSizeAndRemovesItFromDisplayTitle() {
+        var document = Jsoup.parse("""
+                <p class="down-list3">
+                  <a href="magnet:?xt=urn:btih:SIZE123"
+                     title="色戒.2007.1080p.WEB-DL[7.52G]">
+                    色戒.2007.1080p.WEB-DL[7.52G]
+                  </a>
+                </p>
+                """, "https://www.pkmp4.xyz/mv/42.html");
+
+        var resource = resourceParser.parse(document,
+                        URI.create("https://www.pkmp4.xyz/mv/42.html")).stream()
+                .findFirst().orElseThrow();
+
+        assertThat(resource.title()).isEqualTo("色戒.2007.1080p.WEB-DL");
+        assertThat(resource.sizeBytes()).isEqualTo(8074538516L);
+    }
+
+    @Test
+    void detailParserKeepsPkmp4EroticGenreFromTypeLabel() {
+        var parsed = detailParser.parse(ContentType.MOVIE, """
+                <h1>色戒 (2007)</h1>
+                <span>类型：</span>剧情 / 情色 / 人性
+                """, URI.create("https://www.pkmp4.xyz/mv/42.html"));
+
+        assertThat(parsed.genres()).containsExactly("剧情", "情色", "人性");
+    }
+
+    @Test
     void resourceParserKeepsUnknownCloudLinksAndExtractsQueryCode() {
         var document = Jsoup.parse("""
                 <p class="down-list3">

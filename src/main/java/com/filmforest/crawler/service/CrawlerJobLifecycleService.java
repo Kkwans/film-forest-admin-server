@@ -101,6 +101,7 @@ public class CrawlerJobLifecycleService {
         job.setSourceCode(normalizeSourceCode(
                 schedule.getAdapterCode() == null ? schedule.getSourceSite() : schedule.getAdapterCode()));
         job.setCrawlMode(crawlMode.getCode());
+        job.setResourceScope(schedule.getResourceScope());
         String sourceSort = schedule.getSourceSort() == null
                 ? CrawlerSourceSort.fromCode(schedule.getPriority()).getCode()
                 : CrawlerSourceSort.fromCode(schedule.getSourceSort()).getCode();
