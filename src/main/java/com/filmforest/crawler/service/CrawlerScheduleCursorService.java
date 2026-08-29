@@ -66,7 +66,34 @@ public class CrawlerScheduleCursorService {
             cursor.setVersion(safeVersion(cursor.getVersion()) + 1);
             cursorMapper.updateById(cursor);
         }
+        if (CrawlerCursorState.RECOVERY_REQUIRED.getCode().equals(cursor.getState())
+                && isAnchorDriftError(cursor.getLastError())) {
+            resetAfterAnchorDrift(cursor, schedule);
+        }
         return cursor;
+    }
+
+    /**
+     * 来源分页排序会随新数据或评分变化而漂移；锚点彻底消失时，从第 1 页安全重建游标。
+     * 仅针对已确认的分页锚点漂移自动恢复；来源结构异常仍保留人工复核状态。
+     */
+    public void resetAfterAnchorDrift(CrawlerScheduleCursor cursor, CrawlerSchedule schedule) {
+        cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
+        cursor.setSourceCode(schedule.getAdapterCode());
+        cursor.setContentType(schedule.getContentType());
+        cursor.setSourceSort(schedule.getSourceSort());
+        cursor.setTraversalMode(schedule.getTraversalMode());
+        cursor.setQuerySnapshot(CrawlerQueryProfile.cursorSnapshot(schedule));
+        cursor.setNextPage(1);
+        cursor.setNextItemIndex(0);
+        cursor.setNextExternalId(null);
+        cursor.setLastCommittedExternalId(null);
+        cursor.setHeadWatermark(null);
+        cursor.setState(CrawlerCursorState.ACTIVE.getCode());
+        cursor.setLastError(null);
+        cursor.setLastRunAt(CrawlerTime.nowUtc());
+        cursor.setVersion(safeVersion(cursor.getVersion()) + 1);
+        cursorMapper.updateById(cursor);
     }
 
     public void advance(CrawlerScheduleCursor cursor, String nextExternalId,
@@ -146,5 +173,9 @@ public class CrawlerScheduleCursorService {
 
     private static long safeVersion(Long version) {
         return version == null ? 0L : version;
+    }
+
+    private static boolean isAnchorDriftError(String error) {
+        return error != null && (error.contains("分页锚点") || error.contains("分页发生漂移"));
     }
 }

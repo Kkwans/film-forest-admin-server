@@ -193,7 +193,7 @@ public class CrawlerCore {
 
         executingJobId.set(logId);
         try {
-            return crawl(scheduleId, adapter, contentType, crawlMode, sourceSort, traversalMode,
+            return crawl(scheduleId, schedule, adapter, contentType, crawlMode, sourceSort, traversalMode,
                     endPolicy, legacyMaxItems, newItemLimit, backfillItemLimit, manualRunLimit,
                     rateLimitMs, genreFilter, sourceFilters, resourceScope,
                     checkpoint, cursor, cancellation);
@@ -202,7 +202,8 @@ public class CrawlerCore {
         }
     }
 
-    private CrawlExecutionSummary crawl(Long scheduleId, CrawlerSourceAdapter adapter,
+    private CrawlExecutionSummary crawl(Long scheduleId, CrawlerSchedule schedule,
+                                        CrawlerSourceAdapter adapter,
                                         ContentType contentType, CrawlerCrawlMode crawlMode,
                                         CrawlerSourceSort sourceSort, CrawlerTraversalMode traversalMode,
                                         CrawlerEndPolicy endPolicy, int legacyMaxItems,
@@ -256,11 +257,17 @@ public class CrawlerCore {
             stats.listItemsScanned += items.size();
             if (cursor != null && anchorMissing(checkpoint, items)) {
                 NearbyPage recovered = recoverNearbyPage(adapter, contentType, sourceSort,
-                        sourceFilters, page, checkpoint, rateLimitMs, cancellation, stats, cursor);
+                        sourceFilters, page, checkpoint, items, rateLimitMs, cancellation, stats, cursor,
+                        schedule);
                 page = recovered.page();
                 items = recovered.items();
-                checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page, 0,
+                checkpoint = recovered.cursorReset()
+                        ? CrawlerCheckpoint.atPage(1)
+                        : new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION, page, 0,
                         checkpoint.nextExternalId(), checkpoint.lastCommittedExternalId());
+                if (recovered.cursorReset()) {
+                    lastCommittedExternalId = null;
+                }
                 log.info("恢复分页锚点: jobId={}, scheduleId={}, page={}, anchor={}",
                         executingJobId.get(), scheduleId, page, anchorOf(checkpoint));
             }
@@ -358,8 +365,10 @@ public class CrawlerCore {
     private NearbyPage recoverNearbyPage(CrawlerSourceAdapter adapter, ContentType contentType,
                                          CrawlerSourceSort sourceSort, Map<String, String> sourceFilters,
                                          int currentPage, CrawlerCheckpoint checkpoint,
+                                         List<SourceListItem> currentItems,
                                          int rateLimitMs, AtomicBoolean cancellation,
-                                         MutableStats stats, CrawlerScheduleCursor cursor) {
+                                         MutableStats stats, CrawlerScheduleCursor cursor,
+                                         CrawlerSchedule schedule) {
         for (int distance = 1; distance <= 2; distance++) {
             int before = currentPage - distance;
             NearbyPage result = before < 1 ? null : fetchNearbyPage(adapter, contentType, sourceSort,
@@ -370,10 +379,38 @@ public class CrawlerCore {
                     checkpoint, rateLimitMs, cancellation, stats, cursor);
             if (result != null) return result;
         }
-        cursorService.mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
-                "分页锚点在当前页前后 2 页内均未找到，需人工确认后重置游标");
-        throw new CrawlerRecoveryRequiredException(
-                "分页发生漂移且无法在前后 2 页恢复锚点：" + anchorOf(checkpoint));
+        cursorService.resetAfterAnchorDrift(cursor, schedule);
+        log.warn("分页锚点已彻底漂移，从第 1 页重建游标: jobId={}, scheduleId={}, anchor={}",
+                executingJobId.get(), schedule.getId(), anchorOf(checkpoint));
+        if (currentPage == 1) {
+            return new NearbyPage(1, currentItems, true);
+        }
+        return new NearbyPage(1, fetchResetPage(adapter, contentType, sourceSort,
+                sourceFilters, rateLimitMs, cancellation, stats, cursor), true);
+    }
+
+    private List<SourceListItem> fetchResetPage(CrawlerSourceAdapter adapter, ContentType contentType,
+                                                CrawlerSourceSort sourceSort,
+                                                Map<String, String> sourceFilters, int rateLimitMs,
+                                                AtomicBoolean cancellation, MutableStats stats,
+                                                CrawlerScheduleCursor cursor) {
+        URI uri = adapter.listUri(new CrawlerSourceQuery(contentType, sourceSort, sourceFilters, 1));
+        FetchResult fetched = httpFetcher.fetch(uri, Map.of(), rateLimitMs, cancellation);
+        if (!fetched.successful()) {
+            markCursorUnavailable(cursor, fetched);
+            throw new CrawlerFetchException("重建分页游标时列表读取失败", fetched);
+        }
+        try {
+            List<SourceListItem> items = adapter.parseList(fetched.body(), fetched.finalUrl());
+            stats.pagesScanned++;
+            stats.listItemsScanned += items.size();
+            return items;
+        } catch (RuntimeException parseFailure) {
+            cursorService.mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
+                    "重建分页游标时列表结构无法解析");
+            throw new CrawlerSourceStructureException(adapter.sourceCode(),
+                    STRUCTURE_FAILURE_THRESHOLD, parseFailure.getMessage());
+        }
     }
 
     private NearbyPage fetchNearbyPage(CrawlerSourceAdapter adapter, ContentType contentType,
@@ -398,7 +435,7 @@ public class CrawlerCore {
         }
         stats.pagesScanned++;
         stats.listItemsScanned += items.size();
-        return containsAnchor(checkpoint, items) ? new NearbyPage(page, items) : null;
+        return containsAnchor(checkpoint, items) ? new NearbyPage(page, items, false) : null;
     }
 
     /**
@@ -432,7 +469,7 @@ public class CrawlerCore {
                 ? checkpoint.lastCommittedExternalId() : checkpoint.nextExternalId();
     }
 
-    private record NearbyPage(int page, List<SourceListItem> items) {
+    private record NearbyPage(int page, List<SourceListItem> items, boolean cursorReset) {
     }
 
     private CrawlerTraversalMode traversalMode(CrawlerTaskLog job, CrawlerSchedule schedule,

@@ -19,6 +19,7 @@ import com.filmforest.crawler.model.SourceListItem;
 import com.filmforest.crawler.service.CrawlerScheduleService;
 import com.filmforest.crawler.service.CrawlerGenreService;
 import com.filmforest.crawler.service.CrawlerItemFailureService;
+import com.filmforest.crawler.service.CrawlerQueryProfile;
 import com.filmforest.crawler.service.CrawlerScheduleCursorService;
 import com.filmforest.crawler.service.CrawlerSourceItemService;
 import com.filmforest.crawler.service.SourceFingerprint;
@@ -246,6 +247,71 @@ class CrawlerCoreCrawlModeTest {
 
         assertThat(CrawlerCore.anchorMissing(checkpoint, List.of(item("other-item"))))
                 .isTrue();
+    }
+
+    @Test
+    void missingAnchorAutomaticallyStartsFromFirstPageAfterNearbyRecoveryFails() {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(1);
+        schedule.setSourceSort("RATING");
+        schedule.setTraversalMode("BACKFILL_CONTINUE");
+        CrawlerTaskLog job = job("latest", 1);
+        job.setSourceSort("RATING");
+        job.setTraversalMode("BACKFILL_CONTINUE");
+
+        CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
+        cursor.setScheduleId(1L);
+        cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
+        cursor.setState("ACTIVE");
+        cursor.setNextPage(1);
+        cursor.setNextItemIndex(0);
+        cursor.setNextExternalId("missing-anchor");
+        cursor.setLastCommittedExternalId("old-item");
+
+        URI listOne = URI.create("https://source.test/list/1?sort=rating");
+        URI listTwo = URI.create("https://source.test/list/2?sort=rating");
+        URI listThree = URI.create("https://source.test/list/3?sort=rating");
+        SourceListItem current = item("current-item");
+        ParsedContent parsed = parsed(URI.create(current.sourceUrl()), current.externalId());
+
+        prepare(schedule, job, cancellation);
+        when(cursorService.prepare(schedule, job)).thenReturn(cursor);
+        when(adapter.listUri(any(CrawlerSourceQuery.class))).thenAnswer(invocation -> {
+            CrawlerSourceQuery query = invocation.getArgument(0);
+            return switch (query.page()) {
+                case 1 -> listOne;
+                case 2 -> listTwo;
+                default -> listThree;
+            };
+        });
+        when(fetcher.fetch(eq(listOne), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listOne, "page-one"));
+        when(fetcher.fetch(eq(listTwo), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listTwo, "page-two"));
+        when(fetcher.fetch(eq(listThree), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listThree, "page-three"));
+        when(adapter.parseList("page-one", listOne)).thenReturn(List.of(current));
+        when(adapter.parseList("page-two", listTwo)).thenReturn(List.of(item("other-two")));
+        when(adapter.parseList("page-three", listThree)).thenReturn(List.of(item("other-three")));
+        when(sourceItems.observeListItem("pkmp4", ContentType.MOVIE, current))
+                .thenReturn(new CrawlerSourceItemService.Observation(
+                        null, false, true, null, null, "discovered"));
+        when(fetcher.fetch(eq(URI.create(current.sourceUrl())), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(URI.create(current.sourceUrl()), "detail"));
+        when(adapter.parseDetail(ContentType.MOVIE, "detail", URI.create(current.sourceUrl())))
+                .thenReturn(parsed);
+        CrawlerGenreService.ResolvedGenres resolved = new CrawlerGenreService.ResolvedGenres(List.of(), List.of());
+        when(genres.resolve("pkmp4", ContentType.MOVIE, parsed.genres())).thenReturn(resolved);
+        when(persistence.persist("pkmp4", parsed, resolved, null)).thenReturn(persisted(101L, "current"));
+
+        var summary = crawler.executeCrawl(1L, 9L, cancellation);
+
+        assertThat(summary.discovered()).isEqualTo(1);
+        verify(cursorService).resetAfterAnchorDrift(cursor, schedule);
+        verify(cursorService, never()).mark(cursor, CrawlerCursorState.RECOVERY_REQUIRED,
+                "分页锚点在当前页前后 2 页内均未找到，需人工确认后重置游标");
+        verify(fetcher, never()).fetch(eq(URI.create("https://source.test/list/4?sort=rating")),
+                anyMap(), anyInt(), same(cancellation));
     }
 
     @Test
