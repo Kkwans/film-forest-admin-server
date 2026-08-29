@@ -44,6 +44,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -67,7 +68,6 @@ class CrawlerCoreCrawlModeTest {
     @BeforeEach
     void setUp() {
         properties = new CrawlerExecutionProperties();
-        properties.setLatestConsecutiveUnchanged(20);
         properties.setLatestRecentPages(2);
         crawler = new CrawlerCore(schedules, jobs, registry, fetcher, persistence, genres,
                 sourceItems, itemFailures, properties, new ObjectMapper(), cursorService);
@@ -77,14 +77,19 @@ class CrawlerCoreCrawlModeTest {
     void latestRechecksRecentDetailButSkipsPersistenceWhenDetailFingerprintIsUnchanged() {
         AtomicBoolean cancellation = new AtomicBoolean(false);
         URI listUri = URI.create("https://source.test/list/1");
+        URI nextListUri = URI.create("https://source.test/list/2");
         URI detailUri = URI.create("https://source.test/mv/7.html");
         ParsedContent parsed = parsed(detailUri, "7");
         prepare(latestSchedule(1), job("latest", 5), cancellation);
         when(adapter.listUri(ContentType.MOVIE, 1)).thenReturn(listUri);
         when(fetcher.fetch(eq(listUri), anyMap(), anyInt(), same(cancellation)))
                 .thenReturn(success(listUri, "list"));
+        when(adapter.listUri(ContentType.MOVIE, 2)).thenReturn(nextListUri);
+        when(fetcher.fetch(eq(nextListUri), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(nextListUri, "empty"));
         SourceListItem item = new SourceListItem("7", detailUri.toString(), "Title", null, 0);
         when(adapter.parseList("list", listUri)).thenReturn(List.of(item));
+        when(adapter.parseList("empty", nextListUri)).thenReturn(List.of());
         when(sourceItems.observeListItem("pkmp4", ContentType.MOVIE, item))
                 .thenReturn(new CrawlerSourceItemService.Observation(1L, true, false,
                         SourceFingerprint.forDetail(parsed), 7L, "parsed"));
@@ -94,7 +99,7 @@ class CrawlerCoreCrawlModeTest {
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
 
-        assertThat(summary.discovered()).isEqualTo(1);
+        assertThat(summary.discovered()).isZero();
         assertThat(summary.fetchSucceeded()).isEqualTo(1);
         assertThat(summary.parseSucceeded()).isEqualTo(1);
         assertThat(summary.unchanged()).isEqualTo(1);
@@ -124,6 +129,11 @@ class CrawlerCoreCrawlModeTest {
                 .thenReturn(success(listTwo, "two"));
         when(adapter.parseList("one", listOne)).thenReturn(List.of(first));
         when(adapter.parseList("two", listTwo)).thenReturn(List.of(second));
+        URI listThree = URI.create("https://source.test/list/3");
+        when(adapter.listUri(ContentType.MOVIE, 3)).thenReturn(listThree);
+        when(fetcher.fetch(eq(listThree), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listThree, "empty"));
+        when(adapter.parseList("empty", listThree)).thenReturn(List.of());
         when(sourceItems.observeListItem("pkmp4", ContentType.MOVIE, first))
                 .thenReturn(new CrawlerSourceItemService.Observation(1L, false, true,
                         null, null, "discovered"));
@@ -140,10 +150,65 @@ class CrawlerCoreCrawlModeTest {
 
         var summary = crawler.executeCrawl(1L, 9L, cancellation);
 
-        assertThat(summary.discovered()).isEqualTo(2);
+        assertThat(summary.discovered()).isEqualTo(1);
         assertThat(summary.added()).isEqualTo(1);
         assertThat(summary.unchanged()).isEqualTo(1);
         verify(fetcher, never()).fetch(eq(detailTwo), anyMap(), anyInt(), same(cancellation));
+    }
+
+    @Test
+    void unchangedItemsDoNotConsumeBackfillBudgetOrStopAfterTwentyItems() {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(1);
+        schedule.setSourceSort("RATING");
+        schedule.setTraversalMode("BACKFILL_CONTINUE");
+        CrawlerTaskLog job = job("latest", 2);
+        job.setSourceSort("RATING");
+        job.setTraversalMode("BACKFILL_CONTINUE");
+
+        CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
+        cursor.setScheduleId(1L);
+        cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
+        cursor.setState("ACTIVE");
+        cursor.setNextPage(2);
+        cursor.setNextItemIndex(0);
+        cursor.setLastCommittedExternalId("page-one-last");
+
+        List<SourceListItem> unchanged = java.util.stream.IntStream.range(0, 21)
+                .mapToObj(index -> item("unchanged-" + index))
+                .toList();
+        URI listTwo = URI.create("https://source.test/list/2?sort=rating");
+        URI listThree = URI.create("https://source.test/list/3?sort=rating");
+
+        properties.setLatestRecentPages(1);
+        prepare(schedule, job, cancellation);
+        when(cursorService.prepare(schedule, job)).thenReturn(cursor);
+        when(adapter.listUri(any(CrawlerSourceQuery.class))).thenAnswer(invocation -> {
+            CrawlerSourceQuery query = invocation.getArgument(0);
+            return query.page() == 2 ? listTwo : listThree;
+        });
+        when(fetcher.fetch(eq(listTwo), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listTwo, "page-two"));
+        when(fetcher.fetch(eq(listThree), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listThree, "empty"));
+        when(adapter.parseList("page-two", listTwo)).thenReturn(unchanged);
+        when(adapter.parseList("empty", listThree)).thenReturn(List.of());
+        when(sourceItems.observeListItem(eq("pkmp4"), eq(ContentType.MOVIE), any()))
+                .thenReturn(new CrawlerSourceItemService.Observation(
+                        1L, true, false, "known-detail", 101L, "parsed"));
+
+        var summary = crawler.executeCrawl(1L, 9L, cancellation);
+
+        assertThat(summary.discovered()).isZero();
+        assertThat(summary.unchanged()).isEqualTo(21);
+        assertThat(summary.backfillItems()).isZero();
+        assertThat(summary.cursorAdvanced()).isEqualTo(21);
+        assertThat(summary.pagesScanned()).isEqualTo(2);
+        verify(fetcher, never()).fetch(eq(URI.create(unchanged.get(0).sourceUrl())),
+                anyMap(), anyInt(), same(cancellation));
+        verify(cursorService, times(21)).advance(eq(cursor), any(), any(), anyInt(), anyInt(),
+                any(), eq(CrawlerCursorState.ACTIVE.getCode()), org.mockito.ArgumentMatchers.isNull());
+        verify(cursorService).mark(cursor, CrawlerCursorState.COMPLETE, null);
     }
 
     @Test

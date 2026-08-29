@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 public class ResourceNormalizer {
 
     private static final Pattern INFO_HASH = Pattern.compile(
-            "(?i)(?:[?&])xt=urn:btih:([a-z0-9]+)(?:&|$)");
+            "(?i)(?:^|[?&])xt=urn:btih:([a-f0-9]{40}|[a-z2-7]{32})(?:&|$)");
     private static final Set<String> SENSITIVE_QUERY_KEYS = Set.of(
             "pwd", "pw", "pass", "password", "passwd", "passcode", "code",
             "accesscode", "access_code", "accesskey", "access_key",

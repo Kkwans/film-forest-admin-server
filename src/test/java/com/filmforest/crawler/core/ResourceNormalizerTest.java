@@ -12,11 +12,21 @@ class ResourceNormalizerTest {
     @Test
     void magnetUsesInfoHashInsteadOfDisplayParameters() {
         var first = normalizer.normalize("pkmp4", magnet(
-                "magnet:?xt=urn:btih:ABCDEF123&dn=First"));
+                "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=First"));
         var second = normalizer.normalize("pkmp4", magnet(
-                "magnet:?dn=Second&xt=urn:btih:abcdef123"));
+                "magnet:?dn=Second&xt=urn:btih:0123456789ABCDEF0123456789ABCDEF01234567"));
 
         assertThat(first.resourceKey()).isEqualTo(second.resourceKey());
+    }
+
+    @Test
+    void malformedShortInfoHashFallsBackToFullMagnetUrl() {
+        var first = normalizer.normalize("pkmp4", magnet(
+                "magnet:?xt=urn:btih:e&dn=First"));
+        var second = normalizer.normalize("pkmp4", magnet(
+                "magnet:?xt=urn:btih:e&dn=Second"));
+
+        assertThat(first.resourceKey()).isNotEqualTo(second.resourceKey());
     }
 
     @Test

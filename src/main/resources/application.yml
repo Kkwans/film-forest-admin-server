@@ -90,5 +90,4 @@ app:
       item-retry-base-delay-ms: ${FILM_FOREST_CRAWLER_ITEM_RETRY_BASE_DELAY_MS:250}
       recovery-interval-ms: ${FILM_FOREST_CRAWLER_RECOVERY_INTERVAL_MS:60000}
       queue-dispatch-interval-ms: ${FILM_FOREST_CRAWLER_QUEUE_DISPATCH_INTERVAL_MS:5000}
-      latest-consecutive-unchanged: ${FILM_FOREST_CRAWLER_LATEST_UNCHANGED_STOP:20}
       latest-recent-pages: ${FILM_FOREST_CRAWLER_LATEST_RECENT_PAGES:2}

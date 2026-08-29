@@ -166,7 +166,6 @@ class CrawlerCoreAdapterRoutingTest {
 
     private static CrawlerExecutionProperties executionProperties() {
         CrawlerExecutionProperties properties = new CrawlerExecutionProperties();
-        properties.setLatestConsecutiveUnchanged(20);
         properties.setLatestRecentPages(2);
         return properties;
     }

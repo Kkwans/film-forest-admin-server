@@ -13,7 +13,6 @@ public class CrawlerExecutionProperties {
     private long stalledProgressMs = 300_000;
     private int itemPersistenceMaxAttempts = 2;
     private long itemRetryBaseDelayMs = 250;
-    private int latestConsecutiveUnchanged = 20;
     private int latestRecentPages = 2;
 
     public int getWorkerConcurrency() {
@@ -78,14 +77,6 @@ public class CrawlerExecutionProperties {
 
     public void setItemRetryBaseDelayMs(long itemRetryBaseDelayMs) {
         this.itemRetryBaseDelayMs = itemRetryBaseDelayMs;
-    }
-
-    public int getLatestConsecutiveUnchanged() {
-        return latestConsecutiveUnchanged;
-    }
-
-    public void setLatestConsecutiveUnchanged(int latestConsecutiveUnchanged) {
-        this.latestConsecutiveUnchanged = latestConsecutiveUnchanged;
     }
 
     public int getLatestRecentPages() {

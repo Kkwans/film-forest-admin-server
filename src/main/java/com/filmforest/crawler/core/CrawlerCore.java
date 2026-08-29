@@ -217,11 +217,7 @@ public class CrawlerCore {
         MutableStats stats = new MutableStats();
         int page = resumeCheckpoint.nextPage();
         int consecutiveStructureFailures = 0;
-        int consecutiveOldItems = 0;
-        int latestStopThreshold = Math.max(1,
-                executionProperties.getLatestConsecutiveUnchanged());
         int latestRecentPages = Math.max(1, executionProperties.getLatestRecentPages());
-        boolean latestBoundaryReached = false;
         CrawlerCheckpoint checkpoint = resumeCheckpoint;
         String lastCommittedExternalId = checkpoint.lastCommittedExternalId();
         boolean restartedCycle = false;
@@ -300,7 +296,6 @@ public class CrawlerCore {
                 }
                 CrawlerSourceItemService.Observation observation = sourceItemService.observeListItem(
                         adapter.sourceCode(), contentType, item);
-                stats.discovered++;
                 CrawlerCheckpoint beforeItem = CrawlerCheckpoint.beforeItem(page, itemIndex,
                         item.externalId(), lastCommittedExternalId);
                 recordProgress(beforeItem, item.sourceUrl(), stats, cursor, false);
@@ -330,17 +325,13 @@ public class CrawlerCore {
                     lastCommittedExternalId = item.externalId();
                 }
                 checkpoint = checkpointAfter(items, page, itemIndex, lastCommittedExternalId);
-                consecutiveOldItems = result.oldItem() ? consecutiveOldItems + 1 : 0;
-                boolean backfill = isBackfillItem(crawlMode, traversalMode, page, latestRecentPages,
-                        result.oldItem());
-                if (backfill) stats.backfillItems++; else stats.newItems++;
-                recordProgress(checkpoint, nextItemUrl(items, itemIndex), stats, cursor, true);
-                if (crawlMode == CrawlerCrawlMode.LATEST && page >= latestRecentPages
-                        && consecutiveOldItems >= latestStopThreshold) {
-                    pageCompleted = false;
-                    latestBoundaryReached = true;
-                    break;
+                if (result.countsTowardsLimit()) {
+                    stats.discovered++;
+                    boolean backfill = isBackfillItem(crawlMode, traversalMode, page, latestRecentPages,
+                            result.oldItem());
+                    if (backfill) stats.backfillItems++; else stats.newItems++;
                 }
+                recordProgress(checkpoint, nextItemUrl(items, itemIndex), stats, cursor, true);
             }
             if (pageCompleted) {
                 checkpoint = new CrawlerCheckpoint(CrawlerCheckpoint.CURRENT_VERSION,
@@ -351,10 +342,6 @@ public class CrawlerCore {
                 break;
             }
             page++;
-        }
-        if (latestBoundaryReached) {
-            log.info("LATEST crawl reached unchanged boundary: scheduleId={}, page={}, consecutiveOld={}",
-                    scheduleId, page, consecutiveOldItems);
         }
         if (isCancellationRequested(cancellation)) {
             recordProgress(checkpoint, null, stats, cursor, false);
@@ -594,7 +581,7 @@ public class CrawlerCore {
                 stats.filtered++;
                 reportItemProgress(item, item.title(), "COMPLETED", 100,
                         "来源未变化，已按题材过滤");
-                return new ItemProcessingResult(ItemOutcome.FILTERED, "list-unchanged", true);
+                return new ItemProcessingResult(ItemOutcome.FILTERED, "list-unchanged", true, false);
             }
             if ("parsed".equals(observation.previousParseStatus())
                     && observation.internalContentId() != null) {
@@ -603,7 +590,7 @@ public class CrawlerCore {
                         observation.internalContentId());
                 reportItemProgress(item, item.title(), "COMPLETED", 100,
                         "来源未变化，内容未发生变化");
-                return new ItemProcessingResult(ItemOutcome.UNCHANGED, "list-unchanged", true);
+                return new ItemProcessingResult(ItemOutcome.UNCHANGED, "list-unchanged", true, false);
             }
         }
 
@@ -691,7 +678,7 @@ public class CrawlerCore {
                     item.externalId(), detailFingerprint);
             stats.filtered++;
             reportItemProgress(item, parsed.title(), parsed.year(), "COMPLETED", 100, "解析完成，已按题材过滤");
-            return new ItemProcessingResult(ItemOutcome.FILTERED, "detail-unchanged", true);
+            return new ItemProcessingResult(ItemOutcome.FILTERED, "detail-unchanged", true, false);
         }
         if (detailUnchanged && "parsed".equals(observation.previousParseStatus())
                 && observation.internalContentId() != null) {
@@ -703,7 +690,7 @@ public class CrawlerCore {
             recordItemSuccessExisting(adapter, contentType, item,
                     observation.internalContentId());
             reportItemProgress(item, parsed.title(), parsed.year(), "COMPLETED", 100, "解析完成，内容未发生变化");
-            return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true);
+            return new ItemProcessingResult(ItemOutcome.UNCHANGED, "detail-unchanged", true, false);
         }
         if (!matchesGenreFilter(resolvedGenres.names(), genreFilter)) {
             sourceItemService.recordFiltered(adapter.sourceCode(), contentType,
@@ -736,7 +723,8 @@ public class CrawlerCore {
                 reportItemProgress(item, parsed.title(), parsed.year(), "COMPLETED", 100,
                         persisted.added() ? "影片新增完成"
                                 : persisted.updated() ? "影片更新完成" : "解析完成，内容未发生变化");
-                return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged());
+                return new ItemProcessingResult(ItemOutcome.SUCCESS, "ok", persisted.unchanged(),
+                        !persisted.unchanged());
             } catch (RuntimeException persistenceFailure) {
                 boolean retryable = isRetryablePersistenceFailure(persistenceFailure);
                 boolean exhausted = attempt >= maxPersistenceAttempts;
@@ -1040,6 +1028,10 @@ public class CrawlerCore {
     }
 
     private record ItemProcessingResult(ItemOutcome outcome, String diagnostic,
-                                        boolean oldItem) {
+                                        boolean oldItem, boolean countsTowardsLimit) {
+        private ItemProcessingResult(ItemOutcome outcome, String diagnostic, boolean oldItem) {
+            this(outcome, diagnostic, oldItem,
+                    outcome != ItemOutcome.UNCHANGED && outcome != ItemOutcome.CANCELLED);
+        }
     }
 }
