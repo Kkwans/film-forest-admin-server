@@ -1,12 +1,16 @@
 package com.filmforest.crawler.http;
 
 import com.filmforest.crawler.config.CrawlerHttpProperties;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.net.URI;
+import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +35,53 @@ class JavaHttpFetcherTest {
                 .isEqualTo(FetchCategory.EMPTY_BODY);
         assertThat(JavaHttpFetcher.classify(200, "text/html", "<div class=cf-turnstile></div>"))
                 .isEqualTo(FetchCategory.CHALLENGE_PAGE);
+    }
+
+    @Test
+    void challengePageIsRetriedAfterWaitUsingTheSameHttpSession() throws IOException {
+        CrawlerHttpProperties properties = new CrawlerHttpProperties();
+        properties.setMaxAttempts(2);
+        properties.setChallengeRetryDelay(Duration.ZERO);
+        properties.setConnectTimeout(Duration.ofSeconds(1));
+        properties.setRequestTimeout(Duration.ofSeconds(1));
+
+        AtomicInteger requests = new AtomicInteger();
+        AtomicBoolean challengeCookieWasReused = new AtomicBoolean();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/challenge", exchange -> {
+            int requestNumber = requests.incrementAndGet();
+            if (requestNumber == 1) {
+                exchange.getResponseHeaders().add("Set-Cookie", "challenge=passed; Path=/");
+            } else if (exchange.getRequestHeaders().getFirst("Cookie") != null
+                    && exchange.getRequestHeaders().getFirst("Cookie").contains("challenge=passed")) {
+                challengeCookieWasReused.set(true);
+            }
+            String body = requestNumber == 1
+                    ? "<div class=cf-turnstile></div>"
+                    : "<html><a href='/mv/1.html'>ok</a></html>";
+            byte[] bytes = body.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+            } finally {
+                exchange.close();
+            }
+        });
+        server.start();
+        try {
+            JavaHttpFetcher fetcher = new JavaHttpFetcher(properties);
+            FetchResult result = fetcher.fetch(
+                    URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/challenge"),
+                    Map.of(), 0, new AtomicBoolean(false));
+
+            assertThat(result.category()).isEqualTo(FetchCategory.SUCCESS);
+            assertThat(result.attemptCount()).isEqualTo(2);
+            assertThat(requests).hasValue(2);
+            assertThat(challengeCookieWasReused).isTrue();
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test

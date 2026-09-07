@@ -157,6 +157,65 @@ class CrawlerCoreCrawlModeTest {
     }
 
     @Test
+    void previouslyChallengedCursorIsReprobedWithoutResettingCheckpoint() {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(1);
+        CrawlerTaskLog job = job("latest", 4);
+        CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
+        cursor.setScheduleId(1L);
+        cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
+        cursor.setState(CrawlerCursorState.SOURCE_UNAVAILABLE.getCode());
+        cursor.setLastError("来源不可用：" + FetchCategory.CHALLENGE_PAGE);
+        cursor.setNextPage(4);
+        cursor.setNextItemIndex(0);
+
+        URI listUri = URI.create("https://source.test/list/4");
+        prepare(schedule, job, cancellation);
+        when(cursorService.prepare(schedule, job)).thenReturn(cursor);
+        when(adapter.listUri(any(CrawlerSourceQuery.class))).thenReturn(listUri);
+        when(fetcher.fetch(eq(listUri), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(success(listUri, "empty"));
+        when(adapter.parseList("empty", listUri)).thenReturn(List.of());
+
+        var summary = crawler.executeCrawl(1L, 9L, cancellation);
+
+        assertThat(summary.pagesScanned()).isEqualTo(1);
+        verify(cursorService).mark(cursor, CrawlerCursorState.ACTIVE, null);
+        verify(fetcher).fetch(eq(listUri), anyMap(), anyInt(), same(cancellation));
+        assertThat(cursor.getNextPage()).isEqualTo(4);
+        assertThat(cursor.getNextItemIndex()).isZero();
+        assertThat(cursor.getNextExternalId()).isNull();
+    }
+
+    @Test
+    void exhaustedChallengeDoesNotPoisonActiveCursor() {
+        AtomicBoolean cancellation = new AtomicBoolean(false);
+        CrawlerSchedule schedule = latestSchedule(1);
+        CrawlerTaskLog job = job("latest", 1);
+        CrawlerScheduleCursor cursor = new CrawlerScheduleCursor();
+        cursor.setScheduleId(1L);
+        cursor.setProfileHash(CrawlerQueryProfile.cursorHash(schedule));
+        cursor.setState(CrawlerCursorState.ACTIVE.getCode());
+
+        URI listUri = URI.create("https://source.test/list/1");
+        FetchResult challenge = new FetchResult(listUri, listUri, 403, "text/html",
+                "<div class=cf-turnstile></div>", 1L,
+                FetchCategory.CHALLENGE_PAGE, true, Map.of());
+        prepare(schedule, job, cancellation);
+        when(cursorService.prepare(schedule, job)).thenReturn(cursor);
+        when(adapter.listUri(any(CrawlerSourceQuery.class))).thenReturn(listUri);
+        when(fetcher.fetch(eq(listUri), anyMap(), anyInt(), same(cancellation)))
+                .thenReturn(challenge);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> crawler.executeCrawl(1L, 9L, cancellation))
+                .isInstanceOf(CrawlerFetchException.class)
+                .hasMessageContaining(FetchCategory.CHALLENGE_PAGE.name());
+        verify(cursorService, never()).mark(cursor, CrawlerCursorState.SOURCE_UNAVAILABLE,
+                "来源不可用：" + FetchCategory.CHALLENGE_PAGE);
+    }
+
+    @Test
     void unchangedItemsDoNotConsumeBackfillBudgetOrStopAfterTwentyItems() {
         AtomicBoolean cancellation = new AtomicBoolean(false);
         CrawlerSchedule schedule = latestSchedule(1);

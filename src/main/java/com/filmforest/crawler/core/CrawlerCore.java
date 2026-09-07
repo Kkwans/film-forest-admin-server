@@ -169,8 +169,14 @@ public class CrawlerCore {
                         cursor.getLastError() == null ? "游标需要人工恢复" : cursor.getLastError());
             }
             if (cursorState == CrawlerCursorState.SOURCE_UNAVAILABLE) {
-                throw new CrawlerSourceUnavailableException(
-                        cursor.getLastError() == null ? "来源当前不可用" : cursor.getLastError());
+                if (isChallengeUnavailable(cursor.getLastError())) {
+                    // 旧版本会把一次挑战页永久写成 SOURCE_UNAVAILABLE；挑战是临时状态，
+                    // 这里保留原检查点并重新探测，不要求用户手工重置游标。
+                    cursorService.mark(cursor, CrawlerCursorState.ACTIVE, null);
+                } else {
+                    throw new CrawlerSourceUnavailableException(
+                            cursor.getLastError() == null ? "来源当前不可用" : cursor.getLastError());
+                }
             }
         }
         CrawlerCheckpoint checkpoint = cursor != null
@@ -561,11 +567,16 @@ public class CrawlerCore {
 
     private void markCursorUnavailable(CrawlerScheduleCursor cursor, FetchResult fetch) {
         if (cursor == null || fetch == null) return;
-        if (fetch.category() == FetchCategory.CHALLENGE_PAGE
-                || fetch.category() == FetchCategory.FORBIDDEN) {
+        // CHALLENGE_PAGE 已在 HttpFetcher 内等待并有限重试；耗尽后也不能污染
+        // 分页游标，否则来源恢复后每个新 Job 都会在请求前直接失败。
+        if (fetch.category() == FetchCategory.FORBIDDEN) {
             cursorService.mark(cursor, CrawlerCursorState.SOURCE_UNAVAILABLE,
                     "来源不可用：" + fetch.category());
         }
+    }
+
+    private static boolean isChallengeUnavailable(String error) {
+        return error != null && error.contains(FetchCategory.CHALLENGE_PAGE.name());
     }
 
     private ItemProcessingResult processItem(CrawlerSourceAdapter adapter, ContentType contentType,

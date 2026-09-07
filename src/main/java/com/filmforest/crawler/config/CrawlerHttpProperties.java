@@ -12,6 +12,7 @@ public class CrawlerHttpProperties {
     private int maxBodyBytes = 10 * 1024 * 1024;
     private int maxAttempts = 3;
     private Duration retryBaseDelay = Duration.ofSeconds(1);
+    private Duration challengeRetryDelay = Duration.ofSeconds(10);
     private String userAgent = "FilmForestCrawler/1.0 (+private NAS; contact local administrator)";
     private boolean proxyEnabled;
     private String proxyHost = "127.0.0.1";
@@ -55,6 +56,14 @@ public class CrawlerHttpProperties {
 
     public void setRetryBaseDelay(Duration retryBaseDelay) {
         this.retryBaseDelay = retryBaseDelay;
+    }
+
+    public Duration getChallengeRetryDelay() {
+        return challengeRetryDelay;
+    }
+
+    public void setChallengeRetryDelay(Duration challengeRetryDelay) {
+        this.challengeRetryDelay = challengeRetryDelay;
     }
 
     public String getUserAgent() {

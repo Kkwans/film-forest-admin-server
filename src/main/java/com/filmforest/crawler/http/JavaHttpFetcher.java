@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.net.CookieManager;
+import java.net.CookiePolicy;
 import java.net.InetSocketAddress;
 import java.net.ProxySelector;
 import java.net.URI;
@@ -93,7 +95,7 @@ public class JavaHttpFetcher implements HttpFetcher {
             long retryStarted = System.nanoTime();
             if (!sleepCancellable(delayMs, cancellation, observer, attempt, attempts,
                     retryStarted, FetchProgressPhase.RETRYING,
-                    "来源响应异常，等待重试（" + formatSeconds(delayMs) + "）")) {
+                    retryMessage(last, delayMs))) {
                 return cancelled(publicUri, last.elapsedMs());
             }
         }
@@ -129,9 +131,10 @@ public class JavaHttpFetcher implements HttpFetcher {
             }
             String body = new String(bytes, StandardCharsets.UTF_8);
             FetchCategory category = classify(response.statusCode(), contentType, body);
-            boolean retryable = category == FetchCategory.RATE_LIMITED
-                    || category == FetchCategory.SERVER_ERROR
-                    || category == FetchCategory.NETWORK_ERROR;
+            boolean retryable = switch (category) {
+                case CHALLENGE_PAGE, RATE_LIMITED, SERVER_ERROR, NETWORK_ERROR -> true;
+                default -> false;
+            };
             log.atDebug().log("HTTP fetch {} {} -> {} in {} ms", response.statusCode(), safeUri(uri),
                     category, elapsedMs);
             return new FetchResult(publicUri, redactUri(response.uri(), sensitiveQueryParameters),
@@ -219,8 +222,21 @@ public class JavaHttpFetcher implements HttpFetcher {
         if (headerDelay != null) {
             return Math.min(headerDelay, Duration.ofMinutes(2).toMillis());
         }
+        if (result.category() == FetchCategory.CHALLENGE_PAGE) {
+            Duration configured = properties.getChallengeRetryDelay();
+            long delay = configured == null ? Duration.ofSeconds(10).toMillis()
+                    : Math.max(0L, configured.toMillis());
+            return Math.min(delay, Duration.ofMinutes(2).toMillis());
+        }
         long base = Math.max(0L, properties.getRetryBaseDelay().toMillis());
         return Math.min(base * (1L << Math.min(attempt - 1, 6)), Duration.ofSeconds(30).toMillis());
+    }
+
+    private static String retryMessage(FetchResult result, long delayMs) {
+        if (result.category() == FetchCategory.CHALLENGE_PAGE) {
+            return "来源正在完成访问验证，等待后重新检测（" + formatSeconds(delayMs) + "）";
+        }
+        return "来源响应异常，等待重试（" + formatSeconds(delayMs) + "）";
     }
 
     static Long parseRetryAfter(String value) {
@@ -251,6 +267,7 @@ public class JavaHttpFetcher implements HttpFetcher {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(properties.getConnectTimeout())
                 .followRedirects(HttpClient.Redirect.NORMAL)
+                .cookieHandler(new CookieManager(null, CookiePolicy.ACCEPT_ORIGINAL_SERVER))
                 .version(HttpClient.Version.HTTP_2);
         if (properties.isProxyEnabled()) {
             builder.proxy(ProxySelector.of(new InetSocketAddress(
