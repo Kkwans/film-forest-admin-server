@@ -1,7 +1,10 @@
 package com.filmforest.common.config;
 
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Constructor;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,5 +34,15 @@ class SecurityPropertiesTest {
     void shortJwtSecretIsRejected() {
         assertThatThrownBy(() -> new JwtProperties("too-short", 60_000, "film-forest-admin"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void jwtPropertiesKeepsConstructorBindingWithCompatibilityConstructor() {
+        Constructor<?> canonical = Arrays.stream(JwtProperties.class.getDeclaredConstructors())
+                .filter(constructor -> constructor.getParameterCount() == 4)
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(canonical.isAnnotationPresent(ConstructorBinding.class)).isTrue();
     }
 }
