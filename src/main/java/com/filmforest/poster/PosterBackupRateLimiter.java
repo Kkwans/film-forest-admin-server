@@ -1,5 +1,6 @@
 package com.filmforest.poster;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -15,6 +16,7 @@ public class PosterBackupRateLimiter {
     private final int maxRequests;
     private final Deque<Long> requestTimes = new ArrayDeque<>();
 
+    @Autowired
     public PosterBackupRateLimiter(PosterBackupProperties properties) {
         this(properties.getRateLimitWindow(), properties.getMaxRequestsPerWindow());
     }
