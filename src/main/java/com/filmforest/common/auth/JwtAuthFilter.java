@@ -80,6 +80,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             return true;
         }
         return (path.equals("/api/auth/login") && HttpMethod.POST.matches(request.getMethod()))
+                || (path.startsWith("/api/poster/assets/") && HttpMethod.GET.matches(request.getMethod()))
                 || (path.equals("/api/health") && HttpMethod.GET.matches(request.getMethod()));
     }
 

@@ -96,6 +96,21 @@ public class CrawlerContentPersistence {
         return new PersistResult(contentId, identity.canonicalKey(), isNew, !isNew, false, resourceDiff);
     }
 
+    /** 成功明细和其他后台快照使用当前展示地址，归档成功后优先记录本地版本化 URL。 */
+    public String currentPosterUrl(com.filmforest.common.type.ContentType contentType, long contentId) {
+        return switch (contentType) {
+            case MOVIE -> value(movieService.getById(contentId), Movie::getPosterUrl);
+            case DRAMA -> value(dramaService.getById(contentId), Drama::getPosterUrl);
+            case VARIETY -> value(varietyService.getById(contentId), Variety::getPosterUrl);
+            case ANIME -> value(animeService.getById(contentId), Anime::getPosterUrl);
+            case SHORT_DRAMA -> value(shortDramaService.getById(contentId), ShortDrama::getPosterUrl);
+        };
+    }
+
+    private static <T> String value(T entity, java.util.function.Function<T, String> getter) {
+        return entity == null ? null : getter.apply(entity);
+    }
+
     /**
      * 为列表指纹短路的成功条目读取当前内容快照，保证 Job 明细仍能展示可识别的信息。
      * 该方法只读内容表，不触碰资源差异、题材关联或任何爬虫状态。
@@ -107,7 +122,7 @@ public class CrawlerContentPersistence {
                 Movie item = movieService.getById(contentId);
                 yield item == null
                         ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
-                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        : snapshot(contentType, item.getTitle(), sourcePosterUrl(item.getPosterSourceUrl(), item.getPosterUrl()), item.getYear(),
                         item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
                         item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
                         item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), item.getScoreRt(),
@@ -117,7 +132,7 @@ public class CrawlerContentPersistence {
                 Drama item = dramaService.getById(contentId);
                 yield item == null
                         ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
-                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        : snapshot(contentType, item.getTitle(), sourcePosterUrl(item.getPosterSourceUrl(), item.getPosterUrl()), item.getYear(),
                         item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
                         item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
                         item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
@@ -127,7 +142,7 @@ public class CrawlerContentPersistence {
                 Variety item = varietyService.getById(contentId);
                 yield item == null
                         ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
-                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        : snapshot(contentType, item.getTitle(), sourcePosterUrl(item.getPosterSourceUrl(), item.getPosterUrl()), item.getYear(),
                         item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
                         item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
                         item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
@@ -137,7 +152,7 @@ public class CrawlerContentPersistence {
                 Anime item = animeService.getById(contentId);
                 yield item == null
                         ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
-                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        : snapshot(contentType, item.getTitle(), sourcePosterUrl(item.getPosterSourceUrl(), item.getPosterUrl()), item.getYear(),
                         item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
                         item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
                         item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
@@ -147,7 +162,7 @@ public class CrawlerContentPersistence {
                 ShortDrama item = shortDramaService.getById(contentId);
                 yield item == null
                         ? emptySnapshot(contentType, contentId, externalId, sourceUrl)
-                        : snapshot(contentType, item.getTitle(), item.getPosterUrl(), item.getYear(),
+                        : snapshot(contentType, item.getTitle(), sourcePosterUrl(item.getPosterSourceUrl(), item.getPosterUrl()), item.getYear(),
                         item.getRegion(), item.getGenre(), item.getDirector(), item.getWriter(),
                         item.getActor(), item.getLanguage(), item.getDuration(), item.getReleaseDate(),
                         item.getAlias(), item.getScoreDouban(), item.getScoreImdb(), null,
@@ -202,12 +217,14 @@ public class CrawlerContentPersistence {
     }
 
     private boolean persistMovie(long id, ParsedContent parsed, List<String> genres) {
-        boolean isNew = movieService.getById(id) == null;
+        Movie existing = movieService.getById(id);
+        boolean isNew = existing == null;
         Movie entity = new Movie();
         entity.setId(id);
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
-        entity.setPosterUrl(parsed.sourcePosterUrl());
+        applyPoster(entity, existing == null ? null : existing.getPosterUrl(),
+                existing == null ? null : existing.getPosterSourceUrl(), parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
@@ -227,21 +244,26 @@ public class CrawlerContentPersistence {
     }
 
     private boolean persistDrama(long id, ParsedContent parsed, List<String> genres) {
-        boolean isNew = dramaService.getById(id) == null;
+        Drama existing = dramaService.getById(id);
+        boolean isNew = existing == null;
         Drama entity = new Drama();
         entity.setId(id);
-        applySeries(entity, parsed, genres, isNew);
+        applySeries(entity, parsed, genres, isNew,
+                existing == null ? null : existing.getPosterUrl(),
+                existing == null ? null : existing.getPosterSourceUrl());
         saveOrUpdate(dramaService, entity, isNew);
         return isNew;
     }
 
     private boolean persistVariety(long id, ParsedContent parsed, List<String> genres) {
-        boolean isNew = varietyService.getById(id) == null;
+        Variety existing = varietyService.getById(id);
+        boolean isNew = existing == null;
         Variety entity = new Variety();
         entity.setId(id);
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
-        entity.setPosterUrl(parsed.sourcePosterUrl());
+        applyPoster(entity, existing == null ? null : existing.getPosterUrl(),
+                existing == null ? null : existing.getPosterSourceUrl(), parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
@@ -261,12 +283,14 @@ public class CrawlerContentPersistence {
     }
 
     private boolean persistAnime(long id, ParsedContent parsed, List<String> genres) {
-        boolean isNew = animeService.getById(id) == null;
+        Anime existing = animeService.getById(id);
+        boolean isNew = existing == null;
         Anime entity = new Anime();
         entity.setId(id);
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
-        entity.setPosterUrl(parsed.sourcePosterUrl());
+        applyPoster(entity, existing == null ? null : existing.getPosterUrl(),
+                existing == null ? null : existing.getPosterSourceUrl(), parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
@@ -286,12 +310,14 @@ public class CrawlerContentPersistence {
     }
 
     private boolean persistShortDrama(long id, ParsedContent parsed, List<String> genres) {
-        boolean isNew = shortDramaService.getById(id) == null;
+        ShortDrama existing = shortDramaService.getById(id);
+        boolean isNew = existing == null;
         ShortDrama entity = new ShortDrama();
         entity.setId(id);
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
-        entity.setPosterUrl(parsed.sourcePosterUrl());
+        applyPoster(entity, existing == null ? null : existing.getPosterUrl(),
+                existing == null ? null : existing.getPosterSourceUrl(), parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
@@ -310,10 +336,11 @@ public class CrawlerContentPersistence {
         return isNew;
     }
 
-    private void applySeries(Drama entity, ParsedContent parsed, List<String> genres, boolean isNew) {
+    private void applySeries(Drama entity, ParsedContent parsed, List<String> genres, boolean isNew,
+                             String existingPosterUrl, String existingPosterSourceUrl) {
         entity.setTitle(parsed.title());
         entity.setAlias(json(parsed.aliases(), isNew));
-        entity.setPosterUrl(parsed.sourcePosterUrl());
+        applyPoster(entity, existingPosterUrl, existingPosterSourceUrl, parsed.sourcePosterUrl());
         entity.setYear(parsed.year());
         entity.setDirector(json(parsed.directors(), isNew));
         entity.setWriter(json(parsed.writers(), isNew));
@@ -341,6 +368,49 @@ public class CrawlerContentPersistence {
 
     private static String firstNonBlank(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private static String sourcePosterUrl(String sourcePosterUrl, String displayPosterUrl) {
+        return firstNonBlank(sourcePosterUrl) != null ? sourcePosterUrl : displayPosterUrl;
+    }
+
+    private static boolean isLocalPoster(String value) {
+        return value != null && value.startsWith("/api/poster/assets/");
+    }
+
+    private static void applyPoster(Movie entity, String existingPosterUrl,
+                                    String existingSourceUrl, String parsedSourceUrl) {
+        entity.setPosterUrl(displayPosterUrl(existingPosterUrl, parsedSourceUrl));
+        entity.setPosterSourceUrl(sourcePosterUrl(parsedSourceUrl, existingSourceUrl));
+    }
+
+    private static void applyPoster(Drama entity, String existingPosterUrl,
+                                    String existingSourceUrl, String parsedSourceUrl) {
+        entity.setPosterUrl(displayPosterUrl(existingPosterUrl, parsedSourceUrl));
+        entity.setPosterSourceUrl(sourcePosterUrl(parsedSourceUrl, existingSourceUrl));
+    }
+
+    private static void applyPoster(Variety entity, String existingPosterUrl,
+                                    String existingSourceUrl, String parsedSourceUrl) {
+        entity.setPosterUrl(displayPosterUrl(existingPosterUrl, parsedSourceUrl));
+        entity.setPosterSourceUrl(sourcePosterUrl(parsedSourceUrl, existingSourceUrl));
+    }
+
+    private static void applyPoster(Anime entity, String existingPosterUrl,
+                                    String existingSourceUrl, String parsedSourceUrl) {
+        entity.setPosterUrl(displayPosterUrl(existingPosterUrl, parsedSourceUrl));
+        entity.setPosterSourceUrl(sourcePosterUrl(parsedSourceUrl, existingSourceUrl));
+    }
+
+    private static void applyPoster(ShortDrama entity, String existingPosterUrl,
+                                    String existingSourceUrl, String parsedSourceUrl) {
+        entity.setPosterUrl(displayPosterUrl(existingPosterUrl, parsedSourceUrl));
+        entity.setPosterSourceUrl(sourcePosterUrl(parsedSourceUrl, existingSourceUrl));
+    }
+
+    private static String displayPosterUrl(String existingPosterUrl, String parsedSourceUrl) {
+        if (isLocalPoster(existingPosterUrl)) return existingPosterUrl;
+        return firstNonBlank(parsedSourceUrl) != null ? parsedSourceUrl : existingPosterUrl;
     }
 
     private static void saveOrUpdate(MovieService service, Movie entity, boolean isNew) {

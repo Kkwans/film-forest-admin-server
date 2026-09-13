@@ -49,6 +49,7 @@ public class AdminContentMutationService {
 
     @Transactional
     public Movie createMovie(Movie content) {
+        content.setPosterSourceUrl(sourcePosterForCreate(content.getPosterUrl()));
         GenreSelection genres = prepareCreate("movie", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setStatus(genres.status());
@@ -64,6 +65,7 @@ public class AdminContentMutationService {
         Movie existing = requireContent(movieService.getDetail(id));
         GenreSelection genres = prepareUpdate("movie", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
+        content.setPosterSourceUrl(sourcePosterForUpdate(content.getPosterUrl(), existing.getPosterSourceUrl()));
         content.setId(id);
         prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
                 content.getStatus(), genres);
@@ -76,6 +78,7 @@ public class AdminContentMutationService {
 
     @Transactional
     public Drama createDrama(Drama content) {
+        content.setPosterSourceUrl(sourcePosterForCreate(content.getPosterUrl()));
         GenreSelection genres = prepareCreate("drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setStatus(genres.status());
@@ -91,6 +94,7 @@ public class AdminContentMutationService {
         Drama existing = requireContent(dramaService.getDetail(id));
         GenreSelection genres = prepareUpdate("drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
+        content.setPosterSourceUrl(sourcePosterForUpdate(content.getPosterUrl(), existing.getPosterSourceUrl()));
         content.setId(id);
         prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
                 content.getStatus(), genres);
@@ -103,6 +107,7 @@ public class AdminContentMutationService {
 
     @Transactional
     public Variety createVariety(Variety content) {
+        content.setPosterSourceUrl(sourcePosterForCreate(content.getPosterUrl()));
         GenreSelection genres = prepareCreate("variety", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setStatus(genres.status());
@@ -118,6 +123,7 @@ public class AdminContentMutationService {
         Variety existing = requireContent(varietyService.getDetail(id));
         GenreSelection genres = prepareUpdate("variety", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
+        content.setPosterSourceUrl(sourcePosterForUpdate(content.getPosterUrl(), existing.getPosterSourceUrl()));
         content.setId(id);
         prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
                 content.getStatus(), genres);
@@ -130,6 +136,7 @@ public class AdminContentMutationService {
 
     @Transactional
     public Anime createAnime(Anime content) {
+        content.setPosterSourceUrl(sourcePosterForCreate(content.getPosterUrl()));
         GenreSelection genres = prepareCreate("anime", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setStatus(genres.status());
@@ -145,6 +152,7 @@ public class AdminContentMutationService {
         Anime existing = requireContent(animeService.getDetail(id));
         GenreSelection genres = prepareUpdate("anime", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
+        content.setPosterSourceUrl(sourcePosterForUpdate(content.getPosterUrl(), existing.getPosterSourceUrl()));
         content.setId(id);
         prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
                 content.getStatus(), genres);
@@ -157,6 +165,7 @@ public class AdminContentMutationService {
 
     @Transactional
     public ShortDrama createShortDrama(ShortDrama content) {
+        content.setPosterSourceUrl(sourcePosterForCreate(content.getPosterUrl()));
         GenreSelection genres = prepareCreate("short_drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
         content.setStatus(genres.status());
@@ -172,6 +181,7 @@ public class AdminContentMutationService {
         ShortDrama existing = requireContent(shortDramaService.getDetail(id));
         GenreSelection genres = prepareUpdate("short_drama", content.getStatus(), content.getGenre(),
                 content.getGenreTagIds());
+        content.setPosterSourceUrl(sourcePosterForUpdate(content.getPosterUrl(), existing.getPosterSourceUrl()));
         content.setId(id);
         prepareReplacement(content::setGenre, content::setStatus, existing.getGenre(), existing.getStatus(),
                 content.getStatus(), genres);
@@ -245,6 +255,7 @@ public class AdminContentMutationService {
                 .set("title", content.getTitle())
                 .set("alias", content.getAlias())
                 .set("poster_url", content.getPosterUrl())
+                .set("poster_source_url", content.getPosterSourceUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
                 .set("writer", content.getWriter())
@@ -269,6 +280,7 @@ public class AdminContentMutationService {
                 .set("title", content.getTitle())
                 .set("alias", content.getAlias())
                 .set("poster_url", content.getPosterUrl())
+                .set("poster_source_url", content.getPosterSourceUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
                 .set("writer", content.getWriter())
@@ -291,6 +303,7 @@ public class AdminContentMutationService {
                 .set("title", content.getTitle())
                 .set("alias", content.getAlias())
                 .set("poster_url", content.getPosterUrl())
+                .set("poster_source_url", content.getPosterSourceUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
                 .set("writer", content.getWriter())
@@ -313,6 +326,7 @@ public class AdminContentMutationService {
                 .set("title", content.getTitle())
                 .set("alias", content.getAlias())
                 .set("poster_url", content.getPosterUrl())
+                .set("poster_source_url", content.getPosterSourceUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
                 .set("writer", content.getWriter())
@@ -335,6 +349,7 @@ public class AdminContentMutationService {
                 .set("title", content.getTitle())
                 .set("alias", content.getAlias())
                 .set("poster_url", content.getPosterUrl())
+                .set("poster_source_url", content.getPosterSourceUrl())
                 .set("year", content.getYear())
                 .set("director", content.getDirector())
                 .set("writer", content.getWriter())
@@ -357,6 +372,18 @@ public class AdminContentMutationService {
 
     private static void requireUpdated(boolean updated) {
         if (!updated) throw new IllegalArgumentException("内容不存在或更新失败");
+    }
+
+    private static String sourcePosterForCreate(String posterUrl) {
+        return isLocalPoster(posterUrl) ? null : posterUrl;
+    }
+
+    private static String sourcePosterForUpdate(String posterUrl, String existingSourceUrl) {
+        return isLocalPoster(posterUrl) ? existingSourceUrl : posterUrl;
+    }
+
+    private static boolean isLocalPoster(String posterUrl) {
+        return posterUrl != null && posterUrl.startsWith("/api/poster/assets/");
     }
 
     private static <T> T requireContent(T content) {

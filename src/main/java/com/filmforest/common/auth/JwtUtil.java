@@ -27,12 +27,20 @@ public class JwtUtil {
 
     /** 生成 JWT Token */
     public String generateToken(Long userId, String username) {
+        return generateToken(userId, username, false);
+    }
+
+    /**
+     * 生成登录令牌。rememberMe 只影响有效期，不保存或回传用户密码。
+     */
+    public String generateToken(Long userId, String username, boolean rememberMe) {
+        long expiration = rememberMe ? properties.rememberedExpiration() : properties.expiration();
         return Jwts.builder()
                 .issuer(properties.issuer())
                 .subject(userId.toString())
                 .claim("username", username)
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + properties.expiration()))
+                .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getKey())
                 .compact();
     }

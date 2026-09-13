@@ -63,6 +63,22 @@ class AuthControllerTest {
     }
 
     @Test
+    void issuesRememberedTokenWhenRequested() throws Exception {
+        User admin = user(UserRole.ADMIN);
+        when(userMapper.selectOne(org.mockito.ArgumentMatchers.<Wrapper<User>>any())).thenReturn(admin);
+        AuthController.LoginRequest request = loginRequest();
+        request.setRememberMe(true);
+        when(jwtUtil.generateToken(1L, "admin", true)).thenReturn("remembered-token");
+
+        Result<Map<String, Object>> result = controller.login(request, servletRequest());
+
+        assertThat(result.getCode()).isEqualTo(200);
+        assertThat(result.getData()).containsEntry("token", "remembered-token");
+        verify(jwtUtil).generateToken(1L, "admin", true);
+        verify(jwtUtil, never()).generateToken(1L, "admin");
+    }
+
+    @Test
     void persistsLayoutPreferenceForCurrentAdmin() throws Exception {
         User admin = user(UserRole.ADMIN);
         when(userMapper.selectById(1L)).thenReturn(admin);

@@ -22,6 +22,10 @@ public class Drama {
     private String title;
     private String alias;
     private String posterUrl;
+    @TableField("poster_source_url")
+    private String posterSourceUrl;
+    @TableField("poster_backup_source_url")
+    private String posterBackupSourceUrl;
     private Integer year;
     private String director;
     private String writer;

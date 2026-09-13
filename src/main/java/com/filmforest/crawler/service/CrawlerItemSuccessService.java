@@ -88,7 +88,11 @@ public class CrawlerItemSuccessService {
                       List<String> resolvedGenres) {
         success.setTitle(limit(requireText(parsed.title(), "title"), TEXT_LIMIT));
         success.setAlias(json(parsed.aliases()));
-        success.setPosterUrl(limit(parsed.sourcePosterUrl(), 1000));
+        String currentPosterUrl = contentPersistence.currentPosterUrl(
+                parsed.contentType(), success.getContentId());
+        String posterUrl = isLocalPoster(currentPosterUrl)
+                ? currentPosterUrl : parsed.sourcePosterUrl();
+        success.setPosterUrl(limit(posterUrl, 1000));
         success.setYear(parsed.year());
         success.setDirectors(json(parsed.directors()));
         success.setWriters(json(parsed.writers()));
@@ -102,6 +106,10 @@ public class CrawlerItemSuccessService {
         success.setScoreDouban(parsed.doubanScore());
         success.setScoreImdb(parsed.imdbScore());
         success.setScoreRt(parsed.rottenTomatoesScore());
+    }
+
+    private static boolean isLocalPoster(String value) {
+        return value != null && value.startsWith("/api/poster/assets/");
     }
 
     private String json(List<String> values) {

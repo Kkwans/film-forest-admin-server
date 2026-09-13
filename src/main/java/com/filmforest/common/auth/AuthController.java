@@ -83,7 +83,9 @@ public class AuthController {
             userMapper.updateById(user);
         }
 
-        String token = jwtUtil.generateToken(user.getId(), user.getUsername());
+        String token = req.isRememberMe()
+                ? jwtUtil.generateToken(user.getId(), user.getUsername(), true)
+                : jwtUtil.generateToken(user.getId(), user.getUsername());
         loginAttemptService.recordSuccess(remoteAddress, req.getUsername());
         log.info("登录成功: userId={}, username={}", user.getId(), user.getUsername());
 
@@ -180,9 +182,14 @@ public class AuthController {
         @Size(min = 6, max = 100, message = "密码长度至少 6 位")
         private String password;
 
+        /** 是否在本机保持较长时间的登录状态。 */
+        private boolean rememberMe;
+
         public String getUsername() { return username; }
         public void setUsername(String username) { this.username = username; }
         public String getPassword() { return password; }
         public void setPassword(String password) { this.password = password; }
+        public boolean isRememberMe() { return rememberMe; }
+        public void setRememberMe(boolean rememberMe) { this.rememberMe = rememberMe; }
     }
 }

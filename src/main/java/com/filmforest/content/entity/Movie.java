@@ -21,6 +21,10 @@ public class Movie {
     private String title;                    // 标题
     private String alias;                   // 别名（JSON数组）
     private String posterUrl;                // 海报URL
+    @TableField("poster_source_url")
+    private String posterSourceUrl;          // 爬虫原始海报URL
+    @TableField("poster_backup_source_url")
+    private String posterBackupSourceUrl;    // 当前本地备份对应的原始URL
     private Integer year;                   // 年份
     private String director;                // 导演（JSON数组）
     private String writer;                  // 编剧中（JSON数组）

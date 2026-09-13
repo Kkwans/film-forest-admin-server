@@ -62,9 +62,21 @@ logging:
 jwt:
   secret: ${FILM_FOREST_ADMIN_JWT_SECRET}
   expiration: ${FILM_FOREST_ADMIN_JWT_EXPIRATION_MS:86400000}
+  remembered-expiration: ${FILM_FOREST_ADMIN_JWT_REMEMBERED_EXPIRATION_MS:2592000000}
   issuer: ${FILM_FOREST_ADMIN_JWT_ISSUER:film-forest-admin}
 
 app:
+  poster:
+    storage-dir: ${FILM_FOREST_POSTER_STORAGE_DIR:/var/lib/film-forest/posters}
+    backup:
+      enabled: ${FILM_FOREST_POSTER_BACKUP_ENABLED:true}
+      batch-size: ${FILM_FOREST_POSTER_BACKUP_BATCH_SIZE:20}
+      interval: ${FILM_FOREST_POSTER_BACKUP_INTERVAL:1m}
+      initial-delay: ${FILM_FOREST_POSTER_BACKUP_INITIAL_DELAY:30s}
+      connect-timeout: ${FILM_FOREST_POSTER_BACKUP_CONNECT_TIMEOUT:10s}
+      request-timeout: ${FILM_FOREST_POSTER_BACKUP_REQUEST_TIMEOUT:20s}
+      rate-limit-window: ${FILM_FOREST_POSTER_BACKUP_RATE_LIMIT_WINDOW:5s}
+      max-requests-per-window: ${FILM_FOREST_POSTER_BACKUP_MAX_REQUESTS_PER_WINDOW:10}
   security:
     credential-encryption-key: ${FILM_FOREST_POSTER_CREDENTIAL_KEY:}
   cors:

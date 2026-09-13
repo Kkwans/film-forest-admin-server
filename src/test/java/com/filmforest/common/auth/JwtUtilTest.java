@@ -21,4 +21,16 @@ class JwtUtilTest {
         assertThat(new JwtUtil(new JwtProperties(SECRET, 60_000, "another-issuer"))
                 .validateToken(token)).isFalse();
     }
+
+    @Test
+    void rememberedTokenUsesTheLongerConfiguredLifetime() {
+        JwtProperties properties = new JwtProperties(SECRET, 60_000, "film-forest-admin", 300_000);
+        JwtUtil jwtUtil = new JwtUtil(properties);
+
+        String normal = jwtUtil.generateToken(7L, "admin");
+        String remembered = jwtUtil.generateToken(7L, "admin", true);
+
+        assertThat(jwtUtil.parseToken(remembered).getExpiration())
+                .isAfter(jwtUtil.parseToken(normal).getExpiration());
+    }
 }
