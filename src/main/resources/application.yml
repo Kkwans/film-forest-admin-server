@@ -77,6 +77,9 @@ app:
       request-timeout: ${FILM_FOREST_POSTER_BACKUP_REQUEST_TIMEOUT:20s}
       rate-limit-window: ${FILM_FOREST_POSTER_BACKUP_RATE_LIMIT_WINDOW:5s}
       max-requests-per-window: ${FILM_FOREST_POSTER_BACKUP_MAX_REQUESTS_PER_WINDOW:10}
+      max-attempts: ${FILM_FOREST_POSTER_BACKUP_MAX_ATTEMPTS:5}
+      retry-initial-delay: ${FILM_FOREST_POSTER_BACKUP_RETRY_INITIAL_DELAY:5m}
+      retry-max-delay: ${FILM_FOREST_POSTER_BACKUP_RETRY_MAX_DELAY:6h}
   security:
     credential-encryption-key: ${FILM_FOREST_POSTER_CREDENTIAL_KEY:}
   cors:

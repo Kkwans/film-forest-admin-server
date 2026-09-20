@@ -12,20 +12,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class PosterBackupController {
 
     private final PosterBackupScheduler scheduler;
-    private final PosterBackupTaskState taskState;
     private final PosterBackupProperties properties;
 
     public PosterBackupController(PosterBackupScheduler scheduler,
-                                  PosterBackupTaskState taskState,
                                   PosterBackupProperties properties) {
         this.scheduler = scheduler;
-        this.taskState = taskState;
         this.properties = properties;
     }
 
     @GetMapping("/status")
     public Result<PosterBackupTaskState.Snapshot> status() {
-        return Result.ok(taskState.snapshot());
+        return Result.ok(scheduler.snapshot());
     }
 
     @PostMapping("/start")
@@ -33,16 +30,16 @@ public class PosterBackupController {
         if (!properties.isEnabled()) {
             return Result.fail(409, "海报本地化任务已被配置禁用");
         }
-        if (taskState.requestStart()) {
+        if (scheduler.requestStart()) {
             // 从 Controller 调用 @Async 方法会经过 Spring 代理，立即返回给管理端。
-            scheduler.backupPending();
+            scheduler.retryFailed();
         }
-        return Result.ok(taskState.snapshot());
+        return Result.ok(scheduler.snapshot());
     }
 
     @PostMapping("/pause")
     public Result<PosterBackupTaskState.Snapshot> pause() {
-        taskState.requestPause();
-        return Result.ok(taskState.snapshot());
+        scheduler.pause();
+        return Result.ok(scheduler.snapshot());
     }
 }

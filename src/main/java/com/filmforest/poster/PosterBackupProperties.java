@@ -14,6 +14,9 @@ public class PosterBackupProperties {
     private Duration requestTimeout = Duration.ofSeconds(20);
     private Duration rateLimitWindow = Duration.ofSeconds(5);
     private int maxRequestsPerWindow = 10;
+    private int maxAttempts = 5;
+    private Duration retryInitialDelay = Duration.ofMinutes(5);
+    private Duration retryMaxDelay = Duration.ofHours(6);
     private String userAgent = "FilmForestPosterBackup/1.0 (+private NAS; contact local administrator)";
 
     public boolean isEnabled() {
@@ -70,6 +73,30 @@ public class PosterBackupProperties {
 
     public void setMaxRequestsPerWindow(int maxRequestsPerWindow) {
         this.maxRequestsPerWindow = maxRequestsPerWindow;
+    }
+
+    public int getMaxAttempts() {
+        return maxAttempts;
+    }
+
+    public void setMaxAttempts(int maxAttempts) {
+        this.maxAttempts = maxAttempts;
+    }
+
+    public Duration getRetryInitialDelay() {
+        return retryInitialDelay;
+    }
+
+    public void setRetryInitialDelay(Duration retryInitialDelay) {
+        this.retryInitialDelay = retryInitialDelay;
+    }
+
+    public Duration getRetryMaxDelay() {
+        return retryMaxDelay;
+    }
+
+    public void setRetryMaxDelay(Duration retryMaxDelay) {
+        this.retryMaxDelay = retryMaxDelay;
     }
 
     public String getUserAgent() {

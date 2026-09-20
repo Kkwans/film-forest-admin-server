@@ -53,12 +53,58 @@ class PosterBackupServiceTest {
                 httpClient,
                 new PosterBackupRateLimiter(properties));
 
-        assertThat(service.backup(ContentType.MOVIE, 7, "https://192.0.2.1/poster.png")).isTrue();
+        assertThat(service.backup(ContentType.MOVIE, 7, "https://192.0.2.1/poster.png").success()).isTrue();
 
         try (Stream<Path> files = Files.list(tempDir.resolve("movie"))) {
             Path stored = files.findFirst().orElseThrow();
             assertThat(stored.getFileName().toString()).matches("7-[0-9a-f]{16}\\.png");
             assertThat(Files.size(stored)).isEqualTo(image.length);
         }
+    }
+
+    @Test
+    void classifiesNotFoundAsTerminalFailure(@TempDir Path tempDir) throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        HttpResponse<InputStream> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(404);
+        when(response.body()).thenReturn(new ByteArrayInputStream("not found".getBytes()));
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response);
+
+        PosterBackupService.BackupResult result = service(tempDir, httpClient)
+                .backup(ContentType.MOVIE, 7, "https://192.0.2.1/missing.jpg");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.terminal()).isTrue();
+        assertThat(result.failureCode()).isEqualTo("HTTP_404");
+        assertThat(result.httpStatus()).isEqualTo(404);
+    }
+
+    @Test
+    void rejectsHtmlDisguisedAsImageAsTerminalFailure(@TempDir Path tempDir) throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        HttpResponse<InputStream> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.body()).thenReturn(new ByteArrayInputStream(
+                "<html><title>404 Not Found</title></html>".getBytes()));
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(response);
+
+        PosterBackupService.BackupResult result = service(tempDir, httpClient)
+                .backup(ContentType.MOVIE, 7, "https://192.0.2.1/fake.jpg");
+
+        assertThat(result.success()).isFalse();
+        assertThat(result.terminal()).isTrue();
+        assertThat(result.failureCode()).isEqualTo("INVALID_IMAGE");
+    }
+
+    private PosterBackupService service(Path tempDir, HttpClient httpClient) {
+        PosterBackupProperties properties = new PosterBackupProperties();
+        return new PosterBackupService(
+                mock(JdbcTemplate.class),
+                new PosterStorageProperties(tempDir.toString()),
+                properties,
+                httpClient,
+                new PosterBackupRateLimiter(properties));
     }
 }

@@ -4,12 +4,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
-/**
- * 海报回填的进程内任务状态。
- *
- * <p>状态用于管理端实时展示和暂停边界；实际待处理数量仍以数据库为准，
- * 因此服务重启后可以继续从数据库未本地化的记录开始。</p>
- */
+/** 只保存当前进程的运行状态；海报总量和唯一结果始终从数据库实时计算。 */
 @Component
 public class PosterBackupTaskState {
 
@@ -18,16 +13,15 @@ public class PosterBackupTaskState {
         RUNNING,
         PAUSED,
         COMPLETED,
+        COMPLETED_WITH_FAILURES,
         ERROR
     }
 
     private final PosterBackupProperties properties;
     private Status status = Status.IDLE;
-    private long total;
-    private long pending;
-    private long processed;
-    private long succeeded;
-    private long failed;
+    private long attempted;
+    private long successfulAttempts;
+    private long failedAttempts;
     private String currentContentType;
     private Long currentId;
     private String currentTitle;
@@ -40,11 +34,10 @@ public class PosterBackupTaskState {
         this.properties = properties;
     }
 
-    /** 请求启动或从暂停状态继续；已在运行时不会重复排队。 */
     public synchronized boolean requestStart() {
         if (status == Status.RUNNING) return false;
-        if (status == Status.COMPLETED || status == Status.ERROR) {
-            resetCounters();
+        if (status == Status.COMPLETED || status == Status.COMPLETED_WITH_FAILURES || status == Status.ERROR) {
+            resetAttempts();
         }
         status = Status.RUNNING;
         if (startedAt == null) startedAt = Instant.now();
@@ -61,17 +54,9 @@ public class PosterBackupTaskState {
         return true;
     }
 
-    /** 调度器开始一个扫描周期；暂停状态不会被定时器悄悄恢复。 */
-    public synchronized boolean beginCycle(long pendingCount) {
+    public synchronized boolean beginCycle() {
         if (status == Status.PAUSED) return false;
-        if (status == Status.COMPLETED) {
-            resetCounters();
-            startedAt = Instant.now();
-        }
         if (startedAt == null) startedAt = Instant.now();
-        total = Math.max(total, succeeded + Math.max(0, pendingCount));
-        if (total == 0) total = Math.max(0, pendingCount);
-        pending = Math.max(0, pendingCount);
         status = Status.RUNNING;
         completedAt = null;
         touch();
@@ -90,28 +75,22 @@ public class PosterBackupTaskState {
     }
 
     public synchronized void finishItem(boolean success, String errorMessage) {
-        processed++;
+        attempted++;
         if (success) {
-            succeeded++;
-            pending = Math.max(0, pending - 1);
+            successfulAttempts++;
         } else {
-            failed++;
+            failedAttempts++;
             if (errorMessage != null && !errorMessage.isBlank()) lastError = errorMessage;
         }
-        currentContentType = null;
-        currentId = null;
-        currentTitle = null;
+        clearCurrent();
         touch();
     }
 
-    public synchronized void finishCycle(long pendingCount) {
-        pending = Math.max(0, pendingCount);
-        currentContentType = null;
-        currentId = null;
-        currentTitle = null;
+    public synchronized void finishCycle(long pendingCount, long failedCount) {
+        clearCurrent();
         if (status != Status.PAUSED) {
-            if (pending == 0) {
-                status = Status.COMPLETED;
+            if (pendingCount == 0) {
+                status = failedCount > 0 ? Status.COMPLETED_WITH_FAILURES : Status.COMPLETED;
                 completedAt = Instant.now();
             } else {
                 status = Status.RUNNING;
@@ -120,51 +99,49 @@ public class PosterBackupTaskState {
         touch();
     }
 
-    public synchronized void markNoWork() {
+    public synchronized void markNoWork(long failedCount) {
         if (status == Status.PAUSED) return;
-        pending = 0;
-        currentContentType = null;
-        currentId = null;
-        currentTitle = null;
-        status = Status.COMPLETED;
+        clearCurrent();
+        status = failedCount > 0 ? Status.COMPLETED_WITH_FAILURES : Status.COMPLETED;
         completedAt = Instant.now();
         touch();
     }
 
     public synchronized void markError(String message) {
         status = Status.ERROR;
-        currentContentType = null;
-        currentId = null;
-        currentTitle = null;
+        clearCurrent();
         lastError = message;
         touch();
     }
 
-    public synchronized Snapshot snapshot() {
-        double progressPercent = total <= 0
-                ? (status == Status.COMPLETED ? 100.0 : 0.0)
-                : Math.min(100.0, Math.max(0.0, (total - pending) * 100.0 / total));
+    public synchronized Snapshot snapshot(PosterBackupScheduler.CatalogStats stats) {
+        double progressPercent = stats.total() <= 0
+                ? 100.0
+                : Math.min(100.0, Math.max(0.0, stats.succeeded() * 100.0 / stats.total()));
         long rateWindowSeconds = properties.getRateLimitWindow() == null
                 ? 5L : Math.max(1L, properties.getRateLimitWindow().toSeconds());
         return new Snapshot(
-                status.name(), total, pending, processed, succeeded, failed, progressPercent,
-                currentContentType, currentId, currentTitle, lastError,
+                status.name(), stats.total(), stats.pending(), stats.succeeded() + stats.failed(),
+                stats.succeeded(), stats.failed(), attempted, successfulAttempts, failedAttempts,
+                progressPercent, currentContentType, currentId, currentTitle, lastError,
                 startedAt, updatedAt, completedAt,
                 properties.getMaxRequestsPerWindow(), rateWindowSeconds);
     }
 
-    private void resetCounters() {
-        total = 0;
-        pending = 0;
-        processed = 0;
-        succeeded = 0;
-        failed = 0;
-        currentContentType = null;
-        currentId = null;
-        currentTitle = null;
+    private void resetAttempts() {
+        attempted = 0;
+        successfulAttempts = 0;
+        failedAttempts = 0;
+        clearCurrent();
         lastError = null;
         startedAt = null;
         completedAt = null;
+    }
+
+    private void clearCurrent() {
+        currentContentType = null;
+        currentId = null;
+        currentTitle = null;
     }
 
     private void touch() {
@@ -178,6 +155,9 @@ public class PosterBackupTaskState {
             long processed,
             long succeeded,
             long failed,
+            long attempted,
+            long successfulAttempts,
+            long failedAttempts,
             double progressPercent,
             String currentContentType,
             Long currentId,

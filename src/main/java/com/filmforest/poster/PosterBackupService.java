@@ -77,10 +77,14 @@ public class PosterBackupService {
         this.rateLimiter = rateLimiter;
     }
 
-    public boolean backup(ContentType contentType, long contentId, String sourceUrl) {
-        if (contentId <= 0 || !TABLES.containsKey(contentType)) return false;
+    public BackupResult backup(ContentType contentType, long contentId, String sourceUrl) {
+        if (contentId <= 0 || !TABLES.containsKey(contentType)) {
+            return BackupResult.terminalFailure("INVALID_CONTENT", null, "内容标识无效");
+        }
         URI initial = safeUri(sourceUrl);
-        if (initial == null) return false;
+        if (initial == null) {
+            return BackupResult.terminalFailure("INVALID_SOURCE_URL", null, "海报源地址无效或不安全");
+        }
 
         Path directory = storage.root().resolve(contentType.value()).normalize();
         Path temporary = null;
@@ -88,13 +92,16 @@ public class PosterBackupService {
         try {
             Files.createDirectories(directory);
             temporary = Files.createTempFile(directory, ".poster-", ".part");
-            DownloadedImage image = download(initial, temporary);
-            if (image == null) return false;
+            DownloadOutcome outcome = download(initial, temporary);
+            if (outcome.failure() != null) return outcome.failure();
+            DownloadedImage image = outcome.image();
 
             String fileName = contentId + "-" + image.digest().substring(0, 16)
                     + "." + image.extension();
             Path target = directory.resolve(fileName).normalize();
-            if (!target.startsWith(storage.root())) return false;
+            if (!target.startsWith(storage.root())) {
+                return BackupResult.terminalFailure("INVALID_STORAGE_PATH", null, "海报存储路径无效");
+            }
             if (!Files.exists(target)) {
                 moveAtomically(image.temporary(), target);
                 moved = true;
@@ -109,11 +116,13 @@ public class PosterBackupService {
                             + " AND (poster_url IS NULL OR poster_url NOT LIKE ?"
                             + " OR poster_backup_source_url IS NULL OR poster_backup_source_url <> poster_source_url)",
                     localUrl, sourceUrl, contentId, sourceUrl, LOCAL_PREFIX + "%");
-            return updated > 0;
+            return updated > 0
+                    ? BackupResult.completed()
+                    : BackupResult.retryableFailure("SOURCE_CHANGED", null, "海报源在下载期间发生变化");
         } catch (IOException error) {
             log.warn("海报本地写入失败: type={}, id={}, reason={}", contentType.value(), contentId,
                     error.getClass().getSimpleName());
-            return false;
+            return BackupResult.retryableFailure("STORAGE_ERROR", null, "本地文件写入失败");
         } finally {
             if (temporary != null && !moved) {
                 try {
@@ -130,7 +139,7 @@ public class PosterBackupService {
      * 流式写入临时文件并同步计算摘要，不把整张图片读入 JVM 内存。
      * 用户明确要求不限制图片大小，因此这里不检查 Content-Length，也不设置字节上限。
      */
-    private DownloadedImage download(URI initial, Path temporary) {
+    private DownloadOutcome download(URI initial, Path temporary) {
         URI current = initial;
         for (int redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
             HttpRequest request = HttpRequest.newBuilder(current)
@@ -145,17 +154,36 @@ public class PosterBackupService {
                         request, HttpResponse.BodyHandlers.ofInputStream());
                 try (InputStream body = response.body()) {
                     if (response.statusCode() >= 300 && response.statusCode() < 400) {
-                        if (redirect == MAX_REDIRECTS) return null;
+                        if (redirect == MAX_REDIRECTS) {
+                            return DownloadOutcome.failed(BackupResult.terminalFailure(
+                                    "TOO_MANY_REDIRECTS", response.statusCode(), "海报源重定向次数过多"));
+                        }
                         String location = response.headers().firstValue("location").orElse(null);
                         current = location == null ? null : safeUri(current.resolve(location));
-                        if (current == null) return null;
+                        if (current == null) {
+                            return DownloadOutcome.failed(BackupResult.terminalFailure(
+                                    "UNSAFE_REDIRECT", response.statusCode(), "海报源重定向地址无效或不安全"));
+                        }
                         continue;
                     }
-                    if (response.statusCode() < 200 || response.statusCode() >= 300) return null;
+                    int status = response.statusCode();
+                    if (status < 200 || status >= 300) {
+                        boolean terminal = status >= 400 && status < 500 && status != 408 && status != 429;
+                        BackupResult failure = terminal
+                                ? BackupResult.terminalFailure("HTTP_" + status, status, "海报源已失效")
+                                : BackupResult.retryableFailure("HTTP_" + status, status, "海报源暂时不可用");
+                        return DownloadOutcome.failed(failure);
+                    }
                     byte[] header = body.readNBytes(32);
-                    if (header.length == 0) return null;
+                    if (header.length == 0) {
+                        return DownloadOutcome.failed(BackupResult.terminalFailure(
+                                "EMPTY_RESPONSE", status, "海报源返回空响应"));
+                    }
                     ImageType type = ImageType.detect(header);
-                    if (type == null) return null;
+                    if (type == null) {
+                        return DownloadOutcome.failed(BackupResult.terminalFailure(
+                                "INVALID_IMAGE", status, "海报源返回的内容不是受支持的图片"));
+                    }
 
                     MessageDigest digest = sha256Digest();
                     try (OutputStream output = Files.newOutputStream(temporary,
@@ -171,17 +199,20 @@ public class PosterBackupService {
                             digest.update(buffer, 0, read);
                         }
                     }
-                    return new DownloadedImage(temporary, type.extension(),
-                            HexFormat.of().formatHex(digest.digest()));
+                    return DownloadOutcome.completed(new DownloadedImage(temporary, type.extension(),
+                            HexFormat.of().formatHex(digest.digest())));
                 }
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                return null;
+                return DownloadOutcome.failed(BackupResult.retryableFailure(
+                        "INTERRUPTED", null, "海报下载被中断"));
             } catch (IOException | RuntimeException error) {
-                return null;
+                return DownloadOutcome.failed(BackupResult.retryableFailure(
+                        "NETWORK_ERROR", null, "海报源网络请求失败"));
             }
         }
-        return null;
+        return DownloadOutcome.failed(BackupResult.terminalFailure(
+                "TOO_MANY_REDIRECTS", null, "海报源重定向次数过多"));
     }
 
     private URI safeUri(String raw) {
@@ -234,6 +265,31 @@ public class PosterBackupService {
     }
 
     private record DownloadedImage(Path temporary, String extension, String digest) {}
+
+    private record DownloadOutcome(DownloadedImage image, BackupResult failure) {
+        static DownloadOutcome completed(DownloadedImage image) {
+            return new DownloadOutcome(image, null);
+        }
+
+        static DownloadOutcome failed(BackupResult failure) {
+            return new DownloadOutcome(null, failure);
+        }
+    }
+
+    public record BackupResult(boolean success, String failureCode, Integer httpStatus,
+                               boolean terminal, String message) {
+        static BackupResult completed() {
+            return new BackupResult(true, null, null, false, null);
+        }
+
+        static BackupResult terminalFailure(String code, Integer httpStatus, String message) {
+            return new BackupResult(false, code, httpStatus, true, message);
+        }
+
+        static BackupResult retryableFailure(String code, Integer httpStatus, String message) {
+            return new BackupResult(false, code, httpStatus, false, message);
+        }
+    }
 
     private enum ImageType {
         JPEG("jpg"), PNG("png"), GIF("gif"), WEBP("webp"), AVIF("avif");
